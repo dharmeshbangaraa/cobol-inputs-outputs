@@ -1,109 +1,82 @@
-# Impact Analysis Report: Add Transaction Type Field to Batch Processing and Reporting
+**Summary**:
+User Story: COBOL Legacy Benchmark Suite  
+As a mainframe modernization engineer, I want a benchmark suite of COBOL programs with realistic business logic, data structures, and I/O patterns, so that I can evaluate the correctness and performance of COBOL-to-cloud migration tools and platforms.
 
-## 1. Summary
+Key business functions:  
+- Batch processing of customer accounts  
+- Calculation of interest and fees  
+- Generation of monthly statements  
+- Update of account balances  
+- Reporting of summary statistics
 
-**User Story:**  
-As a Portfolio operations analyst, I want to record and display the type of each transaction (e.g., BUY, SELL, DIVIDEND) in both processing and reporting programs, so that I can track, analyze, and report on different types of portfolio transactions for compliance and business insights.
-
-**Total impacted components:** 8  
-**High-level assessment:**  
-This is a high-complexity change. It requires updates to core data structures (copybooks), batch processing and reporting COBOL programs, and associated JCLs. The change propagates through direct and indirect dependencies due to the shared transaction record layout.
-
----
-
-## 2. Ranked Impact List
-
-| Program/Component           | Impact      | Nature of Impact                                            | Affected Paragraphs/Sections           | Dependency Path                                      |
-|-----------------------------|-------------|-------------------------------------------------------------|----------------------------------------|------------------------------------------------------|
-| TRANSACTION-RECORD.cpy      | High        | Add TRANSACTION-TYPE field to transaction record            | 01 TRANSACTION-RECORD                  | Used by all transaction-related programs             |
-| TRANSACTION-RECORD-IO.cpy   | High        | Add TRANSACTION-TYPE field for file I/O                     | 01 TRANSACTION-RECORD-IO               | Used by programs for file input/output               |
-| TRNVAL00.cbl                | High        | Update record definitions, logic to handle new field        | FILE SECTION, WORKING-STORAGE, PROCEDURE DIVISION | Uses transaction record for batch validation         |
-| RPTPOS00.cbl                | High        | Update record definitions, reporting logic                  | FILE SECTION, WORKING-STORAGE, PROCEDURE DIVISION | Reads and displays transaction record in reports     |
-| TRNLOAD00.cbl               | Medium      | Update record definitions, loading logic                    | FILE SECTION, WORKING-STORAGE, PROCEDURE DIVISION | Loads transactions, uses transaction record          |
-| TRNUPD00.cbl                | Medium      | Update record definitions, update logic                     | FILE SECTION, WORKING-STORAGE, PROCEDURE DIVISION | Updates transactions, uses transaction record        |
-| TRNVAL00.jcl                | Medium      | Update file layouts if record length changes                | DD statements for input/output files    | Executes TRNVAL00.cbl, may need file layout changes  |
-| RPTPOS00.jcl                | Medium      | Update file layouts if record length changes                | DD statements for input/output files    | Executes RPTPOS00.cbl, may need file layout changes  |
+Total number of impacted components: 5  
+High-level assessment of change complexity:  
+The change impacts the entire business process chain, involving batch processing, calculations, statement generation, account updates, and reporting. All major programs and their dependencies are involved, with high interconnectivity and shared data structures.
 
 ---
 
-## 3. JSON Metadata
+**Ranked Impact List**:
 
-```json
+| Program      | Impact | Nature  | Affected Paragraphs/Sections | Dependency Path           |
+|--------------|--------|---------|------------------------------|--------------------------|
+| MAINBATCH    | High   | Direct  | PROCESS-ACCOUNTS, CALC-INTEREST, GEN-STATEMENTS, UPDATE-MASTER | MAINBATCH                |
+| CALCFEES     | High   | Direct  | CALC-FEES, APPLY-FEES        | MAINBATCH → CALCFEES     |
+| STATGEN      | High   | Direct  | GEN-STATEMENT, WRITE-STATEMENT| MAINBATCH → STATGEN      |
+| UPDATEMSTR   | Medium | Indirect| UPDATE-RECORD, WRITE-MASTER  | MAINBATCH → UPDATEMSTR   |
+| REPTGEN      | Medium | Indirect| GEN-REPORT, SUMMARIZE        | MAINBATCH → REPTGEN      |
+
+---
+
+**JSON Metadata**:
+```
 {
   "impactAnalysis": {
-    "userStory": "Add Transaction Type Field to Batch Processing and Reporting",
+    "userStory": "COBOL Legacy Benchmark Suite",
     "impactedComponents": [
       {
-        "programName": "TRANSACTION-RECORD.cpy",
+        "programName": "MAINBATCH",
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["01 TRANSACTION-RECORD"],
-        "dependencyPath": ["TRANSACTION-RECORD.cpy"],
-        "rationale": "Primary copybook for transaction record; adding new field affects all consumers."
+        "affectedParagraphs": ["PROCESS-ACCOUNTS", "CALC-INTEREST", "GEN-STATEMENTS", "UPDATE-MASTER"],
+        "dependencyPath": ["MAINBATCH"],
+        "rationale": "Core batch driver orchestrating all business functions: processing, calculation, statement generation, and updates."
       },
       {
-        "programName": "TRANSACTION-RECORD-IO.cpy",
+        "programName": "CALCFEES",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["01 TRANSACTION-RECORD-IO"],
-        "dependencyPath": ["TRANSACTION-RECORD-IO.cpy"],
-        "rationale": "Copybook for file I/O of transaction records; must be updated for new field."
+        "affectedParagraphs": ["CALC-FEES", "APPLY-FEES"],
+        "dependencyPath": ["MAINBATCH", "CALCFEES"],
+        "rationale": "Handles calculation and application of fees as part of the batch process."
       },
       {
-        "programName": "TRNVAL00.cbl",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["FILE SECTION", "WORKING-STORAGE", "PROCEDURE DIVISION"],
-        "dependencyPath": ["TRANSACTION-RECORD.cpy", "TRNVAL00.cbl"],
-        "rationale": "Batch validation program; uses and processes transaction record."
-      },
-      {
-        "programName": "RPTPOS00.cbl",
+        "programName": "STATGEN",
         "impactScore": 0.93,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["FILE SECTION", "WORKING-STORAGE", "PROCEDURE DIVISION"],
-        "dependencyPath": ["TRANSACTION-RECORD.cpy", "RPTPOS00.cbl"],
-        "rationale": "Reporting program; must display new transaction type field."
+        "affectedParagraphs": ["GEN-STATEMENT", "WRITE-STATEMENT"],
+        "dependencyPath": ["MAINBATCH", "STATGEN"],
+        "rationale": "Generates and writes monthly statements for each account."
       },
       {
-        "programName": "TRNLOAD00.cbl",
-        "impactScore": 0.80,
-        "impactLevel": "Medium",
-        "impactType": "Direct",
-        "affectedParagraphs": ["FILE SECTION", "WORKING-STORAGE", "PROCEDURE DIVISION"],
-        "dependencyPath": ["TRANSACTION-RECORD.cpy", "TRNLOAD00.cbl"],
-        "rationale": "Loads transactions; must be updated for new record structure."
-      },
-      {
-        "programName": "TRNUPD00.cbl",
-        "impactScore": 0.80,
-        "impactLevel": "Medium",
-        "impactType": "Direct",
-        "affectedParagraphs": ["FILE SECTION", "WORKING-STORAGE", "PROCEDURE DIVISION"],
-        "dependencyPath": ["TRANSACTION-RECORD.cpy", "TRNUPD00.cbl"],
-        "rationale": "Updates transactions; must be updated for new record structure."
-      },
-      {
-        "programName": "TRNVAL00.jcl",
-        "impactScore": 0.70,
+        "programName": "UPDATEMSTR",
+        "impactScore": 0.85,
         "impactLevel": "Medium",
         "impactType": "Indirect",
-        "affectedParagraphs": ["DD statements for input/output files"],
-        "dependencyPath": ["TRNVAL00.cbl", "TRNVAL00.jcl"],
-        "rationale": "JCL for batch validation; may require file layout changes."
+        "affectedParagraphs": ["UPDATE-RECORD", "WRITE-MASTER"],
+        "dependencyPath": ["MAINBATCH", "UPDATEMSTR"],
+        "rationale": "Updates the customer master record after processing."
       },
       {
-        "programName": "RPTPOS00.jcl",
-        "impactScore": 0.70,
+        "programName": "REPTGEN",
+        "impactScore": 0.80,
         "impactLevel": "Medium",
         "impactType": "Indirect",
-        "affectedParagraphs": ["DD statements for input/output files"],
-        "dependencyPath": ["RPTPOS00.cbl", "RPTPOS00.jcl"],
-        "rationale": "JCL for reporting; may require file layout changes."
+        "affectedParagraphs": ["GEN-REPORT", "SUMMARIZE"],
+        "dependencyPath": ["MAINBATCH", "REPTGEN"],
+        "rationale": "Produces summary reports and control totals at the end of processing."
       }
     ]
   }
@@ -112,28 +85,27 @@ This is a high-complexity change. It requires updates to core data structures (c
 
 ---
 
-## 4. Visualization
-
+**Visualization**:
 ```mermaid
 graph TD
-    TRANSACTION-RECORD.cpy:::high --> TRNVAL00.cbl:::high
-    TRANSACTION-RECORD.cpy:::high --> RPTPOS00.cbl:::high
-    TRANSACTION-RECORD.cpy:::high --> TRNLOAD00.cbl:::medium
-    TRANSACTION-RECORD.cpy:::high --> TRNUPD00.cbl:::medium
-    TRANSACTION-RECORD-IO.cpy:::high --> TRNVAL00.cbl:::high
-    TRANSACTION-RECORD-IO.cpy:::high --> RPTPOS00.cbl:::high
-    TRNVAL00.cbl:::high --> TRNVAL00.jcl:::medium
-    RPTPOS00.cbl:::high --> RPTPOS00.jcl:::medium
+  MAINBATCH:::high --> CALCFEES:::high
+  MAINBATCH:::high --> STATGEN:::high
+  MAINBATCH:::high --> UPDATEMSTR:::medium
+  MAINBATCH:::high --> REPTGEN:::medium
 
-    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
-    classDef medium fill:#fff2cc,stroke:#b8860b,stroke-width:2px;
+  classDef high fill:#ffcccc,stroke:#d33,stroke-width:2px;
+  classDef medium fill:#fff2cc,stroke:#cc9,stroke-width:2px;
+
+  class MAINBATCH,CALCFEES,STATGEN high;
+  class UPDATEMSTR,REPTGEN medium;
 ```
 
 ---
 
-**Reasoning:**  
-- The core transaction record copybooks are the highest-impact components, as all downstream programs depend on their structure.
-- Batch and reporting COBOL programs are directly impacted due to their use of the transaction record and their business-critical roles.
-- Loader and updater programs are medium impact, as they process the transaction record but may not be directly involved in reporting or validation.
-- Associated JCLs are medium impact, as file layouts may need to be updated for the new field.
-- All identified components are logically connected to the user story and are necessary to fulfill the acceptance criteria.
+**Reasoning**:  
+- All identified programs are directly or indirectly involved in the business functions described in the user story.
+- MAINBATCH is the entry point and orchestrates all major processes.
+- CALCFEES and STATGEN are directly called for fee calculation and statement generation.
+- UPDATEMSTR and REPTGEN are called for updating master records and generating reports, respectively.
+- Impact scores are assigned based on proximity to the core change, complexity, and business criticality.
+- All affected paragraphs/sections are directly tied to the user story's business processes and data elements.
