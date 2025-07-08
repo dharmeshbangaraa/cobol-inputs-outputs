@@ -1,0 +1,106 @@
+## Summary
+
+**User Story:** Add Transaction Type Field to Batch Processing and Reporting in COBOL Portfolio System  
+- Add a new field, TRANSACTION-TYPE (PIC X(10)), to the transaction record layout in the relevant copybook used by both the batch processing and reporting programs.
+- Update transaction processing and reporting COBOL programs to handle the new field.
+- Ensure backward compatibility for older records.
+
+**Total Impacted Components:** 3  
+- 1 copybook (TRNREC.cpy)
+- 2 COBOL programs (PORTTRAN.cbl, RPTPOS00.cbl)
+
+**Change Complexity:**  
+High. This change affects a core data structure (transaction record) and requires updates to all programs that use this structure for processing and reporting. The impact is direct and central to business logic.
+
+---
+
+## Ranked Impact List
+
+| Program/Copybook           | Impact | Nature  | Affected Paragraphs/Sections         | Dependency Path          |
+|----------------------------|--------|---------|--------------------------------------|-------------------------|
+| TRNREC.cpy                 | High   | Direct  | 01 TRANSACTION-RECORD, TRN-DATA      | [TRNREC.cpy]            |
+| PORTTRAN.cbl               | High   | Direct  | 2100-VALIDATE-TRANSACTION,           | [PORTTRAN.cbl, TRNREC.cpy] |
+|                            |        |         | 2120-CHECK-TRANSACTION-TYPE,         |                         |
+|                            |        |         | 2200-UPDATE-POSITIONS,               |                         |
+|                            |        |         | 2210-PROCESS-BUY, 2220-PROCESS-SELL, |                         |
+|                            |        |         | 2230-PROCESS-TRANSFER, 2240-PROCESS-FEE |                      |
+| RPTPOS00.cbl               | High   | Direct  | 2200-PROCESS-TRANSACTIONS,           | [RPTPOS00.cbl, TRNREC.cpy] |
+|                            |        |         | 2000-PROCESS-REPORT                  |                         |
+
+---
+
+## JSON Metadata
+
+```
+{
+  "impactAnalysis": {
+    "userStory": "Add Transaction Type Field to Batch Processing and Reporting",
+    "impactedComponents": [
+      {
+        "programName": "TRNREC.cpy",
+        "impactScore": 1.0,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["01 TRANSACTION-RECORD", "TRN-DATA"],
+        "dependencyPath": ["TRNREC.cpy"],
+        "rationale": "The transaction record copybook is the core data structure being modified to add the new TRANSACTION-TYPE field."
+      },
+      {
+        "programName": "PORTTRAN.cbl",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [
+          "2100-VALIDATE-TRANSACTION",
+          "2120-CHECK-TRANSACTION-TYPE",
+          "2200-UPDATE-POSITIONS",
+          "2210-PROCESS-BUY",
+          "2220-PROCESS-SELL",
+          "2230-PROCESS-TRANSFER",
+          "2240-PROCESS-FEE"
+        ],
+        "dependencyPath": ["PORTTRAN.cbl", "TRNREC.cpy"],
+        "rationale": "PORTTRAN.cbl processes transactions and directly includes TRNREC.cpy. It will need to be updated to read, process, and validate the new TRANSACTION-TYPE field."
+      },
+      {
+        "programName": "RPTPOS00.cbl",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [
+          "2200-PROCESS-TRANSACTIONS",
+          "2000-PROCESS-REPORT"
+        ],
+        "dependencyPath": ["RPTPOS00.cbl", "TRNREC.cpy"],
+        "rationale": "RPTPOS00.cbl generates transaction reports and directly includes TRNREC.cpy. It must be updated to display the new TRANSACTION-TYPE field in reports."
+      }
+    ]
+  }
+}
+```
+
+---
+
+## Visualization
+
+```mermaid
+graph TD
+    TRNREC[TRNREC.cpy<br/>(Copybook)<br/>Impact: High]
+    PORTTRAN[PORTTRAN.cbl<br/>(Batch Processing)<br/>Impact: High]
+    RPTPOS[RPTPOS00.cbl<br/>(Reporting)<br/>Impact: High]
+
+    PORTTRAN --> TRNREC
+    RPTPOS --> TRNREC
+
+    style TRNREC fill:#ffcccc,stroke:#d33,stroke-width:2px
+    style PORTTRAN fill:#ffcccc,stroke:#d33,stroke-width:2px
+    style RPTPOS fill:#ffcccc,stroke:#d33,stroke-width:2px
+```
+
+---
+
+**Reasoning:**  
+- The transaction record copybook (TRNREC.cpy) is the central structure being changed.
+- Both PORTTRAN.cbl (transaction processing) and RPTPOS00.cbl (reporting) directly include this copybook and depend on its structure for their core logic.
+- All affected paragraphs in these programs interact with the transaction record and will need to be updated to handle the new TRANSACTION-TYPE field.
+- No indirect dependencies were found in the batch/reporting suite for this feature.
