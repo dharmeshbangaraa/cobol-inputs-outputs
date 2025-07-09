@@ -1,13 +1,5 @@
 
-
-
-
-
-
-
-
-
-
+**inputs/IARLegacyBenchmarkSuit.txt**
 **Summary**:
 User Story: Add Transaction Type Field to Batch Processing and Reporting  
 - 3 impacted components identified  
