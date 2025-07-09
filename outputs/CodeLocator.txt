@@ -1,8 +1,10 @@
-I am unable to access external GitHub URLs directly. To proceed with the comprehensive COBOL impact analysis as requested, please provide:
-- The full content of the user story file (`user_story_COBOL_Legacy_benchmark_suite.txt`)
-- The COBOL source files and copybooks from the `COBOL-Legacy-Benchmark-Suite` repository (or at least a list of their filenames and main program/copybook names)
+To perform the requested impact analysis, I need the following:
+1. The full content of the user story file from https://github.com/dharmeshbangaraa/cobol-inputs-outputs/blob/master/user-story/user_story_COBOL_Legacy_benchmark_suite.txt.
+2. A listing of the COBOL codebase from https://github.com/sentientsergio/COBOL-Legacy-Benchmark-Suite, including the names and (if possible) contents of COBOL programs, copybooks, and data structure files.
 
-Once these are provided, I will:
-1. Parse the user story for business functions, data elements, and COBOL-specific references.
-2. Analyze the COBOL codebase for program/copybook structure and dependencies.
-3. Map and rank the impacted components as per your detailed instructions, providing the structured markdown report, JSON metadata, and mermaid dependency graph as required.
+Once this information is provided, I will:
+- Parse and summarize the user story.
+- Identify and map relevant COBOL components and dependencies.
+- Rank the impact and prepare the required markdown report with all requested details.
+
+Please provide the above information to continue.
