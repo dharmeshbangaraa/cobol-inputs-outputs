@@ -1,0 +1,291 @@
+# Technical Document and Low-Level Design (LLD)
+
+## 1. Introduction  
+This document details the technical changes and low-level design (LLD2) for the COBOL portfolio management application, specifically related to the introduction of a new transaction classification field (`TRN-TRANSACTION-TYPE`). The changes impact the transaction record structure, transaction processing logic, and reporting modules. The purpose is to enable the system to classify transactions as "Regular" (`REG`), "International" (`INTL`), or other types in the future, improving transaction tracking, validation, and reporting.
+
+## 2. Existing Logic and Flow  
+### 2.1 Overview  
+The application manages portfolio transactions, processes them through validation and update routines, and generates daily position and transaction activity reports. The main modules are:
+- **Transaction Record Definition**: Defines the structure of transaction data.
+- **Portfolio Transaction Processing (`PORTTRAN.cbl`)**: Validates and updates portfolio data based on transactions.
+- **Daily Position Report Generator (`RPTPOS00.cbl`)**: Produces reports summarizing portfolio positions and transaction activities.
+
+### 2.2 Detailed Logic  
+#### Transaction Processing Flow (Pre-change)
+- **Initialization**: Opens files, initializes counters, and prepares for transaction processing.
+- **Transaction Processing**: Reads each transaction, validates fields (portfolio ID, type, amounts), and updates portfolio positions accordingly.
+- **Audit Trail**: Records each transaction's effect on portfolio data.
+- **Reporting**: Summarizes daily positions and transaction activities.
+
+#### Flowchart:
+```
+flowchart TD
+    Start([Start])
+    Init([Initialize Files & Counters])
+    ReadTrn([Read Transaction])
+    Validate([Validate Fields])
+    Update([Update Portfolio])
+    Audit([Update Audit Trail])
+    NextTrn([Next Transaction?])
+    Report([Generate Report])
+    End([End])
+
+    Start --> Init --> ReadTrn --> Validate
+    Validate -- Valid --> Update --> Audit --> NextTrn
+    Validate -- Error --> Audit
+    NextTrn -- Yes --> ReadTrn
+    NextTrn -- No --> Report --> End
+```
+
+#### Change Logic (with references)
+- **Addition of `TRN-TRANSACTION-TYPE` (Lines in `TRNREC.cpy`)**:  
+  - New field added to transaction record for classifying transactions.
+- **Validation of Transaction Class (Lines in `PORTTRAN.cbl`)**:  
+  - New validation logic in `2100-VALIDATE-TRANSACTION` and `2140-CHECK-TRANSACTION-CLASS`.
+- **Audit Trail Update (Lines in `PORTTRAN.cbl`)**:  
+  - Audit message now includes the transaction class.
+- **Report Output Update (Lines in `RPTPOS00.cbl`)**:  
+  - New headers and detail fields for transaction class in the daily report.
+
+## 3. Impacted Changes  
+### 3.1 User Story or Analysis Report Summary  
+**User Story**:  
+As a business analyst, I want to classify transactions as "Regular" or "International" so that downstream processes and reporting can distinguish between transaction classes for compliance and analytics.
+
+### 3.2 Impacted Code Changes Summary:
+#### 3.2.1 Impacted Sections and Files:
+- **/src/copybook/common/TRNREC.cpy**  
+  - *Purpose*: Add a new field to the transaction record for transaction classification.
+  - *Impact*: All programs using this copybook must accommodate the new field.
+- **/src/programs/portfolio/PORTTRAN.cbl**  
+  - *Purpose*: Validate and process the new transaction class field.
+  - *Impact*: Ensures only allowed transaction classes are processed; audit trail enhanced.
+- **/src/programs/batch/RPTPOS00.cbl**  
+  - *Purpose*: Include transaction class in daily reports.
+  - *Impact*: Reports now display transaction class, improving transparency and analytics.
+
+### 3.3 Insertion Points  
+- **TRNREC.cpy**:  
+  - Insert new field `TRN-TRANSACTION-TYPE` (PIC X(04)) after `TRN-STATUS` in the transaction record.
+  - Adjust `TRN-FILLER` to maintain record length.
+- **PORTTRAN.cbl**:  
+  - In `2100-VALIDATE-TRANSACTION`, after amount checks, insert call to new paragraph `2140-CHECK-TRANSACTION-CLASS`.
+  - Add new paragraph `2140-CHECK-TRANSACTION-CLASS` to validate the new field.
+  - In `2300-UPDATE-AUDIT-TRAIL`, update audit message construction to include `TRN-TRANSACTION-TYPE`.
+- **RPTPOS00.cbl**:  
+  - Update report header and detail layouts to include transaction class.
+  - In transaction detail output logic, move `TRN-TRANSACTION-TYPE` to new field in report.
+
+### 3.4 Structured Diffs  
+
+#### **TRNREC.cpy**
+**Before:**
+```cobol
+          05  TRN-DATA.
+              10  TRN-INVESTMENT-ID  PIC X(10).
+              10  TRN-TYPE           PIC X(02).
+                  88  TRN-TYPE-BUY     VALUE 'BU'.
+                  88  TRN-TYPE-SELL    VALUE 'SL'.
+                  88  TRN-TYPE-TRANS   VALUE 'TR'.
+                  88  TRN-TYPE-FEE     VALUE 'FE'.
+              10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+              10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+              10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+              10  TRN-CURRENCY      PIC X(03).
+              10  TRN-STATUS        PIC X(01).
+                  88  TRN-STATUS-PEND   VALUE 'P'.
+                  88  TRN-STATUS-DONE   VALUE 'D'.
+                  88  TRN-STATUS-FAIL   VALUE 'F'.
+                  88  TRN-STATUS-REV    VALUE 'R'.
+          05  TRN-AUDIT.
+```
+**After:**
+```cobol
+          05  TRN-DATA.
+              10  TRN-INVESTMENT-ID  PIC X(10).
+              10  TRN-TYPE           PIC X(02).
+                  88  TRN-TYPE-BUY     VALUE 'BU'.
+                  88  TRN-TYPE-SELL    VALUE 'SL'.
+                  88  TRN-TYPE-TRANS   VALUE 'TR'.
+                  88  TRN-TYPE-FEE     VALUE 'FE'.
+              10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+              10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+              10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+              10  TRN-CURRENCY      PIC X(03).
+              10  TRN-STATUS        PIC X(01).
+                  88  TRN-STATUS-PEND   VALUE 'P'.
+                  88  TRN-STATUS-DONE   VALUE 'D'.
+                  88  TRN-STATUS-FAIL   VALUE 'F'.
+                  88  TRN-STATUS-REV    VALUE 'R'.
+              10  TRN-TRANSACTION-TYPE PIC X(04). *> ADDED: New field for transaction type (e.g., 'REG', 'INTL', etc.)
+          05  TRN-AUDIT.
+              ...
+          05  TRN-FILLER           PIC X(46). *> Reduced by 4 bytes to accommodate new field
+```
+
+#### **PORTTRAN.cbl**
+**Before:**
+```cobol
+       2100-VALIDATE-TRANSACTION.
+           MOVE SPACES TO ERR-TEXT
+
+           PERFORM 2110-CHECK-PORTFOLIO
+           IF ERR-TEXT = SPACES
+               PERFORM 2120-CHECK-TRANSACTION-TYPE
+           END-IF
+           IF ERR-TEXT = SPACES
+               PERFORM 2130-CHECK-AMOUNTS
+           END-IF
+           IF ERR-TEXT = SPACES
+               ADD 1 TO WS-PROCESS-COUNT
+           ELSE
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+```
+**After:**
+```cobol
+       2100-VALIDATE-TRANSACTION.
+           MOVE SPACES TO ERR-TEXT
+
+           PERFORM 2110-CHECK-PORTFOLIO
+           IF ERR-TEXT = SPACES
+               PERFORM 2120-CHECK-TRANSACTION-TYPE
+           END-IF
+           IF ERR-TEXT = SPACES
+               PERFORM 2130-CHECK-AMOUNTS
+           END-IF
+           *> BEGIN: Validate new TRANSACTION-TYPE field
+           IF ERR-TEXT = SPACES
+               PERFORM 2140-CHECK-TRANSACTION-CLASS
+           END-IF
+           *> END: Validate new TRANSACTION-TYPE field
+           IF ERR-TEXT = SPACES
+               ADD 1 TO WS-PROCESS-COUNT
+           ELSE
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+```
+
+**New Paragraph Added:**
+```cobol
+       2140-CHECK-TRANSACTION-CLASS.
+           IF TRN-TRANSACTION-TYPE = SPACES
+               MOVE 'Transaction class is required' TO ERR-TEXT
+               EXIT PARAGRAPH
+           END-IF
+           *> Example: Only allow REG or INTL for now
+           IF TRN-TRANSACTION-TYPE NOT = 'REG'
+              AND TRN-TRANSACTION-TYPE NOT = 'INTL'
+               STRING 'Invalid Transaction Class: '
+                      TRN-TRANSACTION-TYPE
+                  DELIMITED BY SIZE
+                  INTO ERR-TEXT
+           END-IF
+           .
+```
+
+**Audit Trail Update:**
+**Before:**
+```cobol
+           STRING 'Transaction: ' DELIMITED BY SIZE
+                  TRN-TYPE       DELIMITED BY SIZE
+                  ' Amount: '    DELIMITED BY SIZE
+                  TRN-AMOUNT     DELIMITED BY SIZE
+                  ' Units: '     DELIMITED BY SIZE
+                  TRN-QUANTITY   DELIMITED BY SIZE
+             INTO AUD-MESSAGE
+```
+**After:**
+```cobol
+           STRING 'Transaction: ' DELIMITED BY SIZE
+                  TRN-TYPE       DELIMITED BY SIZE
+                  ' Class: '     DELIMITED BY SIZE
+                  TRN-TRANSACTION-TYPE DELIMITED BY SIZE
+                  ' Amount: '    DELIMITED BY SIZE
+                  TRN-AMOUNT     DELIMITED BY SIZE
+                  ' Units: '     DELIMITED BY SIZE
+                  TRN-QUANTITY   DELIMITED BY SIZE
+             INTO AUD-MESSAGE
+           *> ADDED: Include TRANSACTION-TYPE in audit message
+```
+
+#### **RPTPOS00.cbl**
+**Before (Headers and Detail):**
+```cobol
+           05  WS-HEADER4.
+               10  FILLER            PIC X(20) VALUE 'TRAN TYPE'.
+               10  FILLER            PIC X(10) VALUE 'PORTFOLIO'.
+               10  FILLER            PIC X(10) VALUE 'INVESTMENT'.
+               10  FILLER            PIC X(10) VALUE 'AMOUNT'.
+               10  FILLER            PIC X(10) VALUE 'STATUS'.
+               10  FILLER            PIC X(72) VALUE SPACES.
+
+       01  WS-TRANSACTION-DETAIL.
+           05  WS-TRAN-TYPE         PIC X(02).
+           05  FILLER               PIC X(1) VALUE SPACE.
+           05  WS-TRAN-PORTFOLIO    PIC X(08).
+           05  FILLER               PIC X(1) VALUE SPACE.
+           05  WS-TRAN-INVESTMENT   PIC X(10).
+           05  FILLER               PIC X(1) VALUE SPACE.
+           05  WS-TRAN-AMOUNT       PIC ZZZ,ZZZ,ZZ9.99.
+           05  FILLER               PIC X(1) VALUE SPACE.
+           05  WS-TRAN-STATUS       PIC X(01).
+           05  FILLER               PIC X(99) VALUE SPACES.
+```
+**After:**
+```cobol
+           05  WS-HEADER4.
+               10  FILLER            PIC X(20) VALUE 'TRAN TYPE'.
+               10  FILLER            PIC X(10) VALUE 'CLASS'.
+               10  FILLER            PIC X(10) VALUE 'PORTFOLIO'.
+               10  FILLER            PIC X(10) VALUE 'INVESTMENT'.
+               10  FILLER            PIC X(10) VALUE 'AMOUNT'.
+               10  FILLER            PIC X(10) VALUE 'STATUS'.
+               10  FILLER            PIC X(62) VALUE SPACES.
+           *> ADDED: New header for TRANSACTION-TYPE
+
+       01  WS-TRANSACTION-DETAIL.
+           05  WS-TRAN-TYPE         PIC X(02).
+           05  FILLER               PIC X(1) VALUE SPACE.
+           05  WS-TRAN-CLASS        PIC X(04).
+           05  FILLER               PIC X(1) VALUE SPACE.
+           05  WS-TRAN-PORTFOLIO    PIC X(08).
+           05  FILLER               PIC X(1) VALUE SPACE.
+           05  WS-TRAN-INVESTMENT   PIC X(10).
+           05  FILLER               PIC X(1) VALUE SPACE.
+           05  WS-TRAN-AMOUNT       PIC ZZZ,ZZZ,ZZ9.99.
+           05  FILLER               PIC X(1) VALUE SPACE.
+           05  WS-TRAN-STATUS       PIC X(01).
+           05  FILLER               PIC X(99) VALUE SPACES.
+           *> ADDED: TRANSACTION-CLASS field
+```
+**Transaction Detail Output Logic:**
+**Before:**
+```cobol
+               MOVE TRN-TYPE              TO WS-TRAN-TYPE
+               MOVE TRN-PORTFOLIO-ID      TO WS-TRAN-PORTFOLIO
+               MOVE TRN-INVESTMENT-ID     TO WS-TRAN-INVESTMENT
+               MOVE TRN-AMOUNT            TO WS-TRAN-AMOUNT
+               MOVE TRN-STATUS            TO WS-TRAN-STATUS
+               WRITE REPORT-RECORD FROM WS-TRANSACTION-DETAIL
+```
+**After:**
+```cobol
+               MOVE TRN-TYPE              TO WS-TRAN-TYPE
+               MOVE TRN-TRANSACTION-TYPE  TO WS-TRAN-CLASS
+               MOVE TRN-PORTFOLIO-ID      TO WS-TRAN-PORTFOLIO
+               MOVE TRN-INVESTMENT-ID     TO WS-TRAN-INVESTMENT
+               MOVE TRN-AMOUNT            TO WS-TRAN-AMOUNT
+               MOVE TRN-STATUS            TO WS-TRAN-STATUS
+               WRITE REPORT-RECORD FROM WS-TRANSACTION-DETAIL
+           *> ADDED: Output transaction details with new TRANSACTION-TYPE field
+```
+
+## 4. Conclusion  
+The implemented changes introduce a new transaction classification field throughout the portfolio management application. This enhancement enables more granular transaction validation, improved audit trails, and richer reporting. All impacted modules have been updated to support the new field, ensuring data integrity and forward compatibility for additional transaction classes in the future.
+
+---
+
+**End of Document**
