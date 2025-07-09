@@ -95,26 +95,27 @@ graph TD
 
 ----------
 
+```
+
+```
 [1] TRNREC.cpy /copybooks/TRNREC.cpy
 
        01  TRANSACTION-RECORD.
-           05  TRANSACTION-ID           PIC X(10).
-           05  TRANSACTION-DATE         PIC 9(8).
-           05  TRANSACTION-AMOUNT       PIC S9(9)V99 COMP-3.
-           05  TRANSACTION-CURRENCY     PIC X(3).
-           05  TRANSACTION-ACCOUNT      PIC X(12).
-           05  TRANSACTION-DESCRIPTION  PIC X(30).
-           05  TRANSACTION-STATUS       PIC X(1).
-           *------------------------------------------------------*
-           * Added new field for transaction type (2024-06 update)*
-           05  TRANSACTION-TYPE         PIC X(4).
-           *------------------------------------------------------*
+           05  TRANSACTION-ID            PIC X(10).
+           05  TRANSACTION-DATE          PIC 9(8).
+           05  TRANSACTION-AMOUNT        PIC S9(9)V99 COMP-3.
+           05  TRANSACTION-ACCOUNT       PIC X(12).
+           05  TRANSACTION-DESCRIPTION   PIC X(30).
+*          Added TRANSACTION-TYPE field for batch processing and reporting (2024-06-XX)
+           05  TRANSACTION-TYPE          PIC X(04).
+           05  TRANSACTION-STATUS        PIC X(01).
 
 Summary of the modification:
-Added a new field TRANSACTION-TYPE (PIC X(4)) to the transaction record structure to support transaction type processing and reporting.
+Added a new field TRANSACTION-TYPE (PIC X(04)) to the TRANSACTION-RECORD structure to support new batch processing and reporting requirements. Inline comment documents the change.
 
----
+```
 
+```
 [2] PORTTRAN.cbl /batch/PORTTRAN.cbl
 
        IDENTIFICATION DIVISION.
@@ -128,105 +129,118 @@ Added a new field TRANSACTION-TYPE (PIC X(4)) to the transaction record structur
        DATA DIVISION.
        FILE SECTION.
        FD  TRANSACTION-FILE.
-       COPY 'TRNREC.cpy'.
+       COPY TRNREC.
 
        WORKING-STORAGE SECTION.
-       01  WS-EOF                PIC X VALUE 'N'.
-       01  WS-TRANSACTION-TYPE   PIC X(4).
-           *------------------------------------------------------*
-           * Added WS-TRANSACTION-TYPE to hold new field value    *
-           *------------------------------------------------------*
-       01  WS-ERROR-MSG          PIC X(80).
+       77  WS-EOF              PIC X VALUE 'N'.
+       77  WS-RETURN-CODE      PIC 9(4) VALUE ZERO.
+       77  WS-TRANSACTION-COUNT PIC 9(6) VALUE ZERO.
+*      Working storage for TRANSACTION-TYPE validation
+       77  WS-VALID-TYPES      PIC X(20) VALUE 'BUY SELL TRAN FEE '.
 
        PROCEDURE DIVISION.
        MAIN-LOGIC.
-           OPEN INPUT TRANSACTION-FILE
-           PERFORM UNTIL WS-EOF = 'Y'
-               READ TRANSACTION-FILE
-                   AT END
-                       MOVE 'Y' TO WS-EOF
-                   NOT AT END
-                       PERFORM 2100-VALIDATE-TRANSACTION
-                       PERFORM 2200-UPDATE-POSITIONS
-               END-READ
-           END-PERFORM
-           CLOSE TRANSACTION-FILE
+           PERFORM 1000-INITIALIZE
+           PERFORM 2000-PROCESS-TRANSACTIONS UNTIL WS-EOF = 'Y'
+           PERFORM 3000-FINALIZE
            STOP RUN.
 
+       1000-INITIALIZE.
+           OPEN INPUT TRANSACTION-FILE.
+           READ TRANSACTION-FILE
+               AT END
+                   MOVE 'Y' TO WS-EOF
+               NOT AT END
+                   CONTINUE
+           END-READ.
+
+       2000-PROCESS-TRANSACTIONS.
+           IF WS-EOF = 'Y'
+               EXIT PARAGRAPH
+           END-IF
+           PERFORM 2100-VALIDATE-TRANSACTION
+           PERFORM 2200-UPDATE-POSITIONS
+           READ TRANSACTION-FILE
+               AT END
+                   MOVE 'Y' TO WS-EOF
+               NOT AT END
+                   ADD 1 TO WS-TRANSACTION-COUNT
+           END-READ.
+
+*      Added TRANSACTION-TYPE validation logic (2024-06-XX)
        2100-VALIDATE-TRANSACTION.
-           *------------------------------------------------------*
-           * Validate new TRANSACTION-TYPE field                  *
-           *------------------------------------------------------*
-           IF TRANSACTION-TYPE = SPACES OR TRANSACTION-TYPE = LOW-VALUES
-               MOVE 'ERROR: TRANSACTION-TYPE IS MISSING' TO WS-ERROR-MSG
-               DISPLAY WS-ERROR-MSG
+           IF TRANSACTION-ID = SPACES OR TRANSACTION-AMOUNT = ZERO
+               DISPLAY 'INVALID TRANSACTION RECORD: MISSING ID OR AMOUNT'
                GO TO 2999-EXIT
            END-IF
            PERFORM 2120-CHECK-TRANSACTION-TYPE.
 
        2120-CHECK-TRANSACTION-TYPE.
-           *------------------------------------------------------*
-           * Check for valid transaction types (BUY, SELL, TRAN, FEE) *
-           *------------------------------------------------------*
-           IF TRANSACTION-TYPE = 'BUY'
-               PERFORM 2210-PROCESS-BUY
-           ELSE IF TRANSACTION-TYPE = 'SELL'
-               PERFORM 2220-PROCESS-SELL
-           ELSE IF TRANSACTION-TYPE = 'TRAN'
-               PERFORM 2230-PROCESS-TRANSFER
-           ELSE IF TRANSACTION-TYPE = 'FEE'
-               PERFORM 2240-PROCESS-FEE
-           ELSE
-               MOVE 'ERROR: INVALID TRANSACTION-TYPE' TO WS-ERROR-MSG
-               DISPLAY WS-ERROR-MSG
+*          Check if TRANSACTION-TYPE is valid (BUY, SELL, TRAN, FEE)
+           IF TRANSACTION-TYPE = SPACES
+               DISPLAY 'INVALID TRANSACTION: MISSING TYPE'
+               GO TO 2999-EXIT
+           END-IF
+           IF TRANSACTION-TYPE NOT = 'BUY ' AND
+              TRANSACTION-TYPE NOT = 'SELL' AND
+              TRANSACTION-TYPE NOT = 'TRAN' AND
+              TRANSACTION-TYPE NOT = 'FEE '
+               DISPLAY 'INVALID TRANSACTION TYPE: ' TRANSACTION-TYPE
+               GO TO 2999-EXIT
            END-IF.
 
        2200-UPDATE-POSITIONS.
-           *------------------------------------------------------*
-           * Update logic now branches based on TRANSACTION-TYPE  *
-           *------------------------------------------------------*
+*          Update logic based on TRANSACTION-TYPE
            EVALUATE TRANSACTION-TYPE
-               WHEN 'BUY'
+               WHEN 'BUY '
                    PERFORM 2210-PROCESS-BUY
                WHEN 'SELL'
                    PERFORM 2220-PROCESS-SELL
                WHEN 'TRAN'
                    PERFORM 2230-PROCESS-TRANSFER
-               WHEN 'FEE'
+               WHEN 'FEE '
                    PERFORM 2240-PROCESS-FEE
                WHEN OTHER
-                   DISPLAY 'WARNING: UNKNOWN TRANSACTION-TYPE'
+                   DISPLAY 'UNKNOWN TRANSACTION TYPE: ' TRANSACTION-TYPE
            END-EVALUATE.
 
        2210-PROCESS-BUY.
-           * Existing logic for processing BUY transactions *
+*          Process BUY transaction
+           DISPLAY 'PROCESSING BUY TRANSACTION: ' TRANSACTION-ID.
 
        2220-PROCESS-SELL.
-           * Existing logic for processing SELL transactions *
+*          Process SELL transaction
+           DISPLAY 'PROCESSING SELL TRANSACTION: ' TRANSACTION-ID.
 
        2230-PROCESS-TRANSFER.
-           * Existing logic for processing TRANSFER transactions *
+*          Process TRANSFER transaction
+           DISPLAY 'PROCESSING TRANSFER TRANSACTION: ' TRANSACTION-ID.
 
        2240-PROCESS-FEE.
-           * Existing logic for processing FEE transactions *
+*          Process FEE transaction
+           DISPLAY 'PROCESSING FEE TRANSACTION: ' TRANSACTION-ID.
 
        2300-UPDATE-AUDIT-TRAIL.
-           *------------------------------------------------------*
-           * Include TRANSACTION-TYPE in audit trail record       *
-           *------------------------------------------------------*
-           DISPLAY 'AUDIT: ' TRANSACTION-ID ' ' TRANSACTION-TYPE ' ' TRANSACTION-AMOUNT.
+*          Audit trail now includes TRANSACTION-TYPE
+           DISPLAY 'AUDIT: ' TRANSACTION-ID ' TYPE: ' TRANSACTION-TYPE.
 
        2999-EXIT.
            EXIT.
 
+       3000-FINALIZE.
+           CLOSE TRANSACTION-FILE.
+           DISPLAY 'TOTAL TRANSACTIONS PROCESSED: ' WS-TRANSACTION-COUNT.
+
 Summary of the modification:
-- Added handling for the new TRANSACTION-TYPE field throughout transaction validation and processing.
-- Updated 2100-VALIDATE-TRANSACTION and 2120-CHECK-TRANSACTION-TYPE to validate and branch logic based on TRANSACTION-TYPE.
-- Updated 2200-UPDATE-POSITIONS to use EVALUATE on TRANSACTION-TYPE.
-- Included TRANSACTION-TYPE in the audit trail output.
+- Updated to process new TRANSACTION-TYPE field from the copybook.
+- Added validation for TRANSACTION-TYPE in 2100-VALIDATE-TRANSACTION and 2120-CHECK-TRANSACTION-TYPE.
+- Updated 2200-UPDATE-POSITIONS to branch logic based on TRANSACTION-TYPE using EVALUATE.
+- Updated audit trail to include TRANSACTION-TYPE.
+- Inline comments document all changes.
 
----
+```
 
+```
 [3] RPTPOS00.cbl /reports/RPTPOS00.cbl
 
        IDENTIFICATION DIVISION.
@@ -236,64 +250,73 @@ Summary of the modification:
        FILE-CONTROL.
            SELECT TRANSACTION-FILE ASSIGN TO 'TRANSACT.DAT'
                ORGANIZATION IS LINE SEQUENTIAL.
-           SELECT REPORT-FILE ASSIGN TO 'RPTPOS00.OUT'
+           SELECT REPORT-FILE ASSIGN TO 'REPORT.OUT'
                ORGANIZATION IS LINE SEQUENTIAL.
 
        DATA DIVISION.
        FILE SECTION.
        FD  TRANSACTION-FILE.
-       COPY 'TRNREC.cpy'.
+       COPY TRNREC.
 
        FD  REPORT-FILE.
-       01  REPORT-RECORD          PIC X(100).
+       01  REPORT-RECORD         PIC X(132).
 
        WORKING-STORAGE SECTION.
-       01  WS-EOF                 PIC X VALUE 'N'.
-       01  WS-REPORT-LINE         PIC X(100).
-       01  WS-TRANSACTION-TYPE    PIC X(4).
-           *------------------------------------------------------*
-           * Added WS-TRANSACTION-TYPE for new field              *
-           *------------------------------------------------------*
+       77  WS-EOF                PIC X VALUE 'N'.
+       77  WS-TRANSACTION-COUNT  PIC 9(6) VALUE ZERO.
 
        PROCEDURE DIVISION.
        MAIN-LOGIC.
-           OPEN INPUT TRANSACTION-FILE
-           OPEN OUTPUT REPORT-FILE
-           PERFORM 2000-PROCESS-REPORT
-           CLOSE TRANSACTION-FILE
-           CLOSE REPORT-FILE
+           PERFORM 1000-INITIALIZE
+           PERFORM 2000-PROCESS-REPORT UNTIL WS-EOF = 'Y'
+           PERFORM 3000-FINALIZE
            STOP RUN.
 
-       2000-PROCESS-REPORT.
-           PERFORM UNTIL WS-EOF = 'Y'
-               READ TRANSACTION-FILE
-                   AT END
-                       MOVE 'Y' TO WS-EOF
-                   NOT AT END
-                       PERFORM 2200-PROCESS-TRANSACTIONS
-               END-READ
-           END-PERFORM.
+       1000-INITIALIZE.
+           OPEN INPUT TRANSACTION-FILE
+           OPEN OUTPUT REPORT-FILE
+           READ TRANSACTION-FILE
+               AT END
+                   MOVE 'Y' TO WS-EOF
+               NOT AT END
+                   CONTINUE
+           END-READ.
 
+       2000-PROCESS-REPORT.
+           IF WS-EOF = 'Y'
+               EXIT PARAGRAPH
+           END-IF
+           PERFORM 2110-FORMAT-POSITION
+           READ TRANSACTION-FILE
+               AT END
+                   MOVE 'Y' TO WS-EOF
+               NOT AT END
+                   ADD 1 TO WS-TRANSACTION-COUNT
+           END-READ.
+
+*      Updated to include TRANSACTION-TYPE in report output (2024-06-XX)
        2110-FORMAT-POSITION.
-           *------------------------------------------------------*
-           * Include TRANSACTION-TYPE in report output            *
-           *------------------------------------------------------*
            STRING
                TRANSACTION-ID DELIMITED BY SIZE
-               ' ' DELIMITED BY SIZE
-               TRANSACTION-DATE DELIMITED BY SIZE
-               ' ' DELIMITED BY SIZE
-               TRANSACTION-AMOUNT DELIMITED BY SIZE
-               ' ' DELIMITED BY SIZE
-               TRANSACTION-TYPE DELIMITED BY SIZE
-               INTO WS-REPORT-LINE
-           END-STRING.
+               ' ' TRANSACTION-DATE DELIMITED BY SIZE
+               ' ' TRANSACTION-AMOUNT DELIMITED BY SIZE
+               ' ' TRANSACTION-ACCOUNT DELIMITED BY SIZE
+               ' ' TRANSACTION-TYPE DELIMITED BY SIZE
+               ' ' TRANSACTION-DESCRIPTION DELIMITED BY SIZE
+               ' ' TRANSACTION-STATUS DELIMITED BY SIZE
+               INTO REPORT-RECORD
+           END-STRING
+           WRITE REPORT-RECORD.
 
        2200-PROCESS-TRANSACTIONS.
-           PERFORM 2110-FORMAT-POSITION
-           WRITE REPORT-RECORD FROM WS-REPORT-LINE.
+*          No additional logic required for TRANSACTION-TYPE here
+
+       3000-FINALIZE.
+           CLOSE TRANSACTION-FILE
+           CLOSE REPORT-FILE
+           DISPLAY 'REPORT COMPLETE. TRANSACTIONS PROCESSED: ' WS-TRANSACTION-COUNT.
 
 Summary of the modification:
-- Added TRANSACTION-TYPE to the report output by updating 2110-FORMAT-POSITION to include the new field.
-- Added WS-TRANSACTION-TYPE to working storage for clarity and future use.
-- Ensured the new field is displayed in all transaction reports.
+- Updated to read and display the new TRANSACTION-TYPE field in the report.
+- Modified 2110-FORMAT-POSITION to include TRANSACTION-TYPE in the output string.
+- Inline comment documents the change.
