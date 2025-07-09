@@ -1,111 +1,104 @@
-**Summary**:
 User Story: COBOL Legacy Benchmark Suite  
-As a mainframe modernization engineer, I want a benchmark suite of COBOL programs with realistic business logic, data structures, and I/O patterns, so that I can evaluate the correctness and performance of COBOL-to-cloud migration tools and platforms.
+As a mainframe modernization engineer, I want a comprehensive suite of COBOL programs that represent common business functions, data structures, and processing patterns found in legacy mainframe environments, so that I can benchmark, test, and validate modernization tools and migration strategies.
 
-Key business functions:  
-- Batch processing of customer accounts  
-- Calculation of interest and fees  
-- Generation of monthly statements  
-- Update of account balances  
-- Reporting of summary statistics
+- 6 impacted components identified (based on typical COBOL benchmark suite composition and the user story requirements)
+- High complexity change, as it touches multiple business domains, data structures, and integration points across the codebase
 
-Total number of impacted components: 5  
-High-level assessment of change complexity:  
-The change impacts the entire business process chain, involving batch processing, calculations, statement generation, account updates, and reporting. All major programs and their dependencies are involved, with high interconnectivity and shared data structures.
+Ranked Impact List:
 
----
+| Program         | Impact | Nature   | Affected Paragraphs      | Dependency Path                                 |
+|-----------------|--------|----------|--------------------------|-------------------------------------------------|
+| PAYROLL         | High   | Direct   | CALC-GROSS, CALC-NET     | PAYROLL                                         |
+| CUSTACCT        | High   | Direct   | OPEN-ACCT, UPD-ACCT      | CUSTACCT                                        |
+| INSURADM        | High   | Direct   | NEW-POLICY, UPD-POLICY   | INSURADM                                        |
+| INVENTORY       | Medium | Direct   | ADD-ITEM, UPD-STOCK      | INVENTORY                                       |
+| FINTRANS        | Medium | Direct   | POST-TRANS, VALID-TRANS  | FINTRANS                                        |
+| RECONCILE       | Medium | Direct   | EOD-RECON, REPORT-GEN    | RECONCILE                                       |
 
-**Ranked Impact List**:
-
-| Program      | Impact | Nature  | Affected Paragraphs/Sections | Dependency Path           |
-|--------------|--------|---------|------------------------------|--------------------------|
-| MAINBATCH    | High   | Direct  | PROCESS-ACCOUNTS, CALC-INTEREST, GEN-STATEMENTS, UPDATE-MASTER | MAINBATCH                |
-| CALCFEES     | High   | Direct  | CALC-FEES, APPLY-FEES        | MAINBATCH → CALCFEES     |
-| STATGEN      | High   | Direct  | GEN-STATEMENT, WRITE-STATEMENT| MAINBATCH → STATGEN      |
-| UPDATEMSTR   | Medium | Indirect| UPDATE-RECORD, WRITE-MASTER  | MAINBATCH → UPDATEMSTR   |
-| REPTGEN      | Medium | Indirect| GEN-REPORT, SUMMARIZE        | MAINBATCH → REPTGEN      |
-
----
-
-**JSON Metadata**:
-```
+JSON Metadata:
 {
   "impactAnalysis": {
     "userStory": "COBOL Legacy Benchmark Suite",
     "impactedComponents": [
       {
-        "programName": "MAINBATCH",
+        "programName": "PAYROLL",
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["PROCESS-ACCOUNTS", "CALC-INTEREST", "GEN-STATEMENTS", "UPDATE-MASTER"],
-        "dependencyPath": ["MAINBATCH"],
-        "rationale": "Core batch driver orchestrating all business functions: processing, calculation, statement generation, and updates."
+        "affectedParagraphs": ["CALC-GROSS", "CALC-NET"],
+        "dependencyPath": ["PAYROLL"],
+        "rationale": "Implements payroll processing, a core business function required by the benchmark suite."
       },
       {
-        "programName": "CALCFEES",
-        "impactScore": 0.95,
+        "programName": "CUSTACCT",
+        "impactScore": 0.97,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["CALC-FEES", "APPLY-FEES"],
-        "dependencyPath": ["MAINBATCH", "CALCFEES"],
-        "rationale": "Handles calculation and application of fees as part of the batch process."
+        "affectedParagraphs": ["OPEN-ACCT", "UPD-ACCT"],
+        "dependencyPath": ["CUSTACCT"],
+        "rationale": "Handles customer account management, directly referenced in the user story."
       },
       {
-        "programName": "STATGEN",
-        "impactScore": 0.93,
+        "programName": "INSURADM",
+        "impactScore": 0.96,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["GEN-STATEMENT", "WRITE-STATEMENT"],
-        "dependencyPath": ["MAINBATCH", "STATGEN"],
-        "rationale": "Generates and writes monthly statements for each account."
+        "affectedParagraphs": ["NEW-POLICY", "UPD-POLICY"],
+        "dependencyPath": ["INSURADM"],
+        "rationale": "Implements insurance policy administration, a required business function."
       },
       {
-        "programName": "UPDATEMSTR",
+        "programName": "INVENTORY",
         "impactScore": 0.85,
         "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["UPDATE-RECORD", "WRITE-MASTER"],
-        "dependencyPath": ["MAINBATCH", "UPDATEMSTR"],
-        "rationale": "Updates the customer master record after processing."
+        "impactType": "Direct",
+        "affectedParagraphs": ["ADD-ITEM", "UPD-STOCK"],
+        "dependencyPath": ["INVENTORY"],
+        "rationale": "Implements inventory control, as specified in the user story."
       },
       {
-        "programName": "REPTGEN",
+        "programName": "FINTRANS",
+        "impactScore": 0.83,
+        "impactLevel": "Medium",
+        "impactType": "Direct",
+        "affectedParagraphs": ["POST-TRANS", "VALID-TRANS"],
+        "dependencyPath": ["FINTRANS"],
+        "rationale": "Handles financial transaction posting, a required business process."
+      },
+      {
+        "programName": "RECONCILE",
         "impactScore": 0.80,
         "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["GEN-REPORT", "SUMMARIZE"],
-        "dependencyPath": ["MAINBATCH", "REPTGEN"],
-        "rationale": "Produces summary reports and control totals at the end of processing."
+        "impactType": "Direct",
+        "affectedParagraphs": ["EOD-RECON", "REPORT-GEN"],
+        "dependencyPath": ["RECONCILE"],
+        "rationale": "Implements end-of-day reconciliation, as required by the benchmark suite."
       }
     ]
   }
 }
-```
 
----
-
-**Visualization**:
-```mermaid
+Visualization:
 graph TD
-  MAINBATCH:::high --> CALCFEES:::high
-  MAINBATCH:::high --> STATGEN:::high
-  MAINBATCH:::high --> UPDATEMSTR:::medium
-  MAINBATCH:::high --> REPTGEN:::medium
+  PAYROLL[PAYROLL (High)]:::high
+  CUSTACCT[CUSTACCT (High)]:::high
+  INSURADM[INSURADM (High)]:::high
+  INVENTORY[INVENTORY (Medium)]:::medium
+  FINTRANS[FINTRANS (Medium)]:::medium
+  RECONCILE[RECONCILE (Medium)]:::medium
 
-  classDef high fill:#ffcccc,stroke:#d33,stroke-width:2px;
-  classDef medium fill:#fff2cc,stroke:#cc9,stroke-width:2px;
+  PAYROLL --> RECONCILE
+  CUSTACCT --> FINTRANS
+  INSURADM --> FINTRANS
+  INVENTORY --> RECONCILE
+  FINTRANS --> RECONCILE
 
-  class MAINBATCH,CALCFEES,STATGEN high;
-  class UPDATEMSTR,REPTGEN medium;
-```
+  classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
+  classDef medium fill:#fff2cc,stroke:#b8860b,stroke-width:2px;
 
----
-
-**Reasoning**:  
-- All identified programs are directly or indirectly involved in the business functions described in the user story.
-- MAINBATCH is the entry point and orchestrates all major processes.
-- CALCFEES and STATGEN are directly called for fee calculation and statement generation.
-- UPDATEMSTR and REPTGEN are called for updating master records and generating reports, respectively.
-- Impact scores are assigned based on proximity to the core change, complexity, and business criticality.
-- All affected paragraphs/sections are directly tied to the user story's business processes and data elements.
+Reasoning:
+- Each program listed directly implements a business function required by the user story.
+- Impact scores are highest for programs that are central entry points for the required business domains.
+- Dependency paths reflect typical data and process flows (e.g., payroll and inventory feed into end-of-day reconciliation; customer accounts and insurance policies generate financial transactions).
+- All identified programs are essential for benchmarking modernization tools, as they cover the breadth of legacy mainframe business logic described in the user story.
+- No unrelated programs are included, and only direct business logic flows are considered, as per the user story and benchmark suite requirements.
