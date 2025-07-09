@@ -1,12 +1,3 @@
-Hello,
+To proceed with your request for a comprehensive technical document and Low-Level Design (LLD) for the COBOL application at https://github.com/sentientsergio/COBOL-Legacy-Benchmark-Suite, I need the specific user story or analysis report that outlines the required changes to be made to the application. The current input does not include any details about the changes, requirements, or business logic modifications that need to be incorporated.
 
-To proceed with the comprehensive technical documentation and Low-Level Design (LLD) for the COBOL application at [https://github.com/sentientsergio/COBOL-Legacy-Benchmark-Suite](https://github.com/sentientsergio/COBOL-Legacy-Benchmark-Suite), I need the specific user story or analysis report that outlines the required enhancements or modifications. This information is crucial for:
-
-- Identifying the impacted modules and code sections
-- Determining insertion points for new logic or changes
-- Preparing accurate structured diffs
-- Ensuring the LLD aligns with the business and technical requirements
-
-Could you please provide the detailed user story, business requirements, or analysis report describing the changes to be made? Once I have this, I can accurately document the impacted areas and proceed with the LLD as required.
-
-Thank you!
+Please provide the detailed user story, business requirements, or analysis report describing the changes that are expected. This information is essential for accurately documenting the existing logic, flow, and for providing precise implementation guidance in the technical document and LLD. Once I have the required details, I can proceed with the documentation as instructed.
