@@ -1,99 +1,139 @@
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document provides a detailed technical explanation and Low-Level Design (LLD) for the enhancement of the COBOL legacy application, specifically to add a `TRANSACTION-TYPE` field to batch processing and reporting. The document covers the existing logic, identifies impacted modules, explains the rationale for the change, and provides structured diffs and diagrams for clarity.
+This document provides a comprehensive technical and low-level design for the enhancement of the COBOL legacy portfolio system. The enhancement introduces a new `TRANSACTION-TYPE` field to the transaction record, updates the batch processing program to handle this field, and modifies the reporting program to display it. The goal is to enable portfolio operations analysts to track, analyze, and report on different types of portfolio transactions for compliance and business insights.
 
 ---
 
 ## 2. Existing Logic and Flow  
 
 ### 2.1 Overview  
-The application processes financial transactions in batch mode, storing transaction records in a central structure and generating summary reports. The main modules are:
-- **TRNREC.cpy**: Defines the transaction record structure.
-- **PORTTRAN.cbl**: Batch processor that reads, validates, processes, and writes transactions.
-- **RPTPOS00.cbl**: Generates reports from processed transactions.
+The legacy portfolio system processes and reports on portfolio transactions. The system is comprised of:
+- A **transaction record copybook** (`TRNREC.cpy`) that defines the canonical structure of a transaction.
+- A **batch transaction processing program** (`PORTTRAN.cbl`) that reads, validates, and processes transactions, updating portfolio positions and audit trails.
+- A **reporting program** (`RPTPOS00.cbl`) that generates daily position and transaction activity reports.
 
 ### 2.2 Detailed Logic  
 
-#### TRNREC.cpy  
-- **Purpose**: Defines the layout for each transaction record.
-- **Structure**:
-    ```cobol
-    01  TRANSACTION-RECORD.
-        05  TRANSACTION-ID        PIC X(10).
-        05  TRANSACTION-DATE      PIC 9(8).
-        05  TRANSACTION-AMOUNT    PIC S9(9)V99.
-        05  ACCOUNT-NUMBER        PIC X(12).
-        ...
-    ```
-- **Usage**: Included in both processing and reporting modules.
+#### 2.2.1 Transaction Record Layout (`TRNREC.cpy`)
+```cobol
+01  TRANSACTION-RECORD.
+    05  TRN-KEY.
+        10  TRN-DATE           PIC X(08).
+        10  TRN-TIME           PIC X(06).
+        10  TRN-PORTFOLIO-ID   PIC X(08).
+        10  TRN-SEQUENCE-NO    PIC X(06).
+    05  TRN-DATA.
+        10  TRN-INVESTMENT-ID  PIC X(10).
+        10  TRN-TYPE           PIC X(02).
+            88  TRN-TYPE-BUY     VALUE 'BU'.
+            88  TRN-TYPE-SELL    VALUE 'SL'.
+            88  TRN-TYPE-TRANS   VALUE 'TR'.
+            88  TRN-TYPE-FEE     VALUE 'FE'.
+        10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+        10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+        10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+        10  TRN-CURRENCY      PIC X(03).
+        10  TRN-STATUS        PIC X(01).
+            88  TRN-STATUS-PEND   VALUE 'P'.
+            88  TRN-STATUS-DONE   VALUE 'D'.
+            88  TRN-STATUS-FAIL   VALUE 'F'.
+            88  TRN-STATUS-REV    VALUE 'R'.
+    05  TRN-AUDIT.
+        10  TRN-PROCESS-DATE  PIC X(26).
+        10  TRN-PROCESS-USER  PIC X(08).
+    05  TRN-FILLER           PIC X(50).
+```
+- **Key fields:** Date, Time, Portfolio ID, Investment ID, Type, Quantity, Price, Amount, Currency, Status, Audit info.
 
-#### PORTTRAN.cbl  
-- **Initialization** (e.g., lines 10-40): Opens files, initializes counters.
-    ```cobol
-    OPEN INPUT TRANSACTION-FILE
-    OPEN OUTPUT PROCESSED-FILE
-    MOVE ZERO TO TRANSACTION-COUNT
-    ```
-- **Main Processing** (e.g., lines 50-200): Reads, validates, processes, and writes transactions.
-    ```cobol
-    PERFORM UNTIL END-OF-FILE
-        READ TRANSACTION-FILE INTO TRANSACTION-RECORD
-            AT END
-                SET END-OF-FILE TO TRUE
-            NOT AT END
-                PERFORM VALIDATE-TRANSACTION
-                IF VALID
-                    PERFORM PROCESS-TRANSACTION
-                    WRITE PROCESSED-RECORD FROM TRANSACTION-RECORD
-                END-IF
-        END-READ
-    END-PERFORM
-    ```
-- **Termination** (e.g., lines 210-230): Summarizes and closes files.
-    ```cobol
-    DISPLAY "TOTAL TRANSACTIONS: " TRANSACTION-COUNT
-    CLOSE TRANSACTION-FILE
-    CLOSE PROCESSED-FILE
-    ```
+---
 
-#### RPTPOS00.cbl  
-- **Initialization** (e.g., lines 10-30): Opens files, sets up report headers.
-    ```cobol
-    OPEN INPUT PROCESSED-FILE
-    OPEN OUTPUT REPORT-FILE
-    ```
-- **Processing** (e.g., lines 40-150): Reads records, formats report lines.
-    ```cobol
-    PERFORM UNTIL END-OF-FILE
-        READ PROCESSED-FILE INTO TRANSACTION-RECORD
-            AT END
-                SET END-OF-FILE TO TRUE
-            NOT AT END
-                PERFORM FORMAT-REPORT-LINE
-                WRITE REPORT-RECORD
-        END-READ
-    END-PERFORM
-    ```
-- **Termination** (e.g., lines 160-180): Prints summary, closes files.
+#### 2.2.2 Batch Transaction Processing (`PORTTRAN.cbl`)
 
-#### Flowchart  
+- **Initialization (`1000-INITIALIZE`):**
+  - Opens transaction and portfolio files.
+  - Initializes counters and file status flags.
+
+- **Main Processing (`2000-PROCESS-TRANSACTIONS`):**
+  - Reads each transaction record.
+  - Validates portfolio ID, transaction type, and amounts.
+  - Updates portfolio positions based on transaction type (BUY, SELL, TRANSFER, FEE).
+  - Writes audit trail for each transaction.
+
+- **Validation (`2100-VALIDATE-TRANSACTION`):**
+  - Ensures portfolio exists.
+  - Checks transaction type is one of 'BU', 'SL', 'TR', 'FE'.
+  - Validates quantity, price, and amount.
+
+- **Update Positions (`2200-UPDATE-POSITIONS`):**
+  - Routes to specific logic for BUY, SELL, TRANSFER, FEE.
+  - Updates portfolio records accordingly.
+
+- **Audit Trail (`2300-UPDATE-AUDIT-TRAIL`):**
+  - Logs transaction details, including type, amount, and quantity.
+
+- **Termination (`3000-TERMINATE`):**
+  - Closes files and displays summary statistics.
+
+**Transaction Record Handling:**
+- **Read:** `READ TRANSACTION-FILE`
+- **Portfolio Update:** `REWRITE PORTFOLIO-RECORD`
+- **Audit:** Calls `AUDPROC` to write audit record.
+
+---
+
+#### 2.2.3 Reporting (`RPTPOS00.cbl`)
+
+- **Initialization:**
+  - Opens position master, transaction history, and report files.
+  - Writes report headers.
+
+- **Main Processing:**
+  - Reads transaction history.
+  - For each transaction, extracts key fields (date, time, portfolio, type, etc.).
+  - Writes transaction details to the report.
+
+- **Termination:**
+  - Closes all files.
+
+**Transaction Record Handling:**
+- **Read:** `READ TRANSACTION-HISTORY`
+- **Report Write:** Writes formatted transaction details to `REPORT-FILE`.
+
+---
+
+#### Flowchart
+
 ```mermaid
 flowchart TD
     Start([Start])
-    ReadInput([Read Input File])
+    Init([Initialization])
+    ReadTrans([Read Transaction Record])
     Validate([Validate Transaction])
-    Process([Process Transaction])
-    WriteOut([Write Output File])
-    Report([Generate Report])
+    Update([Update Portfolio Positions])
+    Audit([Update Audit Trail])
+    NextTrans{More Records?}
+    Term([Termination])
+    ReportStart([Start Report])
+    ReadHist([Read Transaction History])
+    WriteDetail([Write Transaction Detail])
+    NextHist{More History?}
     End([End])
 
-    Start --> ReadInput
-    ReadInput --> Validate
-    Validate --> Process
-    Process --> WriteOut
-    WriteOut --> Report
-    Report --> End
+    Start --> Init
+    Init --> ReadTrans
+    ReadTrans --> Validate
+    Validate --> Update
+    Update --> Audit
+    Audit --> NextTrans
+    NextTrans -- Yes --> ReadTrans
+    NextTrans -- No --> Term
+    Term --> ReportStart
+    ReportStart --> ReadHist
+    ReadHist --> WriteDetail
+    WriteDetail --> NextHist
+    NextHist -- Yes --> ReadHist
+    NextHist -- No --> End
 ```
 
 ---
@@ -101,10 +141,14 @@ flowchart TD
 ## 3. Proposed Changes  
 
 ### 3.1 User Story or Analysis Report Summary  
-**User Story:** Add Transaction Type Field to Batch Processing and Reporting  
-- Add a new `TRANSACTION-TYPE` field to the transaction record.
-- Update batch processing to validate and process the new field.
-- Update reporting to display the new field.
+**User Story:**  
+As a Portfolio operations analyst, I want to record and display the type of each transaction (e.g., BUY, SELL, DIVIDEND) in both processing and reporting programs so that I can track, analyze, and report on different types of portfolio transactions for compliance and business insights.
+
+**Acceptance Criteria:**
+- Add a new field, `TRANSACTION-TYPE (PIC X(10))`, to the transaction record layout in the relevant copybook.
+- Update batch processing to accept, store, and process the new field.
+- Update reporting to read and display the new field.
+- Handle missing transaction type gracefully (display as blank or "UNKNOWN").
 
 ---
 
@@ -112,142 +156,177 @@ flowchart TD
 
 #### 3.2.1 Impacted Sections and Files
 
-| Program         | Impact | Nature  | Affected Paragraphs/Sections      | Dependency Path                |
-|-----------------|--------|---------|-----------------------------------|-------------------------------|
-| TRNREC.cpy      | High   | Direct  | TRANSACTION-RECORD                | [TRNREC.cpy]                  |
-| PORTTRAN.cbl    | High   | Direct  | 2100-VALIDATE-TRANSACTION, 2120-CHECK-TRANSACTION-TYPE, 2200-UPDATE-POSITIONS, 2210-PROCESS-BUY, 2220-PROCESS-SELL, 2230-PROCESS-TRANSFER, 2240-PROCESS-FEE, 2300-UPDATE-AUDIT-TRAIL | [PORTTRAN.cbl → TRNREC.cpy]   |
-| RPTPOS00.cbl    | High   | Direct  | 2200-PROCESS-TRANSACTIONS, 2110-FORMAT-POSITION, 2000-PROCESS-REPORT | [RPTPOS00.cbl → TRNREC.cpy]   |
-
-- **Purpose of Changes:**  
-  To allow the system to capture, validate, process, and report on the type of each transaction, enabling enhanced business logic and reporting capabilities.
-
-- **Impact:**  
-  - All transaction records will now include a type field.
-  - Batch processing must validate and potentially branch logic based on transaction type.
-  - Reports will display transaction type, providing more granular insights.
+| File/Section         | Purpose of Changes                                                                                      | Impact                                      |
+|----------------------|--------------------------------------------------------------------------------------------------------|---------------------------------------------|
+| `TRNREC.cpy`         | Add `TRANSACTION-TYPE` field to transaction record layout                                              | All programs using this copybook            |
+| `PORTTRAN.cbl`       | Accept, store, and process the new transaction type field                                              | Transaction validation, processing, audit   |
+| `RPTPOS00.cbl`       | Read and display transaction type in the generated summary report                                      | Transaction detail reporting                |
 
 ---
 
-### 3.3 Insertion Points  
+### 3.3 Insertion Points
 
-#### TRNREC.cpy  
-- **Where:** After `TRANSACTION-DATE` in the `TRANSACTION-RECORD` structure.
-- **Why:** Keeps related fields grouped logically.
+#### `TRNREC.cpy`
+- **Where:** After `TRN-TYPE` in the `TRANSACTION-RECORD` layout.
+- **How:** Add a new field `TRANSACTION-TYPE` (PIC X(10)).
 
-#### PORTTRAN.cbl  
-- **Where:**  
-  - In `VALIDATE-TRANSACTION` paragraph: Add validation for `TRANSACTION-TYPE`.
-  - In all processing paragraphs (e.g., `2120-CHECK-TRANSACTION-TYPE`, `2210-PROCESS-BUY`, etc.): Reference or branch on `TRANSACTION-TYPE` as needed.
-- **Why:** Ensures only valid types are processed and allows for type-specific logic.
+#### `PORTTRAN.cbl`
+- **Where:** 
+  - In the `FILE SECTION` and all references to transaction record.
+  - In `2100-VALIDATE-TRANSACTION` and `2120-CHECK-TRANSACTION-TYPE` to handle the new field.
+  - In `2300-UPDATE-AUDIT-TRAIL` to log the new field.
 
-#### RPTPOS00.cbl  
-- **Where:**  
-  - In `FORMAT-REPORT-LINE` or equivalent: Add `TRANSACTION-TYPE` to report output.
-  - In report headers/footers as appropriate.
-- **Why:** Makes transaction type visible in reports.
+- **How:** 
+  - Accept and process the new field when reading/writing transaction records.
+  - If missing, set to spaces or "UNKNOWN".
+
+#### `RPTPOS00.cbl`
+- **Where:** 
+  - In the transaction detail section of the report (`2100-TRANSACTION-DETAIL`, `2200-WRITE-TRANSACTION-DETAIL`).
+- **How:** 
+  - Read and display the new field.
+  - If missing, display as blank or "UNKNOWN".
 
 ---
 
-### 3.4 Structured Diffs  
+### 3.4 Structured Diffs
 
-#### TRNREC.cpy
+#### `TRNREC.cpy`
 
-**Before:**  
+**Before:**
 ```cobol
-01  TRANSACTION-RECORD.
-    05  TRANSACTION-ID        PIC X(10).
-    05  TRANSACTION-DATE      PIC 9(8).
-    05  TRANSACTION-AMOUNT    PIC S9(9)V99.
-    05  ACCOUNT-NUMBER        PIC X(12).
+10  TRN-TYPE           PIC X(02).
+    88  TRN-TYPE-BUY     VALUE 'BU'.
+    88  TRN-TYPE-SELL    VALUE 'SL'.
+    88  TRN-TYPE-TRANS   VALUE 'TR'.
+    88  TRN-TYPE-FEE     VALUE 'FE'.
 ```
 
-**After:**  
+**After:**
 ```cobol
-01  TRANSACTION-RECORD.
-    05  TRANSACTION-ID        PIC X(10).
-    05  TRANSACTION-DATE      PIC 9(8).
-    05  TRANSACTION-TYPE      PIC X(2).    *> New field
-    05  TRANSACTION-AMOUNT    PIC S9(9)V99.
-    05  ACCOUNT-NUMBER        PIC X(12).
+10  TRN-TYPE           PIC X(02).
+    88  TRN-TYPE-BUY     VALUE 'BU'.
+    88  TRN-TYPE-SELL    VALUE 'SL'.
+    88  TRN-TYPE-TRANS   VALUE 'TR'.
+    88  TRN-TYPE-FEE     VALUE 'FE'.
+10  TRANSACTION-TYPE    PIC X(10).
 ```
 
 ---
 
-#### PORTTRAN.cbl
+#### `PORTTRAN.cbl`
 
-**Before (VALIDATE-TRANSACTION):**  
+**Before:**
 ```cobol
-VALIDATE-TRANSACTION.
-    IF TRANSACTION-AMOUNT <= 0
-        MOVE 'N' TO VALID
-    ELSE
-        MOVE 'Y' TO VALID
+FD  TRANSACTION-FILE
+    RECORDING MODE IS F
+    BLOCK CONTAINS 0 RECORDS.
+COPY TRNREC.
+```
+**After:**
+```cobol
+FD  TRANSACTION-FILE
+    RECORDING MODE IS F
+    BLOCK CONTAINS 0 RECORDS.
+COPY TRNREC.
+* TRANSACTION-TYPE (PIC X(10)) now available in TRANSACTION-RECORD
+```
+
+**Before (Validation):**
+```cobol
+PERFORM 2120-CHECK-TRANSACTION-TYPE
+...
+2120-CHECK-TRANSACTION-TYPE.
+    EVALUATE TRN-TYPE
+        WHEN 'BU'
+        WHEN 'SL'
+        WHEN 'TR'
+        WHEN 'FE'
+            CONTINUE
+        WHEN OTHER
+            STRING 'Invalid Transaction Type: '
+                   TRN-TYPE
+               DELIMITED BY SIZE
+               INTO ERR-TEXT
+    END-EVALUATE
+.
+```
+**After (Validation):**
+```cobol
+PERFORM 2120-CHECK-TRANSACTION-TYPE
+...
+2120-CHECK-TRANSACTION-TYPE.
+    IF TRANSACTION-TYPE = SPACES OR TRANSACTION-TYPE = LOW-VALUES
+        MOVE 'UNKNOWN' TO TRANSACTION-TYPE
     END-IF
+    EVALUATE TRN-TYPE
+        WHEN 'BU'
+        WHEN 'SL'
+        WHEN 'TR'
+        WHEN 'FE'
+            CONTINUE
+        WHEN OTHER
+            STRING 'Invalid Transaction Type: '
+                   TRN-TYPE
+               DELIMITED BY SIZE
+               INTO ERR-TEXT
+    END-EVALUATE
+.
 ```
 
-**After:**  
+**Before (Audit Trail):**
 ```cobol
-VALIDATE-TRANSACTION.
-    IF TRANSACTION-AMOUNT <= 0
-        MOVE 'N' TO VALID
-    ELSE IF TRANSACTION-TYPE NOT = 'CR' AND TRANSACTION-TYPE NOT = 'DB'
-        MOVE 'N' TO VALID
-    ELSE
-        MOVE 'Y' TO VALID
-    END-IF
+STRING 'Transaction: ' DELIMITED BY SIZE
+       TRN-TYPE       DELIMITED BY SIZE
+       ' Amount: '    DELIMITED BY SIZE
+       TRN-AMOUNT     DELIMITED BY SIZE
+       ' Units: '     DELIMITED BY SIZE
+       TRN-QUANTITY   DELIMITED BY SIZE
+  INTO AUD-MESSAGE
+```
+**After (Audit Trail):**
+```cobol
+STRING 'Transaction: ' DELIMITED BY SIZE
+       TRN-TYPE       DELIMITED BY SIZE
+       ' ('           DELIMITED BY SIZE
+       TRANSACTION-TYPE DELIMITED BY SIZE
+       ') Amount: '   DELIMITED BY SIZE
+       TRN-AMOUNT     DELIMITED BY SIZE
+       ' Units: '     DELIMITED BY SIZE
+       TRN-QUANTITY   DELIMITED BY SIZE
+  INTO AUD-MESSAGE
 ```
 
 ---
 
-#### RPTPOS00.cbl
+#### `RPTPOS00.cbl`
 
-**Before (FORMAT-REPORT-LINE):**  
+**Before (Transaction Detail Write):**
 ```cobol
-FORMAT-REPORT-LINE.
-    MOVE TRANSACTION-ID TO REPORT-ID
-    MOVE TRANSACTION-DATE TO REPORT-DATE
-    MOVE TRANSACTION-AMOUNT TO REPORT-AMOUNT
+WRITE REPORT-RECORD FROM
+    (TRN-DATE, TRN-TIME, TRN-PORTFOLIO-ID, TRN-INVESTMENT-ID, TRN-TYPE, TRN-QUANTITY, TRN-AMOUNT, ...)
+```
+**After (Transaction Detail Write):**
+```cobol
+IF TRANSACTION-TYPE = SPACES OR TRANSACTION-TYPE = LOW-VALUES
+    MOVE 'UNKNOWN' TO TRANSACTION-TYPE
+END-IF
+WRITE REPORT-RECORD FROM
+    (TRN-DATE, TRN-TIME, TRN-PORTFOLIO-ID, TRN-INVESTMENT-ID, TRN-TYPE, TRANSACTION-TYPE, TRN-QUANTITY, TRN-AMOUNT, ...)
 ```
 
-**After:**  
-```cobol
-FORMAT-REPORT-LINE.
-    MOVE TRANSACTION-ID TO REPORT-ID
-    MOVE TRANSACTION-DATE TO REPORT-DATE
-    MOVE TRANSACTION-TYPE TO REPORT-TYPE    *> New field
-    MOVE TRANSACTION-AMOUNT TO REPORT-AMOUNT
+**Before (Report Header):**
+```
+DATE     TIME     PORTFOLIO  INVESTMENT  TYPE  QUANTITY  AMOUNT  ...
+```
+**After (Report Header):**
+```
+DATE     TIME     PORTFOLIO  INVESTMENT  TYPE  TRANSACTION-TYPE  QUANTITY  AMOUNT  ...
 ```
 
 ---
 
 ## 4. Conclusion  
-The proposed changes introduce a new `TRANSACTION-TYPE` field, enhancing the application's ability to process and report on transaction types. All impacted modules are updated in a modular, standards-compliant manner, ensuring maintainability and clarity for future enhancements. The structured diffs and diagrams provide clear implementation guidance for developers and reviewers.
+The proposed changes introduce a new `TRANSACTION-TYPE` field to the transaction record, update the batch processing program to handle and store this field, and enhance the reporting program to display it. These changes enable more granular tracking and reporting of transaction types, supporting compliance and business analytics. The modifications are backward compatible, ensuring legacy records are handled gracefully by displaying a blank or "UNKNOWN" transaction type where data is missing.
 
 ---
-
-### Visualization
-
-```mermaid
-graph TD
-    TRNREC[TRNREC.cpy]:::high
-    PORTTRAN[PORTTRAN.cbl]:::high
-    RPTPOS00[RPTPOS00.cbl]:::high
-
-    PORTTRAN --> TRNREC
-    RPTPOS00 --> TRNREC
-
-    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
-    class TRNREC,PORTTRAN,RPTPOS00 high;
-```
-
-```mermaid
-flowchart TD
-    A[Input File] --> B[PORTTRAN.cbl: Read & Validate]
-    B --> C{TRANSACTION-TYPE Valid?}
-    C -- Yes --> D[Process Transaction]
-    C -- No --> E[Reject/Log Error]
-    D --> F[Write to Output File]
-    F --> G[RPTPOS00.cbl: Read Output]
-    G --> H[Format Report (with TRANSACTION-TYPE)]
-    H --> I[Report File]
-```
