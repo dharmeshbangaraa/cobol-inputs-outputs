@@ -1,0 +1,33 @@
+User Story: Add Transaction Type Field to Batch Processing and Reporting
+Title:
+Add Transaction Type field to transaction processing and reporting in COBOL portfolio system
+
+As a
+Portfolio operations analyst
+
+I want to
+record and display the type of each transaction (e.g., BUY, SELL, DIVIDEND) in both processing and reporting programs
+
+So that
+I can track, analyze, and report on different types of portfolio transactions for compliance and business insights
+
+Acceptance Criteria
+Data Structure Update
+
+Add a new field, TRANSACTION-TYPE (PIC X(10)), to the transaction record layout in the relevant copybook used by both the batch processing and reporting programs.
+
+Batch Processing Program Update
+
+Update the transaction processing COBOL program (e.g., TRNVAL00.cbl or similar) to:
+
+Accept, store, and process the new transaction type field when reading or writing transaction records.
+
+Reporting Program Update
+
+Update the transaction report COBOL program (e.g., RPTPOS00.cbl or similar) to:
+
+Read and display the transaction type in the generated summary report.
+
+Backward Compatibility
+
+If the transaction type is missing for older records, the programs should handle it gracefully (e.g., display as blank or "UNKNOWN" in reports).

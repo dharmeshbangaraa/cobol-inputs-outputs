@@ -1,0 +1,93 @@
+**Summary**:
+User Story: Add Transaction Type Field to Batch Processing and Reporting  
+- 3 impacted components identified  
+- High complexity change affecting transaction data structure, processing, and reporting
+
+---
+
+**Ranked Impact List**:
+
+| Program         | Impact | Nature  | Affected Paragraphs/Sections      | Dependency Path                |
+|-----------------|--------|---------|-----------------------------------|-------------------------------|
+| TRNREC.cpy      | High   | Direct  | TRANSACTION-RECORD                | [TRNREC.cpy]                  |
+| PORTTRAN.cbl    | High   | Direct  | 2100-VALIDATE-TRANSACTION, 2120-CHECK-TRANSACTION-TYPE, 2200-UPDATE-POSITIONS, 2210-PROCESS-BUY, 2220-PROCESS-SELL, 2230-PROCESS-TRANSFER, 2240-PROCESS-FEE, 2300-UPDATE-AUDIT-TRAIL | [PORTTRAN.cbl → TRNREC.cpy]   |
+| RPTPOS00.cbl    | High   | Direct  | 2200-PROCESS-TRANSACTIONS, 2110-FORMAT-POSITION, 2000-PROCESS-REPORT | [RPTPOS00.cbl → TRNREC.cpy]   |
+
+---
+
+**JSON Metadata**:
+```json
+{
+  "impactAnalysis": {
+    "userStory": "Add Transaction Type Field to Batch Processing and Reporting",
+    "impactedComponents": [
+      {
+        "programName": "TRNREC.cpy",
+        "impactScore": 1.0,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["TRANSACTION-RECORD"],
+        "dependencyPath": ["TRNREC.cpy"],
+        "rationale": "Primary transaction record data structure; will have new TRANSACTION-TYPE field added, affecting all consumers."
+      },
+      {
+        "programName": "PORTTRAN.cbl",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [
+          "2100-VALIDATE-TRANSACTION",
+          "2120-CHECK-TRANSACTION-TYPE",
+          "2200-UPDATE-POSITIONS",
+          "2210-PROCESS-BUY",
+          "2220-PROCESS-SELL",
+          "2230-PROCESS-TRANSFER",
+          "2240-PROCESS-FEE",
+          "2300-UPDATE-AUDIT-TRAIL"
+        ],
+        "dependencyPath": ["PORTTRAN.cbl", "TRNREC.cpy"],
+        "rationale": "Batch transaction processing program; must read, validate, and process the new TRANSACTION-TYPE field."
+      },
+      {
+        "programName": "RPTPOS00.cbl",
+        "impactScore": 0.90,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [
+          "2200-PROCESS-TRANSACTIONS",
+          "2110-FORMAT-POSITION",
+          "2000-PROCESS-REPORT"
+        ],
+        "dependencyPath": ["RPTPOS00.cbl", "TRNREC.cpy"],
+        "rationale": "Reporting program; must read and display the new TRANSACTION-TYPE field in summary reports."
+      }
+    ]
+  }
+}
+```
+
+---
+
+**Visualization**:
+
+```mermaid
+graph TD
+    TRNREC[TRNREC.cpy]:::high
+    PORTTRAN[PORTTRAN.cbl]:::high
+    RPTPOS00[RPTPOS00.cbl]:::high
+
+    PORTTRAN --> TRNREC
+    RPTPOS00 --> TRNREC
+
+    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
+    class TRNREC,PORTTRAN,RPTPOS00 high;
+```
+
+---
+
+**Reasoning**:
+- **TRNREC.cpy** is the central copybook for transaction records and will be directly modified to add the new field. All programs using this copybook are potentially impacted.
+- **PORTTRAN.cbl** is the main batch program for transaction processing and directly uses TRNREC.cpy, so it must be updated to handle the new field in all relevant logic and validation.
+- **RPTPOS00.cbl** is the reporting program that generates transaction reports using TRNREC.cpy, so it must be updated to read and display the new field.
+- Other batch programs in the batch directory do not reference TRNREC.cpy and are not directly impacted.
+- The impact is ranked high for all three components due to the direct nature of the change and its effect on core business logic and reporting.
