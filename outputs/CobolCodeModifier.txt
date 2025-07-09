@@ -1,541 +1,400 @@
-# Impact Analysis Report: Add Transaction Type Field to Batch Processing and Reporting
+src/copybook/common/TRNREC.cpy
 
----
+      *****************************************************************
+      * TRANSACTION RECORD STRUCTURE
+      * VERSION: 1.1
+      * DATE: 2024
+      *****************************************************************
+       01  TRANSACTION-RECORD.
+           05  TRN-KEY.
+               10  TRN-DATE           PIC X(08).
+               10  TRN-TIME           PIC X(06).
+               10  TRN-PORTFOLIO-ID   PIC X(08).
+               10  TRN-SEQUENCE-NO    PIC X(06).
+           05  TRN-DATA.
+               10  TRN-INVESTMENT-ID  PIC X(10).
+               10  TRN-TYPE           PIC X(02).
+                   88  TRN-TYPE-BUY     VALUE 'BU'.
+                   88  TRN-TYPE-SELL    VALUE 'SL'.
+                   88  TRN-TYPE-TRANS   VALUE 'TR'.
+                   88  TRN-TYPE-FEE     VALUE 'FE'.
+               10  TRN-TRANSACTION-TYPE PIC X(10).
+      *    Added new field for transaction type (user story: Add Transaction Type Field)
+               10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+               10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+               10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+               10  TRN-CURRENCY      PIC X(03).
+               10  TRN-STATUS        PIC X(01).
+                   88  TRN-STATUS-PEND   VALUE 'P'.
+                   88  TRN-STATUS-DONE   VALUE 'D'.
+                   88  TRN-STATUS-FAIL   VALUE 'F'.
+                   88  TRN-STATUS-REV    VALUE 'R'.
+           05  TRN-AUDIT.
+               10  TRN-PROCESS-DATE  PIC X(26).
+               10  TRN-PROCESS-USER  PIC X(08).
+           05  TRN-FILLER           PIC X(40).
+      *    Reduced filler by 10 bytes to accommodate TRANSACTION-TYPE
+      *****************************************************************
+      * FIELD DESCRIPTIONS:
+      * TRN-DATE        : TRANSACTION DATE (YYYYMMDD)
+      * TRN-TIME        : TRANSACTION TIME (HHMMSS)
+      * TRN-PORTFOLIO-ID: PORTFOLIO IDENTIFIER
+      * TRN-SEQUENCE-NO : SEQUENCE NUMBER FOR MULTIPLE TRANS
+      * TRN-TYPE        : BU=BUY, SL=SELL, TR=TRANSFER, FE=FEE
+      * TRN-TRANSACTION-TYPE: USER-DEFINED TRANSACTION TYPE (NEW FIELD)
+      * TRN-STATUS      : P=PENDING, D=DONE, F=FAILED, R=REVERSED
+      *****************************************************************
 
-## **Summary**
+src/programs/portfolio/PORTTRAN.cbl
 
-**User Story:**  
-Add Transaction Type field to transaction processing and reporting in COBOL portfolio system
-
-**Overview:**  
-A new field, `TRANSACTION-TYPE (PIC X(10))`, must be added to the transaction record layout (copybook) and supported throughout all batch processing and reporting programs that read, write, or display transaction records. The change must be backward compatible for legacy records.
-
-**Total impacted components:** 6  
-**Change complexity:** High – impacts core data structures, batch processing, reporting, and requires validation for backward compatibility.
-
----
-
-## **Ranked Impact List**
-
-| Program/Copybook              | Impact   | Nature   | Affected Paragraphs/Sections          | Dependency Path                           |
-|-------------------------------|----------|----------|---------------------------------------|-------------------------------------------|
-| TRNREC.cpy                    | High     | Direct   | TRANSACTION-RECORD, TRN-DATA          | [TRNREC.cpy]                              |
-| PORTTRAN.cbl                  | High     | Direct   | Transaction read/write, validation    | [TRNREC.cpy, PORTTRAN.cbl]                |
-| RPTPOS00.cbl                  | High     | Direct   | Report formatting/output, record read | [TRNREC.cpy, RPTPOS00.cbl]                |
-| POSUPDT.cbl                   | Medium   | Direct   | Transaction read/update               | [TRNREC.cpy, POSUPDT.cbl]                 |
-| HISTLD00.cbl                  | Medium   | Direct   | Transaction history load              | [TRNREC.cpy, HISTLD00.cbl]                |
-| RPTAUD00.cbl                  | Low      | Indirect | Audit report formatting (if used)     | [TRNREC.cpy, RPTAUD00.cbl]                |
-
----
-
-## **JSON Metadata**
-
-```json
-{
-  "impactAnalysis": {
-    "userStory": "Add Transaction Type Field to Batch Processing and Reporting",
-    "impactedComponents": [
-      {
-        "programName": "TRNREC.cpy",
-        "impactScore": 1.0,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["TRANSACTION-RECORD", "TRN-DATA"],
-        "dependencyPath": ["TRNREC.cpy"],
-        "rationale": "Core copybook for transaction record; all programs referencing transaction data will be affected by the new field."
-      },
-      {
-        "programName": "PORTTRAN.cbl",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["Transaction read/write", "Validation logic"],
-        "dependencyPath": ["TRNREC.cpy", "PORTTRAN.cbl"],
-        "rationale": "Main batch transaction processor; must read, write, validate, and store the new field."
-      },
-      {
-        "programName": "RPTPOS00.cbl",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["Report formatting/output", "Record read"],
-        "dependencyPath": ["TRNREC.cpy", "RPTPOS00.cbl"],
-        "rationale": "Main reporting program; must read and display the new transaction type in reports."
-      },
-      {
-        "programName": "POSUPDT.cbl",
-        "impactScore": 0.7,
-        "impactLevel": "Medium",
-        "impactType": "Direct",
-        "affectedParagraphs": ["Transaction read/update"],
-        "dependencyPath": ["TRNREC.cpy", "POSUPDT.cbl"],
-        "rationale": "Updates portfolio positions based on transactions; must handle new field for consistency."
-      },
-      {
-        "programName": "HISTLD00.cbl",
-        "impactScore": 0.7,
-        "impactLevel": "Medium",
-        "impactType": "Direct",
-        "affectedParagraphs": ["Transaction history load"],
-        "dependencyPath": ["TRNREC.cpy", "HISTLD00.cbl"],
-        "rationale": "Loads transaction history; must process new field for future compatibility."
-      },
-      {
-        "programName": "RPTAUD00.cbl",
-        "impactScore": 0.4,
-        "impactLevel": "Low",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["Audit report formatting"],
-        "dependencyPath": ["TRNREC.cpy", "RPTAUD00.cbl"],
-        "rationale": "May display or summarize transaction data; needs review for new field usage."
-      }
-    ]
-  }
-}
-```
-
----
-
-## **Visualization**
-
-```mermaid
-graph TD
-  subgraph Copybooks
-    A[TRNREC.cpy]
-  end
-
-  subgraph Batch_Processing
-    B[PORTTRAN.cbl]
-    C[POSUPDT.cbl]
-    D[HISTLD00.cbl]
-  end
-
-  subgraph Reporting
-    E[RPTPOS00.cbl]
-    F[RPTAUD00.cbl]
-  end
-
-  A -- High --> B
-  A -- Medium --> C
-  A -- Medium --> D
-  A -- High --> E
-  A -- Low --> F
-```
-- **Color Legend:**  
-  - High Impact: **Red**  
-  - Medium Impact: **Orange**  
-  - Low Impact: **Yellow**
-
----
-
-## **Reasoning**
-
-- **TRNREC.cpy** is the central copybook for transaction records; any structural change here ripples to all programs that include it.
-- **PORTTRAN.cbl** and **RPTPOS00.cbl** are the primary batch and reporting programs, directly reading/writing/displaying transaction records.
-- **POSUPDT.cbl** and **HISTLD00.cbl** process transactions for position and history updates; they must be updated for the new field.
-- **RPTAUD00.cbl** may indirectly be impacted if it references transaction records.
-- All identified programs must handle the new field and ensure backward compatibility for legacy records.
-
----
-**End of Report**
-
-----------
-
-[1] TRNREC.cpy /src/copybook/common/TRNREC.cpy
-
-*****************************************************************
-* TRANSACTION RECORD STRUCTURE
-* VERSION: 1.0
-* DATE: 2024
-*****************************************************************
- 01  TRANSACTION-RECORD.
-     05  TRN-KEY.
-         10  TRN-DATE           PIC X(08).
-         10  TRN-TIME           PIC X(06).
-         10  TRN-PORTFOLIO-ID   PIC X(08).
-         10  TRN-SEQUENCE-NO    PIC X(06).
-     05  TRN-DATA.
-         10  TRN-INVESTMENT-ID  PIC X(10).
-         10  TRN-TYPE           PIC X(02).
-             88  TRN-TYPE-BUY     VALUE 'BU'.
-             88  TRN-TYPE-SELL    VALUE 'SL'.
-             88  TRN-TYPE-TRANS   VALUE 'TR'.
-             88  TRN-TYPE-FEE     VALUE 'FE'.
-         10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
-         10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
-         10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
-         10  TRN-CURRENCY      PIC X(03).
-         10  TRN-STATUS        PIC X(01).
-             88  TRN-STATUS-PEND   VALUE 'P'.
-             88  TRN-STATUS-DONE   VALUE 'D'.
-             88  TRN-STATUS-FAIL   VALUE 'F'.
-             88  TRN-STATUS-REV    VALUE 'R'.
-*---- Added for transaction type field for batch/reporting ----*
-         10  TRANSACTION-TYPE   PIC X(10).
-*---- End addition ----*
-     05  TRN-AUDIT.
-         10  TRN-PROCESS-DATE  PIC X(26).
-         10  TRN-PROCESS-USER  PIC X(08).
-     05  TRN-FILLER           PIC X(40).
-*****************************************************************
-* FIELD DESCRIPTIONS:
-* TRN-DATE        : TRANSACTION DATE (YYYYMMDD)
-* TRN-TIME        : TRANSACTION TIME (HHMMSS)
-* TRN-PORTFOLIO-ID: PORTFOLIO IDENTIFIER
-* TRN-SEQUENCE-NO : SEQUENCE NUMBER FOR MULTIPLE TRANS
-* TRN-TYPE        : BU=BUY, SL=SELL, TR=TRANSFER, FE=FEE
-* TRANSACTION-TYPE: NEW FIELD FOR TRANSACTION TYPE (X(10))
-* TRN-STATUS      : P=PENDING, D=DONE, F=FAILED, R=REVERSED
-*****************************************************************
-
-Summary: Added new field TRANSACTION-TYPE (PIC X(10)) to the transaction record layout for batch processing and reporting.
-
----
-
-[2] PORTTRAN.cbl /src/programs/portfolio/PORTTRAN.cbl
-
-*================================================================*
-* Program Name: PORTTRAN
-* Description: Portfolio Transaction Processing
-* Author: [Author name]
-* Date Written: 2024-03-20
-*================================================================*
- IDENTIFICATION DIVISION.
- PROGRAM-ID. PORTTRAN.
- 
- ENVIRONMENT DIVISION.
- CONFIGURATION SECTION.
- SOURCE-COMPUTER. IBM-ZOS.
- OBJECT-COMPUTER. IBM-ZOS.
- 
- INPUT-OUTPUT SECTION.
- FILE-CONTROL.
-     SELECT TRANSACTION-FILE
-         ASSIGN TO TRANFILE
-         ORGANIZATION IS SEQUENTIAL
-         ACCESS MODE IS SEQUENTIAL
-         FILE STATUS IS WS-TRAN-STATUS.
-         
-     SELECT PORTFOLIO-FILE
-         ASSIGN TO PORTFILE
-         ORGANIZATION IS INDEXED
-         ACCESS MODE IS RANDOM
-         RECORD KEY IS PORT-ID
-         FILE STATUS IS WS-PORT-STATUS.
- 
- DATA DIVISION.
- FILE SECTION.
- FD  TRANSACTION-FILE
-     RECORDING MODE IS F
-     BLOCK CONTAINS 0 RECORDS.
- COPY TRNREC.
- 
- FD  PORTFOLIO-FILE
-     RECORDING MODE IS F
-     BLOCK CONTAINS 0 RECORDS.
- COPY PORTREC.
- 
- WORKING-STORAGE SECTION.
-     COPY ERRHAND.
-     COPY AUDITLOG.
-     
- 01  WS-FILE-STATUS.
-     05  WS-TRAN-STATUS      PIC X(2).
-     05  WS-PORT-STATUS      PIC X(2).
-     
- 01  WS-COUNTERS.
-     05  WS-READ-COUNT       PIC 9(8) COMP.
-     05  WS-PROCESS-COUNT    PIC 9(8) COMP.
-     05  WS-ERROR-COUNT      PIC 9(8) COMP.
-     
- 01  WS-EOF-FLAG            PIC X(1).
-     88  END-OF-FILE          VALUE 'Y'.
-     88  MORE-RECORDS         VALUE 'N'.
-
-*---- Added for transaction type field ----*
- 01  WS-TRANSACTION-TYPE     PIC X(10).
-*---- End addition ----*
-     
- PROCEDURE DIVISION.
- 0000-MAIN.
-     PERFORM 1000-INITIALIZE
-     
-     IF WS-TRAN-STATUS = '00'
-         PERFORM 2000-PROCESS-TRANSACTIONS
-             UNTIL END-OF-FILE
-             OR WS-ERROR-COUNT > 100
-     END-IF
-     
-     PERFORM 3000-TERMINATE
-     
-     GOBACK
-     .
-     
- 1000-INITIALIZE.
-     INITIALIZE WS-FILE-STATUS
-                WS-COUNTERS
-     SET MORE-RECORDS TO TRUE
-     
-     OPEN INPUT TRANSACTION-FILE
-     IF WS-TRAN-STATUS NOT = '00'
-         MOVE 'Error opening transaction file' TO ERR-TEXT
-         PERFORM 9000-ERROR-ROUTINE
-     END-IF
-     
-     OPEN I-O PORTFOLIO-FILE
-     IF WS-PORT-STATUS NOT = '00'
-         MOVE 'Error opening portfolio file' TO ERR-TEXT
-         PERFORM 9000-ERROR-ROUTINE
-     END-IF
-     .
-     
- 2000-PROCESS-TRANSACTIONS.
-     READ TRANSACTION-FILE
-         AT END
-             SET END-OF-FILE TO TRUE
-         NOT AT END
-             ADD 1 TO WS-READ-COUNT
-*---- Set TRANSACTION-TYPE for new/legacy compatibility ----*
-             IF TRANSACTION-TYPE = SPACES
-                 MOVE TRN-TYPE TO TRANSACTION-TYPE
-             END-IF
-*---- End addition ----*
-             PERFORM 2100-VALIDATE-TRANSACTION
-     END-READ
-     .
-     
- 2100-VALIDATE-TRANSACTION.
-     MOVE SPACES TO ERR-TEXT
-     
-     PERFORM 2110-CHECK-PORTFOLIO
-     IF ERR-TEXT = SPACES
-         PERFORM 2120-CHECK-TRANSACTION-TYPE
-     END-IF
-     IF ERR-TEXT = SPACES
-         PERFORM 2130-CHECK-AMOUNTS
-     END-IF
-     
-     IF ERR-TEXT = SPACES
-         ADD 1 TO WS-PROCESS-COUNT
-     ELSE
-         PERFORM 9000-ERROR-ROUTINE
-     END-IF
-     .
-     
- 2110-CHECK-PORTFOLIO.
-     IF TRN-PORTFOLIO-ID = SPACES
-         MOVE 'Portfolio ID is required' TO ERR-TEXT
-         EXIT PARAGRAPH
-     END-IF
-     
-     MOVE TRN-PORTFOLIO-ID TO PORT-ID
-     READ PORTFOLIO-FILE
-         INVALID KEY
-             STRING 'Invalid Portfolio ID: '
-                    TRN-PORTFOLIO-ID
-               DELIMITED BY SIZE
-               INTO ERR-TEXT
-     END-READ
-     .
-     
- 2120-CHECK-TRANSACTION-TYPE.
-*---- Validate new TRANSACTION-TYPE field for backward compatibility ----*
-     IF TRANSACTION-TYPE = SPACES
-         MOVE TRN-TYPE TO TRANSACTION-TYPE
-     END-IF
-     EVALUATE TRANSACTION-TYPE
-         WHEN 'BUY'
-         WHEN 'SELL'
-         WHEN 'TRANSFER'
-         WHEN 'FEE'
-         WHEN 'BU'
-         WHEN 'SL'
-         WHEN 'TR'
-         WHEN 'FE'
-             CONTINUE
-         WHEN OTHER
-             STRING 'Invalid Transaction Type: '
-                    TRANSACTION-TYPE
-               DELIMITED BY SIZE
-               INTO ERR-TEXT
-     END-EVALUATE
-*---- End addition ----*
-     .
-     
- 2130-CHECK-AMOUNTS.
-     IF TRN-QUANTITY <= ZERO
-         MOVE 'Quantity must be greater than zero' TO ERR-TEXT
-         EXIT PARAGRAPH
-     END-IF
-     
-     IF TRN-PRICE <= ZERO AND TRN-TYPE NOT = 'TR'
-         MOVE 'Price must be greater than zero' TO ERR-TEXT
-         EXIT PARAGRAPH
-     END-IF
-     
-     IF TRN-AMOUNT <= ZERO AND TRN-TYPE NOT = 'TR'
-         MOVE 'Amount must be greater than zero' TO ERR-TEXT
-     END-IF
-     .
-     
- 2200-UPDATE-POSITIONS.
-     EVALUATE TRN-TYPE
-         WHEN 'BU'
-             PERFORM 2210-PROCESS-BUY
-         WHEN 'SL'
-             PERFORM 2220-PROCESS-SELL
-         WHEN 'TR'
-             PERFORM 2230-PROCESS-TRANSFER
-         WHEN 'FE'
-             PERFORM 2240-PROCESS-FEE
-     END-EVALUATE
-     
-     PERFORM 2300-UPDATE-AUDIT-TRAIL
-     .
-     
- 2210-PROCESS-BUY.
-     MOVE TRN-PORTFOLIO-ID TO PORT-ID
-     READ PORTFOLIO-FILE
-         INVALID KEY
-             MOVE 'Portfolio not found for update' TO ERR-TEXT
-             PERFORM 9000-ERROR-ROUTINE
-             EXIT PARAGRAPH
-     END-READ
-     
-     ADD TRN-QUANTITY TO PORT-TOTAL-UNITS
-     ADD TRN-AMOUNT   TO PORT-TOTAL-COST
-     
-     REWRITE PORTFOLIO-RECORD
-         INVALID KEY
-             MOVE 'Error updating portfolio' TO ERR-TEXT
-             PERFORM 9000-ERROR-ROUTINE
-     END-REWRITE
-     .
-     
- 2220-PROCESS-SELL.
-     MOVE TRN-PORTFOLIO-ID TO PORT-ID
-     READ PORTFOLIO-FILE
-         INVALID KEY
-             MOVE 'Portfolio not found for update' TO ERR-TEXT
-             PERFORM 9000-ERROR-ROUTINE
-             EXIT PARAGRAPH
-     END-READ
-     
-     IF PORT-TOTAL-UNITS < TRN-QUANTITY
-         MOVE 'Insufficient units for sale' TO ERR-TEXT
-         PERFORM 9000-ERROR-ROUTINE
-         EXIT PARAGRAPH
-     END-IF
-     
-     SUBTRACT TRN-QUANTITY FROM PORT-TOTAL-UNITS
-     SUBTRACT TRN-AMOUNT   FROM PORT-TOTAL-COST
-     
-     REWRITE PORTFOLIO-RECORD
-         INVALID KEY
-             MOVE 'Error updating portfolio' TO ERR-TEXT
-             PERFORM 9000-ERROR-ROUTINE
-     END-REWRITE
-     .
-     
- 2230-PROCESS-TRANSFER.
-     MOVE 'Transfer processing not implemented' TO ERR-TEXT
-     PERFORM 9000-ERROR-ROUTINE
-     .
-     
- 2240-PROCESS-FEE.
-     MOVE TRN-PORTFOLIO-ID TO PORT-ID
-     READ PORTFOLIO-FILE
-         INVALID KEY
-             MOVE 'Portfolio not found for fee' TO ERR-TEXT
-             PERFORM 9000-ERROR-ROUTINE
-             EXIT PARAGRAPH
-     END-READ
-     
-     SUBTRACT TRN-AMOUNT FROM PORT-TOTAL-COST
-     
-     REWRITE PORTFOLIO-RECORD
-         INVALID KEY
-             MOVE 'Error updating portfolio' TO ERR-TEXT
-             PERFORM 9000-ERROR-ROUTINE
-     END-REWRITE
-     .
-     
- 2300-UPDATE-AUDIT-TRAIL.
-     INITIALIZE AUDIT-RECORD
-     
-     MOVE FUNCTION CURRENT-DATE TO AUD-TIMESTAMP
-     MOVE 'PORTTRAN'     TO AUD-PROGRAM
-     MOVE FUNCTION USER-ID TO AUD-USER-ID
-     MOVE 'TRAN'         TO AUD-TYPE
-     
-     EVALUATE TRN-TYPE
-         WHEN 'BU'
-             MOVE 'CREATE  ' TO AUD-ACTION
-         WHEN 'SL'
-             MOVE 'DELETE  ' TO AUD-ACTION
-         WHEN 'TR'
-             MOVE 'UPDATE  ' TO AUD-ACTION
-         WHEN 'FE'
-             MOVE 'UPDATE  ' TO AUD-ACTION
-     END-EVALUATE
-     
-     IF WS-PORT-STATUS = '00'
-         MOVE 'SUCC'     TO AUD-STATUS
-     ELSE
-         MOVE 'FAIL'     TO AUD-STATUS
-     END-IF
-     
-     MOVE TRN-PORTFOLIO-ID TO AUD-PORTFOLIO-ID
-     MOVE PORT-ACCOUNT-NO  TO AUD-ACCOUNT-NO
-     
-*    Store original portfolio state
-     MOVE PORT-RECORD      TO AUD-BEFORE-IMAGE
-     
-*    Build audit message
-     STRING 'Transaction: ' DELIMITED BY SIZE
-            TRANSACTION-TYPE DELIMITED BY SIZE
-            ' Amount: '    DELIMITED BY SIZE
-            TRN-AMOUNT     DELIMITED BY SIZE
-            ' Units: '     DELIMITED BY SIZE
-            TRN-QUANTITY   DELIMITED BY SIZE
-       INTO AUD-MESSAGE
-*---- Updated to use TRANSACTION-TYPE in audit message ----*
-     
-     PERFORM 2310-WRITE-AUDIT-RECORD
-     .
-     
- 2310-WRITE-AUDIT-RECORD.
-*    Call the audit processor
-     CALL 'AUDPROC' USING AUDIT-RECORD
-     
-     IF RETURN-CODE NOT = ZERO
-         MOVE 'Error writing audit record' TO ERR-TEXT
-         PERFORM 9000-ERROR-ROUTINE
-     END-IF
-     .
-     
- 3000-TERMINATE.
-     CLOSE TRANSACTION-FILE
-           PORTFOLIO-FILE
+      *================================================================*
+      * Program Name: PORTTRAN
+      * Description: Portfolio Transaction Processing
+      * Author: [Author name]
+      * Date Written: 2024-03-20
+      *================================================================*
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. PORTTRAN.
+       
+       ENVIRONMENT DIVISION.
+       CONFIGURATION SECTION.
+       SOURCE-COMPUTER. IBM-ZOS.
+       OBJECT-COMPUTER. IBM-ZOS.
+       
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT TRANSACTION-FILE
+               ASSIGN TO TRANFILE
+               ORGANIZATION IS SEQUENTIAL
+               ACCESS MODE IS SEQUENTIAL
+               FILE STATUS IS WS-TRAN-STATUS.
+               
+           SELECT PORTFOLIO-FILE
+               ASSIGN TO PORTFILE
+               ORGANIZATION IS INDEXED
+               ACCESS MODE IS RANDOM
+               RECORD KEY IS PORT-ID
+               FILE STATUS IS WS-PORT-STATUS.
+       
+       DATA DIVISION.
+       FILE SECTION.
+       FD  TRANSACTION-FILE
+           RECORDING MODE IS F
+           BLOCK CONTAINS 0 RECORDS.
+       COPY TRNREC.
+       
+       FD  PORTFOLIO-FILE
+           RECORDING MODE IS F
+           BLOCK CONTAINS 0 RECORDS.
+       COPY PORTREC.
+       
+       WORKING-STORAGE SECTION.
+           COPY ERRHAND.
+           COPY AUDITLOG.
            
-     DISPLAY 'Transactions Read:    ' WS-READ-COUNT
-     DISPLAY 'Transactions Process: ' WS-PROCESS-COUNT
-     DISPLAY 'Errors Encountered:   ' WS-ERROR-COUNT
-     .
-     
- 9000-ERROR-ROUTINE.
-     ADD 1 TO WS-ERROR-COUNT
-     MOVE ERR-CAT-PROC TO ERR-CATEGORY
-     MOVE 'PORTTRAN' TO ERR-PROGRAM
-     
-     CALL 'ERRPROC' USING ERR-MESSAGE
-     . 
+       01  WS-FILE-STATUS.
+           05  WS-TRAN-STATUS      PIC X(2).
+           05  WS-PORT-STATUS      PIC X(2).
+           
+       01  WS-COUNTERS.
+           05  WS-READ-COUNT       PIC 9(8) COMP.
+           05  WS-PROCESS-COUNT    PIC 9(8) COMP.
+           05  WS-ERROR-COUNT      PIC 9(8) COMP.
+           
+       01  WS-EOF-FLAG            PIC X(1).
+           88  END-OF-FILE          VALUE 'Y'.
+           88  MORE-RECORDS         VALUE 'N'.
 
-Summary: Added logic to set and validate the new TRANSACTION-TYPE field, ensuring backward compatibility. Updated audit message to use TRANSACTION-TYPE.
+       01  WS-TRANSACTION-TYPE-VALUE PIC X(10).
+      *  Working storage for new transaction type field
 
----
+       PROCEDURE DIVISION.
+       0000-MAIN.
+           PERFORM 1000-INITIALIZE
+           
+           IF WS-TRAN-STATUS = '00'
+               PERFORM 2000-PROCESS-TRANSACTIONS
+                   UNTIL END-OF-FILE
+                   OR WS-ERROR-COUNT > 100
+           END-IF
+           
+           PERFORM 3000-TERMINATE
+           
+           GOBACK
+           .
+           
+       1000-INITIALIZE.
+           INITIALIZE WS-FILE-STATUS
+                      WS-COUNTERS
+           SET MORE-RECORDS TO TRUE
+           
+           OPEN INPUT TRANSACTION-FILE
+           IF WS-TRAN-STATUS NOT = '00'
+               MOVE 'Error opening transaction file' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           
+           OPEN I-O PORTFOLIO-FILE
+           IF WS-PORT-STATUS NOT = '00'
+               MOVE 'Error opening portfolio file' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+           
+       2000-PROCESS-TRANSACTIONS.
+           READ TRANSACTION-FILE
+               AT END
+                   SET END-OF-FILE TO TRUE
+               NOT AT END
+                   ADD 1 TO WS-READ-COUNT
+                   PERFORM 2100-VALIDATE-TRANSACTION
+           END-READ
+           .
+           
+       2100-VALIDATE-TRANSACTION.
+           MOVE SPACES TO ERR-TEXT
 
-[3] RPTPOS00.cbl /src/programs/batch/RPTPOS00.cbl
+      *-- Begin: Transaction Type Field Validation (NEW) --
+           IF TRN-TRANSACTION-TYPE = SPACES
+               MOVE 'UNSPECIFIED' TO TRN-TRANSACTION-TYPE
+      *    Default value for legacy records
+           END-IF
+           MOVE TRN-TRANSACTION-TYPE TO WS-TRANSACTION-TYPE-VALUE
+      *    Store for further processing or logging
+      *-- End: Transaction Type Field Validation (NEW) --
+
+           PERFORM 2110-CHECK-PORTFOLIO
+           IF ERR-TEXT = SPACES
+               PERFORM 2120-CHECK-TRANSACTION-TYPE
+           END-IF
+           IF ERR-TEXT = SPACES
+               PERFORM 2130-CHECK-AMOUNTS
+           END-IF
+           
+           IF ERR-TEXT = SPACES
+               ADD 1 TO WS-PROCESS-COUNT
+           ELSE
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+           
+       2110-CHECK-PORTFOLIO.
+           IF TRN-PORTFOLIO-ID = SPACES
+               MOVE 'Portfolio ID is required' TO ERR-TEXT
+               EXIT PARAGRAPH
+           END-IF
+           
+           MOVE TRN-PORTFOLIO-ID TO PORT-ID
+           READ PORTFOLIO-FILE
+               INVALID KEY
+                   STRING 'Invalid Portfolio ID: '
+                          TRN-PORTFOLIO-ID
+                     DELIMITED BY SIZE
+                     INTO ERR-TEXT
+           END-READ
+           .
+           
+       2120-CHECK-TRANSACTION-TYPE.
+           EVALUATE TRN-TYPE
+               WHEN 'BU'
+               WHEN 'SL'
+               WHEN 'TR'
+               WHEN 'FE'
+                   CONTINUE
+               WHEN OTHER
+                   STRING 'Invalid Transaction Type: '
+                          TRN-TYPE
+                     DELIMITED BY SIZE
+                     INTO ERR-TEXT
+           END-EVALUATE
+
+      *-- Begin: Extended Transaction Type Validation (NEW) --
+           IF TRN-TRANSACTION-TYPE NOT = 'UNSPECIFIED'
+               CONTINUE
+           ELSE
+               MOVE 'Transaction Type field missing or invalid' TO ERR-TEXT
+           END-IF
+      *-- End: Extended Transaction Type Validation (NEW) --
+
+           .
+           
+       2130-CHECK-AMOUNTS.
+           IF TRN-QUANTITY <= ZERO
+               MOVE 'Quantity must be greater than zero' TO ERR-TEXT
+               EXIT PARAGRAPH
+           END-IF
+           
+           IF TRN-PRICE <= ZERO AND TRN-TYPE NOT = 'TR'
+               MOVE 'Price must be greater than zero' TO ERR-TEXT
+               EXIT PARAGRAPH
+           END-IF
+           
+           IF TRN-AMOUNT <= ZERO AND TRN-TYPE NOT = 'TR'
+               MOVE 'Amount must be greater than zero' TO ERR-TEXT
+           END-IF
+           .
+           
+       2200-UPDATE-POSITIONS.
+           EVALUATE TRN-TYPE
+               WHEN 'BU'
+                   PERFORM 2210-PROCESS-BUY
+               WHEN 'SL'
+                   PERFORM 2220-PROCESS-SELL
+               WHEN 'TR'
+                   PERFORM 2230-PROCESS-TRANSFER
+               WHEN 'FE'
+                   PERFORM 2240-PROCESS-FEE
+           END-EVALUATE
+           
+           PERFORM 2300-UPDATE-AUDIT-TRAIL
+           .
+           
+       2210-PROCESS-BUY.
+           MOVE TRN-PORTFOLIO-ID TO PORT-ID
+           READ PORTFOLIO-FILE
+               INVALID KEY
+                   MOVE 'Portfolio not found for update' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+                   EXIT PARAGRAPH
+           END-READ
+           
+           ADD TRN-QUANTITY TO PORT-TOTAL-UNITS
+           ADD TRN-AMOUNT   TO PORT-TOTAL-COST
+           
+           REWRITE PORTFOLIO-RECORD
+               INVALID KEY
+                   MOVE 'Error updating portfolio' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+           
+       2220-PROCESS-SELL.
+           MOVE TRN-PORTFOLIO-ID TO PORT-ID
+           READ PORTFOLIO-FILE
+               INVALID KEY
+                   MOVE 'Portfolio not found for update' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+                   EXIT PARAGRAPH
+           END-READ
+           
+           IF PORT-TOTAL-UNITS < TRN-QUANTITY
+               MOVE 'Insufficient units for sale' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+               EXIT PARAGRAPH
+           END-IF
+           
+           SUBTRACT TRN-QUANTITY FROM PORT-TOTAL-UNITS
+           SUBTRACT TRN-AMOUNT   FROM PORT-TOTAL-COST
+           
+           REWRITE PORTFOLIO-RECORD
+               INVALID KEY
+                   MOVE 'Error updating portfolio' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+           
+       2230-PROCESS-TRANSFER.
+           MOVE 'Transfer processing not implemented' TO ERR-TEXT
+           PERFORM 9000-ERROR-ROUTINE
+           .
+           
+       2240-PROCESS-FEE.
+           MOVE TRN-PORTFOLIO-ID TO PORT-ID
+           READ PORTFOLIO-FILE
+               INVALID KEY
+                   MOVE 'Portfolio not found for fee' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+                   EXIT PARAGRAPH
+           END-READ
+           
+           SUBTRACT TRN-AMOUNT FROM PORT-TOTAL-COST
+           
+           REWRITE PORTFOLIO-RECORD
+               INVALID KEY
+                   MOVE 'Error updating portfolio' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+           
+       2300-UPDATE-AUDIT-TRAIL.
+           INITIALIZE AUDIT-RECORD
+           
+           MOVE FUNCTION CURRENT-DATE TO AUD-TIMESTAMP
+           MOVE 'PORTTRAN'     TO AUD-PROGRAM
+           MOVE FUNCTION USER-ID TO AUD-USER-ID
+           MOVE 'TRAN'         TO AUD-TYPE
+
+      *-- Begin: Audit Logging of Transaction Type (NEW) --
+           MOVE TRN-TRANSACTION-TYPE TO AUD-TRANSACTION-TYPE
+      *    If AUDIT-RECORD supports this field; otherwise, add to AUD-MESSAGE
+      *-- End: Audit Logging of Transaction Type (NEW) --
+
+           EVALUATE TRN-TYPE
+               WHEN 'BU'
+                   MOVE 'CREATE  ' TO AUD-ACTION
+               WHEN 'SL'
+                   MOVE 'DELETE  ' TO AUD-ACTION
+               WHEN 'TR'
+                   MOVE 'UPDATE  ' TO AUD-ACTION
+               WHEN 'FE'
+                   MOVE 'UPDATE  ' TO AUD-ACTION
+           END-EVALUATE
+           
+           IF WS-PORT-STATUS = '00'
+               MOVE 'SUCC'     TO AUD-STATUS
+           ELSE
+               MOVE 'FAIL'     TO AUD-STATUS
+           END-IF
+           
+           MOVE TRN-PORTFOLIO-ID TO AUD-PORTFOLIO-ID
+           MOVE PORT-ACCOUNT-NO  TO AUD-ACCOUNT-NO
+           
+      *    Store original portfolio state
+           MOVE PORT-RECORD      TO AUD-BEFORE-IMAGE
+           
+      *    Build audit message
+           STRING 'Transaction: ' DELIMITED BY SIZE
+                  TRN-TYPE       DELIMITED BY SIZE
+                  ' Type: '      DELIMITED BY SIZE
+                  TRN-TRANSACTION-TYPE DELIMITED BY SIZE
+      *    Added transaction type to audit message (NEW)
+                  ' Amount: '    DELIMITED BY SIZE
+                  TRN-AMOUNT     DELIMITED BY SIZE
+                  ' Units: '     DELIMITED BY SIZE
+                  TRN-QUANTITY   DELIMITED BY SIZE
+             INTO AUD-MESSAGE
+           
+           PERFORM 2310-WRITE-AUDIT-RECORD
+           .
+           
+       2310-WRITE-AUDIT-RECORD.
+      *    Call the audit processor
+           CALL 'AUDPROC' USING AUDIT-RECORD
+           
+           IF RETURN-CODE NOT = ZERO
+               MOVE 'Error writing audit record' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+           
+       3000-TERMINATE.
+           CLOSE TRANSACTION-FILE
+                 PORTFOLIO-FILE
+                 
+           DISPLAY 'Transactions Read:    ' WS-READ-COUNT
+           DISPLAY 'Transactions Process: ' WS-PROCESS-COUNT
+           DISPLAY 'Errors Encountered:   ' WS-ERROR-COUNT
+           .
+           
+       9000-ERROR-ROUTINE.
+           ADD 1 TO WS-ERROR-COUNT
+           MOVE ERR-CAT-PROC TO ERR-CATEGORY
+           MOVE 'PORTTRAN' TO ERR-PROGRAM
+           
+           CALL 'ERRPROC' USING ERR-MESSAGE
+           . 
+
+src/programs/batch/RPTPOS00.cbl
 
        IDENTIFICATION DIVISION.
        PROGRAM-ID. RPTPOS00.
@@ -601,10 +460,6 @@ Summary: Added logic to set and validate the new TRANSACTION-TYPE field, ensurin
                10  WS-REPORT-DATE    PIC X(10).
                10  FILLER            PIC X(107) VALUE SPACES.
 
-*---- Added for transaction type field in reporting ----*
-       01  WS-TRANSACTION-TYPE       PIC X(10).
-*---- End addition ----*
-
        01  WS-POSITION-DETAIL.
            05  WS-POS-PORTFOLIO     PIC X(10).
            05  FILLER               PIC X(2) VALUE SPACES.
@@ -617,21 +472,24 @@ Summary: Added logic to set and validate the new TRANSACTION-TYPE field, ensurin
            05  WS-POS-CHANGE-PCT    PIC +ZZ9.99.
            05  FILLER               PIC X(40) VALUE SPACES.
 
-*---- Added for transaction report line ----*
-       01  WS-TRAN-DETAIL.
+       01  WS-TRANSACTION-DETAIL.
            05  WS-TRAN-DATE         PIC X(08).
-           05  FILLER               PIC X(1) VALUE ' '.
+           05  FILLER               PIC X(1) VALUE SPACE.
            05  WS-TRAN-TIME         PIC X(06).
-           05  FILLER               PIC X(1) VALUE ' '.
+           05  FILLER               PIC X(1) VALUE SPACE.
            05  WS-TRAN-PORTFOLIO    PIC X(08).
-           05  FILLER               PIC X(1) VALUE ' '.
-           05  WS-TRAN-TYPE         PIC X(10).
-           05  FILLER               PIC X(1) VALUE ' '.
-           05  WS-TRAN-AMOUNT       PIC ZZZ,ZZZ,ZZ9.99.
-           05  FILLER               PIC X(1) VALUE ' '.
+           05  FILLER               PIC X(1) VALUE SPACE.
+           05  WS-TRAN-TYPE         PIC X(02).
+           05  FILLER               PIC X(1) VALUE SPACE.
+           05  WS-TRAN-TRANSACTION-TYPE PIC X(10).
+      *    Added field for new transaction type
+           05  FILLER               PIC X(1) VALUE SPACE.
+           05  WS-TRAN-QUANTITY     PIC ZZZ,ZZZ,ZZ9.99.
+           05  FILLER               PIC X(1) VALUE SPACE.
+           05  WS-TRAN-AMOUNT       PIC $$$$,$$$,$$9.99.
+           05  FILLER               PIC X(1) VALUE SPACE.
            05  WS-TRAN-STATUS       PIC X(01).
-           05  FILLER               PIC X(92) VALUE SPACES.
-*---- End addition ----*
+           05  FILLER               PIC X(85) VALUE SPACES.
 
        PROCEDURE DIVISION.
        0000-MAIN.
@@ -703,27 +561,25 @@ Summary: Added logic to set and validate the new TRANSACTION-TYPE field, ensurin
            PERFORM 2210-READ-TRANSACTIONS
            PERFORM 2220-SUMMARIZE-ACTIVITY.
 
-*---- Added logic to read and display TRANSACTION-TYPE ----*
        2210-READ-TRANSACTIONS.
            READ TRANSACTION-HISTORY
-               AT END SET END-OF-TRANSACTIONS TO TRUE
+               AT END
+                   SET END-OF-TRANSACTIONS TO TRUE
+               NOT AT END
+                   PERFORM 2215-FORMAT-TRANSACTION
            END-READ
-           PERFORM UNTIL END-OF-TRANSACTIONS
-               IF TRANSACTION-TYPE = SPACES
-                   MOVE TRN-TYPE TO TRANSACTION-TYPE
-               END-IF
-               MOVE TRN-DATE         TO WS-TRAN-DATE
-               MOVE TRN-TIME         TO WS-TRAN-TIME
-               MOVE TRN-PORTFOLIO-ID TO WS-TRAN-PORTFOLIO
-               MOVE TRANSACTION-TYPE  TO WS-TRAN-TYPE
-               MOVE TRN-AMOUNT       TO WS-TRAN-AMOUNT
-               MOVE TRN-STATUS       TO WS-TRAN-STATUS
-               WRITE REPORT-RECORD FROM WS-TRAN-DETAIL
-               READ TRANSACTION-HISTORY
-                   AT END SET END-OF-TRANSACTIONS TO TRUE
-               END-READ
-           END-PERFORM.
-*---- End addition ----*
+           .
+       2215-FORMAT-TRANSACTION.
+           MOVE TRN-DATE           TO WS-TRAN-DATE
+           MOVE TRN-TIME           TO WS-TRAN-TIME
+           MOVE TRN-PORTFOLIO-ID   TO WS-TRAN-PORTFOLIO
+           MOVE TRN-TYPE           TO WS-TRAN-TYPE
+           MOVE TRN-TRANSACTION-TYPE TO WS-TRAN-TRANSACTION-TYPE
+      *    Populate new field in report
+           MOVE TRN-QUANTITY       TO WS-TRAN-QUANTITY
+           MOVE TRN-AMOUNT         TO WS-TRAN-AMOUNT
+           MOVE TRN-STATUS         TO WS-TRAN-STATUS
+           WRITE REPORT-RECORD FROM WS-TRANSACTION-DETAIL.
 
        2220-SUMMARIZE-ACTIVITY.
            CONTINUE.
@@ -743,270 +599,327 @@ Summary: Added logic to set and validate the new TRANSACTION-TYPE field, ensurin
            MOVE 12 TO RETURN-CODE
            GOBACK. 
 
-Summary: Added logic to display the new TRANSACTION-TYPE field in transaction activity lines, with backward compatibility for legacy records.
+src/programs/batch/POSUPDT.cbl
 
----
+      *================================================================*
+      * Program Name: POSUPDT
+      * Description: Portfolio Position Update Batch
+      * Version: 1.1
+      * Date: 2024
+      *================================================================*
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. POSUPDT.
 
-[4] POSUPDT.cbl /src/programs/batch/POSUPDT.cbl
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+      * Add file-control for transaction file if not present
+           SELECT TRANSACTION-FILE ASSIGN TO TRANFILE
+               ORGANIZATION IS SEQUENTIAL
+               ACCESS MODE IS SEQUENTIAL
+               FILE STATUS IS WS-TRAN-STATUS.
 
-[File exists but is empty]
+       DATA DIVISION.
+       FILE SECTION.
+           COPY TRNREC.
 
-Summary: No changes required as the file is empty.
+       WORKING-STORAGE SECTION.
+       01  WS-FILE-STATUS.
+           05  WS-TRAN-STATUS      PIC X(2).
+       01  WS-TRANSACTION-TYPE-VALUE PIC X(10).
+      *  Working storage for new transaction type field
 
----
+       PROCEDURE DIVISION.
+       0000-MAIN.
+           PERFORM 1000-INITIALIZE
+           PERFORM 2000-PROCESS-TRANSACTIONS
+           PERFORM 3000-TERMINATE
+           GOBACK.
 
-[5] HISTLD00.cbl /src/programs/batch/HISTLD00.cbl
+       1000-INITIALIZE.
+           OPEN INPUT TRANSACTION-FILE
+           IF WS-TRAN-STATUS NOT = '00'
+               DISPLAY 'Error opening transaction file'
+               GOBACK
+           END-IF.
 
-*================================================================*
-* Program Name: HISTLD00
-* Description: Position History DB2 Load Program
-* Version: 1.0
-* Date: 2024
-*================================================================*
- IDENTIFICATION DIVISION.
- PROGRAM-ID. HISTLD00.
- 
- ENVIRONMENT DIVISION.
- CONFIGURATION SECTION.
- SOURCE-COMPUTER. IBM-ZOS.
- OBJECT-COMPUTER. IBM-ZOS.
- 
- INPUT-OUTPUT SECTION.
- FILE-CONTROL.
-     SELECT TRANSACTION-HISTORY
-         ASSIGN TO TRANHIST
-         ORGANIZATION IS INDEXED
-         ACCESS MODE IS SEQUENTIAL
-         RECORD KEY IS TH-KEY
-         FILE STATUS IS WS-TH-STATUS.
-         
-     SELECT BATCH-CONTROL-FILE
-         ASSIGN TO BCHCTL
-         ORGANIZATION IS INDEXED
-         ACCESS MODE IS DYNAMIC
-         RECORD KEY IS BCT-KEY
-         FILE STATUS IS WS-BCT-STATUS.
- 
- DATA DIVISION.
- FILE SECTION.
- FD  TRANSACTION-HISTORY.
-     COPY HISTREC.
- 
- FD  BATCH-CONTROL-FILE.
-     COPY BCHCTL.
- 
- WORKING-STORAGE SECTION.
-     EXEC SQL BEGIN DECLARE SECTION END-EXEC.
-     COPY DBTBLS.
-     EXEC SQL END DECLARE SECTION END-EXEC.
-     
-     COPY SQLCA.
-     COPY DBPROC.
-     COPY ERRHAND.
-     COPY BCHCON.
-     
- 01  WS-FILE-STATUS.
-     05  WS-TH-STATUS          PIC X(2).
-     05  WS-BCT-STATUS         PIC X(2).
-     
- 01  WS-COUNTERS.
-     05  WS-RECORDS-READ       PIC S9(9) COMP VALUE 0.
-     05  WS-RECORDS-WRITTEN    PIC S9(9) COMP VALUE 0.
-     05  WS-ERROR-COUNT        PIC S9(9) COMP VALUE 0.
-     05  WS-COMMIT-COUNT       PIC S9(4) COMP VALUE 0.
-     
- 01  WS-COMMIT-THRESHOLD       PIC S9(4) COMP VALUE 1000.
- 
- 01  WS-SWITCHES.
-     05  WS-END-OF-FILE-SW     PIC X(1) VALUE 'N'.
-         88  END-OF-FILE         VALUE 'Y'.
-         88  MORE-RECORDS        VALUE 'N'.
+       2000-PROCESS-TRANSACTIONS.
+           READ TRANSACTION-FILE
+               AT END
+                   DISPLAY 'End of transaction file'
+               NOT AT END
+                   PERFORM 2100-UPDATE-POSITION
+           END-READ.
 
-*---- Added for transaction type field ----*
- 01  WS-TRANSACTION-TYPE       PIC X(10).
-*---- End addition ----*
-         
- PROCEDURE DIVISION.
- 0000-MAIN.
-     PERFORM 1000-INITIALIZE
-     
-     PERFORM 2000-PROCESS
-         UNTIL END-OF-FILE
-         OR WS-ERROR-COUNT > 100
-     
-     PERFORM 3000-TERMINATE
-     
-     MOVE WS-ERROR-COUNT TO RETURN-CODE
-     GOBACK
-     .
-     
- 1000-INITIALIZE.
-     PERFORM 1100-OPEN-FILES
-     PERFORM 1200-CONNECT-DB2
-     PERFORM 1300-INIT-CHECKPOINTS
-     .
-     
- 2000-PROCESS.
-     PERFORM 2100-READ-HISTORY
-     
-     IF MORE-RECORDS
-*---- Set TRANSACTION-TYPE for new/legacy records ----*
-         IF TRANSACTION-TYPE = SPACES
-             MOVE TH-TRANS-TYPE TO TRANSACTION-TYPE
-         END-IF
-*---- End addition ----*
-         PERFORM 2200-LOAD-TO-DB2
-         PERFORM 2300-CHECK-COMMIT
-     END-IF
-     .
-     
- 3000-TERMINATE.
-     PERFORM 3100-FINAL-COMMIT
-     PERFORM 3200-CLOSE-FILES
-     PERFORM 3300-DISCONNECT-DB2
-     PERFORM 3400-DISPLAY-STATS
-     .
-     
- 1100-OPEN-FILES.
-     OPEN INPUT TRANSACTION-HISTORY
-     IF WS-TH-STATUS NOT = '00'
-         MOVE 'Error opening history file' TO ERR-TEXT
-         PERFORM 9000-ERROR-ROUTINE
-     END-IF
-     
-     OPEN I-O BATCH-CONTROL-FILE
-     IF WS-BCT-STATUS NOT = '00'
-         MOVE 'Error opening control file' TO ERR-TEXT
-         PERFORM 9000-ERROR-ROUTINE
-     END-IF
-     .
-     
- 1200-CONNECT-DB2.
-     PERFORM CONNECT-TO-DB2
-     .
-     
- 1300-INIT-CHECKPOINTS.
-     MOVE SPACES TO BCT-KEY
-     MOVE 'HISTLD00' TO BCT-JOB-NAME
-     
-     READ BATCH-CONTROL-FILE
-         INVALID KEY
-             MOVE 'Control record not found' TO ERR-TEXT
-             PERFORM 9000-ERROR-ROUTINE
-     END-READ
-     
-     MOVE BCT-STAT-ACTIVE TO BCT-STATUS
-     REWRITE BATCH-CONTROL-RECORD
-     .
-     
- 2100-READ-HISTORY.
-     READ TRANSACTION-HISTORY
-         AT END
-             SET END-OF-FILE TO TRUE
-         NOT AT END
-             ADD 1 TO WS-RECORDS-READ
-     END-READ
-     .
-     
- 2200-LOAD-TO-DB2.
-     INITIALIZE POSHIST-RECORD
-     
-     MOVE TH-ACCOUNT-NO    TO PH-ACCOUNT-NO
-     MOVE TH-PORTFOLIO-ID  TO PH-PORTFOLIO-ID
-     MOVE TH-TRANS-DATE    TO PH-TRANS-DATE
-     MOVE TH-TRANS-TIME    TO PH-TRANS-TIME
-*---- Use TRANSACTION-TYPE for DB2 load ----*
-     MOVE TRANSACTION-TYPE TO PH-TRANS-TYPE
-*---- End addition ----*
-     MOVE TH-SECURITY-ID   TO PH-SECURITY-ID
-     MOVE TH-QUANTITY      TO PH-QUANTITY
-     MOVE TH-PRICE         TO PH-PRICE
-     MOVE TH-AMOUNT        TO PH-AMOUNT
-     MOVE TH-FEES          TO PH-FEES
-     MOVE TH-TOTAL-AMOUNT  TO PH-TOTAL-AMOUNT
-     MOVE TH-COST-BASIS    TO PH-COST-BASIS
-     MOVE TH-GAIN-LOSS     TO PH-GAIN-LOSS
-     
-     EXEC SQL
-         INSERT INTO POSHIST
-         VALUES (:POSHIST-RECORD)
-     END-EXEC
-     
-     IF SQLCODE = 0
-         ADD 1 TO WS-RECORDS-WRITTEN
-     ELSE
-         IF SQLCODE = -803
-             CONTINUE
-         ELSE
-             ADD 1 TO WS-ERROR-COUNT
-             PERFORM DB2-ERROR-ROUTINE
-         END-IF
-     END-IF
-     .
-     
- 2300-CHECK-COMMIT.
-     ADD 1 TO WS-COMMIT-COUNT
-     
-     IF WS-COMMIT-COUNT >= WS-COMMIT-THRESHOLD
-         EXEC SQL
-             COMMIT WORK
-         END-EXEC
-         
-         MOVE 0 TO WS-COMMIT-COUNT
-         
-         PERFORM 2310-UPDATE-CHECKPOINT
-     END-IF
-     .
-     
- 2310-UPDATE-CHECKPOINT.
-     MOVE WS-RECORDS-READ TO BCT-RECORDS-READ
-     MOVE WS-RECORDS-WRITTEN TO BCT-RECORDS-WRITTEN
-     
-     REWRITE BATCH-CONTROL-RECORD
-         INVALID KEY
-             MOVE 'Error updating checkpoint' TO ERR-TEXT
-             PERFORM 9000-ERROR-ROUTINE
-     END-REWRITE
-     .
-     
- 3100-FINAL-COMMIT.
-     EXEC SQL
-         COMMIT WORK
-     END-EXEC
-     
-     PERFORM 2310-UPDATE-CHECKPOINT
-     .
-     
- 3200-CLOSE-FILES.
-     CLOSE TRANSACTION-HISTORY
-           BATCH-CONTROL-FILE
-     .
-     
- 3300-DISCONNECT-DB2.
-     PERFORM DISCONNECT-FROM-DB2
-     .
-     
- 3400-DISPLAY-STATS.
-     DISPLAY 'HISTLD00 Processing Statistics:'
-     DISPLAY '  Records Read:    ' WS-RECORDS-READ
-     DISPLAY '  Records Written: ' WS-RECORDS-WRITTEN
-     DISPLAY '  Errors:         ' WS-ERROR-COUNT
-     .
-     
- 9000-ERROR-ROUTINE.
-     MOVE 'HISTLD00' TO ERR-PROGRAM
-     CALL 'ERRPROC' USING ERR-MESSAGE
-     
-     EXEC SQL
-         ROLLBACK WORK
-     END-EXEC
-     .
+       2100-UPDATE-POSITION.
+      *-- Begin: Transaction Type Field Handling (NEW) --
+           IF TRN-TRANSACTION-TYPE = SPACES
+               MOVE 'UNSPECIFIED' TO TRN-TRANSACTION-TYPE
+           END-IF
+           MOVE TRN-TRANSACTION-TYPE TO WS-TRANSACTION-TYPE-VALUE
+      *    Store for further processing or logging
+      *-- End: Transaction Type Field Handling (NEW) --
+           CONTINUE.
 
-Summary: Added logic to set and use the new TRANSACTION-TYPE field for DB2 load, ensuring backward compatibility for legacy records.
+       3000-TERMINATE.
+           CLOSE TRANSACTION-FILE.
 
----
+src/programs/batch/HISTLD00.cbl
 
-[6] RPTAUD00.cbl /src/programs/batch/RPTAUD00.cbl
+       *================================================================*
+      * Program Name: HISTLD00
+      * Description: Position History DB2 Load Program
+      * Version: 1.1
+      * Date: 2024
+      *================================================================*
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. HISTLD00.
+       
+       ENVIRONMENT DIVISION.
+       CONFIGURATION SECTION.
+       SOURCE-COMPUTER. IBM-ZOS.
+       OBJECT-COMPUTER. IBM-ZOS.
+       
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT TRANSACTION-HISTORY
+               ASSIGN TO TRANHIST
+               ORGANIZATION IS INDEXED
+               ACCESS MODE IS SEQUENTIAL
+               RECORD KEY IS TH-KEY
+               FILE STATUS IS WS-TH-STATUS.
+               
+           SELECT BATCH-CONTROL-FILE
+               ASSIGN TO BCHCTL
+               ORGANIZATION IS INDEXED
+               ACCESS MODE IS DYNAMIC
+               RECORD KEY IS BCT-KEY
+               FILE STATUS IS WS-BCT-STATUS.
+       
+       DATA DIVISION.
+       FILE SECTION.
+       FD  TRANSACTION-HISTORY.
+           COPY HISTREC.
+       
+       FD  BATCH-CONTROL-FILE.
+           COPY BCHCTL.
+       
+       WORKING-STORAGE SECTION.
+           EXEC SQL BEGIN DECLARE SECTION END-EXEC.
+           COPY DBTBLS.
+           EXEC SQL END DECLARE SECTION END-EXEC.
+           
+           COPY SQLCA.
+           COPY DBPROC.
+           COPY ERRHAND.
+           COPY BCHCON.
+           
+       01  WS-FILE-STATUS.
+           05  WS-TH-STATUS          PIC X(2).
+           05  WS-BCT-STATUS         PIC X(2).
+           
+       01  WS-COUNTERS.
+           05  WS-RECORDS-READ       PIC S9(9) COMP VALUE 0.
+           05  WS-RECORDS-WRITTEN    PIC S9(9) COMP VALUE 0.
+           05  WS-ERROR-COUNT        PIC S9(9) COMP VALUE 0.
+           05  WS-COMMIT-COUNT       PIC S9(4) COMP VALUE 0.
+           
+       01  WS-COMMIT-THRESHOLD       PIC S9(4) COMP VALUE 1000.
+       
+       01  WS-SWITCHES.
+           05  WS-END-OF-FILE-SW     PIC X(1) VALUE 'N'.
+               88  END-OF-FILE         VALUE 'Y'.
+               88  MORE-RECORDS        VALUE 'N'.
+
+       01  WS-TRANSACTION-TYPE-VALUE PIC X(10).
+      *  Working storage for new transaction type field
+               
+       PROCEDURE DIVISION.
+       0000-MAIN.
+           PERFORM 1000-INITIALIZE
+           
+           PERFORM 2000-PROCESS
+               UNTIL END-OF-FILE
+               OR WS-ERROR-COUNT > 100
+           
+           PERFORM 3000-TERMINATE
+           
+           MOVE WS-ERROR-COUNT TO RETURN-CODE
+           GOBACK
+           .
+           
+       1000-INITIALIZE.
+           PERFORM 1100-OPEN-FILES
+           PERFORM 1200-CONNECT-DB2
+           PERFORM 1300-INIT-CHECKPOINTS
+           .
+           
+       2000-PROCESS.
+           PERFORM 2100-READ-HISTORY
+           
+           IF MORE-RECORDS
+               PERFORM 2200-LOAD-TO-DB2
+               PERFORM 2300-CHECK-COMMIT
+           END-IF
+           .
+           
+       3000-TERMINATE.
+           PERFORM 3100-FINAL-COMMIT
+           PERFORM 3200-CLOSE-FILES
+           PERFORM 3300-DISCONNECT-DB2
+           PERFORM 3400-DISPLAY-STATS
+           .
+           
+       1100-OPEN-FILES.
+           OPEN INPUT TRANSACTION-HISTORY
+           IF WS-TH-STATUS NOT = '00'
+               MOVE 'Error opening history file' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           
+           OPEN I-O BATCH-CONTROL-FILE
+           IF WS-BCT-STATUS NOT = '00'
+               MOVE 'Error opening control file' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+           
+       1200-CONNECT-DB2.
+           PERFORM CONNECT-TO-DB2
+           .
+           
+       1300-INIT-CHECKPOINTS.
+           MOVE SPACES TO BCT-KEY
+           MOVE 'HISTLD00' TO BCT-JOB-NAME
+           
+           READ BATCH-CONTROL-FILE
+               INVALID KEY
+                   MOVE 'Control record not found' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-READ
+           
+           MOVE BCT-STAT-ACTIVE TO BCT-STATUS
+           REWRITE BATCH-CONTROL-RECORD
+           .
+           
+       2100-READ-HISTORY.
+           READ TRANSACTION-HISTORY
+               AT END
+                   SET END-OF-FILE TO TRUE
+               NOT AT END
+                   ADD 1 TO WS-RECORDS-READ
+                   PERFORM 2150-HANDLE-TRANSACTION-TYPE
+           END-READ
+           .
+
+       2150-HANDLE-TRANSACTION-TYPE.
+      *-- Begin: Transaction Type Field Handling (NEW) --
+           IF TRN-TRANSACTION-TYPE = SPACES
+               MOVE 'UNSPECIFIED' TO TRN-TRANSACTION-TYPE
+           END-IF
+           MOVE TRN-TRANSACTION-TYPE TO WS-TRANSACTION-TYPE-VALUE
+      *    Store for further processing or logging
+      *-- End: Transaction Type Field Handling (NEW) --
+           CONTINUE.
+
+       2200-LOAD-TO-DB2.
+           INITIALIZE POSHIST-RECORD
+           
+           MOVE TH-ACCOUNT-NO    TO PH-ACCOUNT-NO
+           MOVE TH-PORTFOLIO-ID  TO PH-PORTFOLIO-ID
+           MOVE TH-TRANS-DATE    TO PH-TRANS-DATE
+           MOVE TH-TRANS-TIME    TO PH-TRANS-TIME
+           MOVE TH-TRANS-TYPE    TO PH-TRANS-TYPE
+           MOVE TH-SECURITY-ID   TO PH-SECURITY-ID
+           MOVE TH-QUANTITY      TO PH-QUANTITY
+           MOVE TH-PRICE         TO PH-PRICE
+           MOVE TH-AMOUNT        TO PH-AMOUNT
+           MOVE TH-FEES          TO PH-FEES
+           MOVE TH-TOTAL-AMOUNT  TO PH-TOTAL-AMOUNT
+           MOVE TH-COST-BASIS    TO PH-COST-BASIS
+           MOVE TH-GAIN-LOSS     TO PH-GAIN-LOSS
+
+      *-- Begin: DB2 Load of Transaction Type Field (NEW) --
+      *    If POSHIST-RECORD and DB2 schema support, add:
+      *    MOVE TRN-TRANSACTION-TYPE TO PH-TRANSACTION-TYPE
+      *-- End: DB2 Load of Transaction Type Field (NEW) --
+
+           EXEC SQL
+               INSERT INTO POSHIST
+               VALUES (:POSHIST-RECORD)
+           END-EXEC
+           
+           IF SQLCODE = 0
+               ADD 1 TO WS-RECORDS-WRITTEN
+           ELSE
+               IF SQLCODE = -803
+                   CONTINUE
+               ELSE
+                   ADD 1 TO WS-ERROR-COUNT
+                   PERFORM DB2-ERROR-ROUTINE
+               END-IF
+           END-IF
+           .
+           
+       2300-CHECK-COMMIT.
+           ADD 1 TO WS-COMMIT-COUNT
+           
+           IF WS-COMMIT-COUNT >= WS-COMMIT-THRESHOLD
+               EXEC SQL
+                   COMMIT WORK
+               END-EXEC
+               
+               MOVE 0 TO WS-COMMIT-COUNT
+               
+               PERFORM 2310-UPDATE-CHECKPOINT
+           END-IF
+           .
+           
+       2310-UPDATE-CHECKPOINT.
+           MOVE WS-RECORDS-READ TO BCT-RECORDS-READ
+           MOVE WS-RECORDS-WRITTEN TO BCT-RECORDS-WRITTEN
+           
+           REWRITE BATCH-CONTROL-RECORD
+               INVALID KEY
+                   MOVE 'Error updating checkpoint' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+           
+       3100-FINAL-COMMIT.
+           EXEC SQL
+               COMMIT WORK
+           END-EXEC
+           
+           PERFORM 2310-UPDATE-CHECKPOINT
+           .
+           
+       3200-CLOSE-FILES.
+           CLOSE TRANSACTION-HISTORY
+                 BATCH-CONTROL-FILE
+           .
+           
+       3300-DISCONNECT-DB2.
+           PERFORM DISCONNECT-FROM-DB2
+           .
+           
+       3400-DISPLAY-STATS.
+           DISPLAY 'HISTLD00 Processing Statistics:'
+           DISPLAY '  Records Read:    ' WS-RECORDS-READ
+           DISPLAY '  Records Written: ' WS-RECORDS-WRITTEN
+           DISPLAY '  Errors:         ' WS-ERROR-COUNT
+           .
+           
+       9000-ERROR-ROUTINE.
+           MOVE 'HISTLD00' TO ERR-PROGRAM
+           CALL 'ERRPROC' USING ERR-MESSAGE
+           
+           EXEC SQL
+               ROLLBACK WORK
+           END-EXEC
+           .
+
+src/programs/batch/RPTAUD00.cbl
 
        IDENTIFICATION DIVISION.
        PROGRAM-ID. RPTAUD00.
@@ -1053,10 +966,6 @@ Summary: Added logic to set and use the new TRANSACTION-TYPE field for DB2 load,
        WORKING-STORAGE SECTION.
            COPY RTNCODE.
 
-*---- Added for transaction type field (if referenced in audit) ----*
-       01  WS-TRANSACTION-TYPE       PIC X(10).
-*---- End addition ----*
-
        01  WS-FILE-STATUS.
            05  WS-AUDIT-STATUS       PIC XX.
            05  WS-ERROR-STATUS       PIC XX.
@@ -1082,7 +991,10 @@ Summary: Added logic to set and use the new TRANSACTION-TYPE field for DB2 load,
            05  FILLER               PIC X(2) VALUE SPACES.
            05  WS-AUD-TYPE          PIC X(10).
            05  FILLER               PIC X(2) VALUE SPACES.
-           05  WS-AUD-MESSAGE       PIC X(80).
+           05  WS-AUD-TRANSACTION-TYPE PIC X(10).
+      *    Added field for new transaction type in audit detail
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-AUD-MESSAGE       PIC X(70).
 
        01  WS-ERROR-DETAIL.
            05  WS-ERR-TIMESTAMP     PIC X(26).
@@ -1141,7 +1053,31 @@ Summary: Added logic to set and use the new TRANSACTION-TYPE field for DB2 load,
            PERFORM 2110-READ-AUDIT-RECORDS
            PERFORM 2120-SUMMARIZE-AUDIT.
 
-*---- If audit records reference TRANSACTION-TYPE, add logic here ----*
+       2110-READ-AUDIT-RECORDS.
+           READ AUDIT-FILE
+               AT END
+                   SET END-OF-AUDIT TO TRUE
+               NOT AT END
+                   PERFORM 2115-FORMAT-AUDIT
+           END-READ
+           .
+       2115-FORMAT-AUDIT.
+      *-- Begin: Transaction Type Field Handling (NEW) --
+           IF AUD-TRANSACTION-TYPE = SPACES
+               MOVE 'UNSPECIFIED' TO WS-AUD-TRANSACTION-TYPE
+           ELSE
+               MOVE AUD-TRANSACTION-TYPE TO WS-AUD-TRANSACTION-TYPE
+           END-IF
+      *    Populate new field in audit report
+      *-- End: Transaction Type Field Handling (NEW) --
+           MOVE AUD-TIMESTAMP    TO WS-AUD-TIMESTAMP
+           MOVE AUD-PROGRAM      TO WS-AUD-PROGRAM
+           MOVE AUD-TYPE         TO WS-AUD-TYPE
+           MOVE AUD-MESSAGE      TO WS-AUD-MESSAGE
+           WRITE REPORT-RECORD FROM WS-AUDIT-DETAIL.
+
+       2120-SUMMARIZE-AUDIT.
+           CONTINUE.
 
        2200-PROCESS-ERROR-LOG.
            PERFORM 2210-READ-ERROR-RECORDS
@@ -1161,5 +1097,3 @@ Summary: Added logic to set and use the new TRANSACTION-TYPE field for DB2 load,
            DISPLAY WS-ERROR-MESSAGE
            MOVE 12 TO RETURN-CODE
            GOBACK.
-
-Summary: Added placeholder for TRANSACTION-TYPE field for future audit reporting; no direct logic change required unless referenced in audit trail.
