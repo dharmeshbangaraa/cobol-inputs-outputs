@@ -1,101 +1,107 @@
-** Technical Document and Low-Level Design (LLD)**
+# Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document provides a comprehensive technical overview and low-level design (LLD) for recent enhancements to the COBOL-based portfolio transaction processing system. The primary focus is the addition and integration of a new `TRANSACTION-TYPE` field within the transaction record structure and its validation and processing throughout the application. The document details the changes, their rationale, and the expected impact on the system.
+This document details the technical changes and low-level design updates made to the COBOL portfolio transaction processing system. The primary enhancement involves introducing a new transaction type field (`TRN-TRANSACTION-TYPE`) to the transaction record structure and updating all relevant logic to support this new field throughout the application. This enhancement improves transaction categorization, reporting, and future extensibility.
 
 ## 2. Existing Logic and Flow  
+
 ### 2.1 Overview  
-The portfolio transaction processing system manages and processes financial transactions for investment portfolios. It reads transaction records, validates their contents, updates portfolio positions, and maintains an audit trail. The system ensures data integrity and compliance with business rules by performing rigorous validation and structured processing.
+The portfolio transaction processing system manages the ingestion, validation, and processing of financial transactions related to investment portfolios. The system reads transaction records, validates their contents, updates portfolio positions, and logs audit trails for each processed transaction.
 
 ### 2.2 Detailed Logic  
 
-#### Prior Logic (Before Enhancement)
-- **Transaction Record Structure**: Defined in `TRNREC.cpy`, containing fields such as date, time, portfolio ID, transaction type, quantity, price, amount, currency, and status.
-- **Processing Flow**:  
-  - **Initialization**: Opens files, initializes counters and status flags.
-  - **Transaction Processing**: Reads and validates each transaction, checks portfolio existence, validates transaction type, and processes amounts.
-  - **Position Update**: Updates portfolio records based on transaction type (buy, sell, transfer, fee).
-  - **Audit Trail**: Records processing details for each transaction.
-  - **Error Handling**: Captures and logs errors, increments error counters.
+- **Initialization:**  
+  - Opens transaction and portfolio files.
+  - Initializes counters and status flags.
+  - Prepares working storage for transaction processing.
 
-#### Enhanced Logic (With TRANSACTION-TYPE)
-- **New Field**: `TRANSACTION-TYPE` (PIC X(04)) added to transaction record for batch processing/reporting.
-- **Validation**: New and extended validation logic for `TRANSACTION-TYPE` in transaction validation and type-checking routines.
-- **Processing**: `TRANSACTION-TYPE` is now available for use in business logic, audit trails, and optional logging.
-- **Filler Adjustment**: Filler in the record structure reduced by 4 bytes to accommodate the new field.
+- **Transaction Processing:**  
+  - Reads each transaction record sequentially.
+  - Validates the portfolio ID, transaction type, and transaction amounts.
+  - Processes the transaction based on its type (buy, sell, transfer, fee).
+  - Updates portfolio positions accordingly.
+  - Writes audit trail entries for each transaction.
+
+- **Termination:**  
+  - Closes all files.
+  - Displays summary statistics.
 
 #### Flowchart:  
-```
+```mermaid
 flowchart TD
     Start([Start])
     Init([1000-INITIALIZE])
-    OpenFiles([Open Files])
-    CheckStatus([Check File Status])
-    ProcessLoop([2000-PROCESS-TRANSACTIONS])
-    ReadTrans([Read Transaction])
+    ReadTrans([READ TRANSACTION-FILE])
     Validate([2100-VALIDATE-TRANSACTION])
     CheckPortfolio([2110-CHECK-PORTFOLIO])
-    CheckType([2120-CHECK-TRANSACTION-TYPE])
+    CheckTrnType([2120-CHECK-TRANSACTION-TYPE])
     CheckAmounts([2130-CHECK-AMOUNTS])
-    UpdatePositions([2200-UPDATE-POSITIONS])
-    AuditTrail([2300-UPDATE-AUDIT-TRAIL])
-    Terminate([3000-TERMINATE])
+    CheckNewType([2140-CHECK-TRANSACTION-TYPE-FIELD])
+    Update([2200-UPDATE-POSITIONS])
+    Audit([2300-UPDATE-AUDIT-TRAIL])
+    Next([Next Transaction?])
     End([End])
 
     Start --> Init
-    Init --> OpenFiles
-    OpenFiles --> CheckStatus
-    CheckStatus --> ProcessLoop
-    ProcessLoop --> ReadTrans
+    Init --> ReadTrans
     ReadTrans --> Validate
     Validate --> CheckPortfolio
-    CheckPortfolio --> CheckType
-    CheckType --> CheckAmounts
-    CheckAmounts --> UpdatePositions
-    UpdatePositions --> AuditTrail
-    AuditTrail --> ProcessLoop
-    ProcessLoop --> Terminate
-    Terminate --> End
+    CheckPortfolio --> CheckTrnType
+    CheckTrnType --> CheckAmounts
+    CheckAmounts --> CheckNewType
+    CheckNewType --> Update
+    Update --> Audit
+    Audit --> Next
+    Next -- Yes --> ReadTrans
+    Next -- No --> End
 ```
 
 ## 3. Impacted Changes  
+
 ### 3.1 User Story or Analysis Report Summary  
-**User Story:**  
-As a batch processing/reporting user, I need the ability to specify and validate an extended transaction type (`TRANSACTION-TYPE`) for each transaction, so that downstream processes and reports can distinguish between regular, reversal, adjustment, and fee transactions.
+Enhance the transaction processing system to support a new, explicit transaction type field (`TRN-TRANSACTION-TYPE`) in addition to the legacy `TRN-TYPE` field. Ensure all validation, processing, and audit logic utilizes the new field when present, with fallback to the legacy field for backward compatibility.
 
-### 3.2 Impacted Code Changes Summary
+### 3.2 Impacted Code Changes Summary:
 
-#### 3.2.1 Impacted Sections and Files:  
+#### 3.2.1 Impacted Sections and Files:
 - **src/copybook/common/TRNREC.cpy**  
-  - Purpose of Changes: Added `TRANSACTION-TYPE` field to the transaction record structure for enhanced reporting and batch processing.
-  - Impact: All programs using this copybook now have access to the new field; record length and filler adjusted.
+  - Purpose of Changes: Add new field `TRN-TRANSACTION-TYPE` to the transaction record structure for improved transaction categorization.
+  - Impact: All programs using this copybook can now store and process a 4-character alphanumeric transaction type.
 
 - **src/programs/portfolio/PORTTRAN.cbl**  
-  - Purpose of Changes: Integrated `TRANSACTION-TYPE` into transaction validation, processing, and audit routines.
-  - Impact: Ensures that all transactions include a valid `TRANSACTION-TYPE`, and this information is used in processing and audit trails.
+  - Purpose of Changes: Update transaction validation, processing, and audit logic to utilize the new transaction type field.
+  - Impact: Enables more granular transaction processing and reporting. Maintains backward compatibility with legacy field.
+
+- **Working-Storage Section (PORTTRAN.cbl)**  
+  - Purpose of Changes: Add working-storage variable for the new transaction type.
+  - Impact: Supports validation and processing of the new field.
+
+- **Validation and Processing Paragraphs (PORTTRAN.cbl)**  
+  - Purpose of Changes: Insert new validation and processing logic for the new field.
+  - Impact: Ensures data integrity and correct transaction handling.
 
 ### 3.3 Insertion Points  
-- **TRNREC.cpy**:  
-  - Inserted new field `TRANSACTION-TYPE` (PIC X(04)) after `TRN-STATUS` in the `TRANSACTION-RECORD` structure.
-  - Adjusted `TRN-FILLER` size to maintain record length.
 
-- **PORTTRAN.cbl**:  
-  - **WORKING-STORAGE SECTION**:  
-    - Added `WS-TRANSACTION-TYPE-VLD` for validation.
-  - **2100-VALIDATE-TRANSACTION**:  
-    - Inserted validation logic to ensure `TRANSACTION-TYPE` is present and valid.
-  - **2120-CHECK-TRANSACTION-TYPE**:  
-    - Enhanced to validate both `TRN-TYPE` and `TRANSACTION-TYPE` values.
-  - **2200-UPDATE-POSITIONS**:  
-    - Made `TRANSACTION-TYPE` available for processing logic.
-  - **2210-PROCESS-BUY, 2220-PROCESS-SELL, 2230-PROCESS-TRANSFER, 2240-PROCESS-FEE**:  
-    - Optionally log or process `TRANSACTION-TYPE`.
-  - **2300-UPDATE-AUDIT-TRAIL**:  
-    - Included `TRANSACTION-TYPE` in audit messages.
+- **TRNREC.cpy**  
+  - Inserted new field `10  TRN-TRANSACTION-TYPE  PIC X(04).` after the existing transaction data fields.
+  - Adjusted filler size to accommodate the new field.
+
+- **PORTTRAN.cbl**
+  - **WORKING-STORAGE SECTION:**  
+    - Added `01  WS-TRANSACTION-TYPE-VLD PIC X(04).` for validation.
+  - **2100-VALIDATE-TRANSACTION:**  
+    - After amount checks, inserted call to new validation paragraph for `TRN-TRANSACTION-TYPE`.
+  - **New Paragraph 2140-CHECK-TRANSACTION-TYPE-FIELD:**  
+    - Validates presence and correctness of the new field.
+  - **2200-UPDATE-POSITIONS:**  
+    - Updated logic to process transactions based on `TRN-TRANSACTION-TYPE` first, with fallback to `TRN-TYPE`.
+  - **2300-UPDATE-AUDIT-TRAIL:**  
+    - Audit trail now records the new transaction type when present.
 
 ### 3.4 Structured Diffs  
 
-#### **TRNREC.cpy**  
+#### **A. TRNREC.cpy (Transaction Record Structure)**
+
 **Before:**  
 ```cobol
 05  TRN-DATA.
@@ -114,10 +120,6 @@ As a batch processing/reporting user, I need the ability to specify and validate
         88  TRN-STATUS-DONE   VALUE 'D'.
         88  TRN-STATUS-FAIL   VALUE 'F'.
         88  TRN-STATUS-REV    VALUE 'R'.
-05  TRN-AUDIT.
-    10  TRN-PROCESS-DATE  PIC X(26).
-    10  TRN-PROCESS-USER  PIC X(08).
-05  TRN-FILLER           PIC X(50).
 ```
 
 **After:**  
@@ -138,157 +140,192 @@ As a batch processing/reporting user, I need the ability to specify and validate
         88  TRN-STATUS-DONE   VALUE 'D'.
         88  TRN-STATUS-FAIL   VALUE 'F'.
         88  TRN-STATUS-REV    VALUE 'R'.
-    10  TRANSACTION-TYPE   PIC X(04).
-*   Added TRANSACTION-TYPE field for batch processing/reporting (2024-06)
-05  TRN-AUDIT.
-    10  TRN-PROCESS-DATE  PIC X(26).
-    10  TRN-PROCESS-USER  PIC X(08).
-05  TRN-FILLER           PIC X(46).
-*   Reduced filler by 4 bytes for TRANSACTION-TYPE addition
+*--- Begin Enhancement: Add Transaction Type Field ---
+    10  TRN-TRANSACTION-TYPE  PIC X(04).
+*     New field: Transaction Type (e.g. 'BUY ', 'SELL', 'XFER', 'FEE ')
+*--- End Enhancement ---
 ```
 
-#### **PORTTRAN.cbl**  
-**Before (Excerpt from 2100-VALIDATE-TRANSACTION):**  
+#### **B. PORTTRAN.cbl (Portfolio Transaction Processing)**
+
+**1. WORKING-STORAGE SECTION**
+
+**Before:**  
 ```cobol
-2100-VALIDATE-TRANSACTION.
-    MOVE SPACES TO ERR-TEXT
-    PERFORM 2110-CHECK-PORTFOLIO
-    IF ERR-TEXT = SPACES
-        PERFORM 2120-CHECK-TRANSACTION-TYPE
-    END-IF
-    IF ERR-TEXT = SPACES
-        PERFORM 2130-CHECK-AMOUNTS
-    END-IF
-    IF ERR-TEXT = SPACES
-        ADD 1 TO WS-PROCESS-COUNT
-    ELSE
-        PERFORM 9000-ERROR-ROUTINE
-    END-IF
-.
+01  WS-COUNTERS.
+    05  WS-READ-COUNT       PIC 9(8) COMP.
+    05  WS-PROCESS-COUNT    PIC 9(8) COMP.
+    05  WS-ERROR-COUNT      PIC 9(8) COMP.
 ```
 
 **After:**  
 ```cobol
-2100-VALIDATE-TRANSACTION.
-    MOVE SPACES TO ERR-TEXT
+01  WS-COUNTERS.
+    05  WS-READ-COUNT       PIC 9(8) COMP.
+    05  WS-PROCESS-COUNT    PIC 9(8) COMP.
+    05  WS-ERROR-COUNT      PIC 9(8) COMP.
 
-*-- Begin Enhancement: Validate new TRANSACTION-TYPE field
-    IF TRANSACTION-TYPE = SPACES
-        MOVE 'TRANSACTION-TYPE is required' TO ERR-TEXT
-        PERFORM 9000-ERROR-ROUTINE
+*--- Begin Enhancement: Working storage for new Transaction Type field ---
+01  WS-TRANSACTION-TYPE-VLD PIC X(04).
+*--- End Enhancement ---
+```
+
+**2. 2100-VALIDATE-TRANSACTION**
+
+**Before:**  
+```cobol
+PERFORM 2110-CHECK-PORTFOLIO
+IF ERR-TEXT = SPACES
+    PERFORM 2120-CHECK-TRANSACTION-TYPE
+END-IF
+IF ERR-TEXT = SPACES
+    PERFORM 2130-CHECK-AMOUNTS
+END-IF
+```
+
+**After:**  
+```cobol
+PERFORM 2110-CHECK-PORTFOLIO
+IF ERR-TEXT = SPACES
+    PERFORM 2120-CHECK-TRANSACTION-TYPE
+END-IF
+IF ERR-TEXT = SPACES
+    PERFORM 2130-CHECK-AMOUNTS
+END-IF
+*--- Begin Enhancement: Validate new Transaction Type field ---
+IF ERR-TEXT = SPACES
+    PERFORM 2140-CHECK-TRANSACTION-TYPE-FIELD
+END-IF
+*--- End Enhancement ---
+```
+
+**3. New Paragraph: 2140-CHECK-TRANSACTION-TYPE-FIELD**
+
+**Added:**  
+```cobol
+*--- Begin Enhancement: New paragraph for TRANSACTION-TYPE field validation ---
+2140-CHECK-TRANSACTION-TYPE-FIELD.
+    IF TRN-TRANSACTION-TYPE = SPACES OR TRN-TRANSACTION-TYPE = LOW-VALUES
+        MOVE 'Transaction Type field is required' TO ERR-TEXT
         EXIT PARAGRAPH
     END-IF
-    MOVE TRANSACTION-TYPE TO WS-TRANSACTION-TYPE-VLD
-*-- End Enhancement
-
-    PERFORM 2110-CHECK-PORTFOLIO
-    IF ERR-TEXT = SPACES
-        PERFORM 2120-CHECK-TRANSACTION-TYPE
-    END-IF
-    IF ERR-TEXT = SPACES
-        PERFORM 2130-CHECK-AMOUNTS
-    END-IF
-    IF ERR-TEXT = SPACES
-        ADD 1 TO WS-PROCESS-COUNT
-    ELSE
-        PERFORM 9000-ERROR-ROUTINE
-    END-IF
-.
-```
-
-**Before (Excerpt from 2120-CHECK-TRANSACTION-TYPE):**  
-```cobol
-2120-CHECK-TRANSACTION-TYPE.
-    EVALUATE TRN-TYPE
-        WHEN 'BU'
-        WHEN 'SL'
-        WHEN 'TR'
-        WHEN 'FE'
+    MOVE TRN-TRANSACTION-TYPE TO WS-TRANSACTION-TYPE-VLD
+    EVALUATE WS-TRANSACTION-TYPE-VLD
+        WHEN 'BUY '
+        WHEN 'SELL'
+        WHEN 'XFER'
+        WHEN 'FEE '
             CONTINUE
         WHEN OTHER
-            STRING 'Invalid Transaction Type: '
-                   TRN-TYPE
-               DELIMITED BY SIZE
-               INTO ERR-TEXT
+            STRING 'Invalid Transaction Type field: '
+                   TRN-TRANSACTION-TYPE
+              DELIMITED BY SIZE
+              INTO ERR-TEXT
     END-EVALUATE
-.
+    .
+*--- End Enhancement ---
+```
+
+**4. 2200-UPDATE-POSITIONS**
+
+**Before:**  
+```cobol
+EVALUATE TRN-TYPE
+    WHEN 'BU'
+        PERFORM 2210-PROCESS-BUY
+    WHEN 'SL'
+        PERFORM 2220-PROCESS-SELL
+    WHEN 'TR'
+        PERFORM 2230-PROCESS-TRANSFER
+    WHEN 'FE'
+        PERFORM 2240-PROCESS-FEE
+END-EVALUATE
 ```
 
 **After:**  
 ```cobol
-2120-CHECK-TRANSACTION-TYPE.
-*-- Begin Enhancement: Validate both TRN-TYPE and TRANSACTION-TYPE
-    EVALUATE TRN-TYPE
-        WHEN 'BU'
-        WHEN 'SL'
-        WHEN 'TR'
-        WHEN 'FE'
-            CONTINUE
-        WHEN OTHER
-            STRING 'Invalid Transaction Type: '
-                   TRN-TYPE
-               DELIMITED BY SIZE
-               INTO ERR-TEXT
-    END-EVALUATE
-
-    IF ERR-TEXT = SPACES
-        EVALUATE TRANSACTION-TYPE
-            WHEN 'REG'
-            WHEN 'REV'
-            WHEN 'ADJ'
-            WHEN 'FEE'
-                CONTINUE
-            WHEN OTHER
-                STRING 'Invalid TRANSACTION-TYPE: '
-                       TRANSACTION-TYPE
-                   DELIMITED BY SIZE
-                   INTO ERR-TEXT
+*--- Begin Enhancement: Use new Transaction Type field for processing ---
+EVALUATE TRN-TRANSACTION-TYPE
+    WHEN 'BUY '
+        PERFORM 2210-PROCESS-BUY
+    WHEN 'SELL'
+        PERFORM 2220-PROCESS-SELL
+    WHEN 'XFER'
+        PERFORM 2230-PROCESS-TRANSFER
+    WHEN 'FEE '
+        PERFORM 2240-PROCESS-FEE
+    WHEN OTHER
+*        Fallback to legacy TRN-TYPE if new field not set
+        EVALUATE TRN-TYPE
+            WHEN 'BU'
+                PERFORM 2210-PROCESS-BUY
+            WHEN 'SL'
+                PERFORM 2220-PROCESS-SELL
+            WHEN 'TR'
+                PERFORM 2230-PROCESS-TRANSFER
+            WHEN 'FE'
+                PERFORM 2240-PROCESS-FEE
         END-EVALUATE
-    END-IF
-*-- End Enhancement
-.
+END-EVALUATE
+*--- End Enhancement ---
 ```
 
-**Before (Excerpt from 2300-UPDATE-AUDIT-TRAIL):**  
+**5. 2300-UPDATE-AUDIT-TRAIL**
+
+**Before:**  
 ```cobol
-2300-UPDATE-AUDIT-TRAIL.
-    INITIALIZE AUDIT-RECORD
-    ...
-    STRING 'Transaction: ' DELIMITED BY SIZE
-           TRN-TYPE       DELIMITED BY SIZE
-           ' Amount: '    DELIMITED BY SIZE
-           TRN-AMOUNT     DELIMITED BY SIZE
-           ' Units: '     DELIMITED BY SIZE
-           TRN-QUANTITY   DELIMITED BY SIZE
-       INTO AUD-MESSAGE
-.
+MOVE 'TRAN'         TO AUD-TYPE
 ```
 
 **After:**  
 ```cobol
-2300-UPDATE-AUDIT-TRAIL.
-    INITIALIZE AUDIT-RECORD
-    ...
-*-- Begin Enhancement: Include TRANSACTION-TYPE in audit message
-    IF TRANSACTION-TYPE NOT = SPACES
-        STRING AUD-MESSAGE DELIMITED BY SIZE
-               ' [TYPE:' TRANSACTION-TYPE ']' DELIMITED BY SIZE
-           INTO AUD-MESSAGE
-    END-IF
-*-- End Enhancement
+MOVE 'TRAN'         TO AUD-TYPE
+*--- Begin Enhancement: Include new Transaction Type field in audit trail ---
+IF TRN-TRANSACTION-TYPE NOT = SPACES AND TRN-TRANSACTION-TYPE NOT = LOW-VALUES
+    MOVE TRN-TRANSACTION-TYPE TO AUD-ACTION
+ELSE
+    EVALUATE TRN-TYPE
+        WHEN 'BU'
+            MOVE 'CREATE  ' TO AUD-ACTION
+        WHEN 'SL'
+            MOVE 'DELETE  ' TO AUD-ACTION
+        WHEN 'TR'
+            MOVE 'UPDATE  ' TO AUD-ACTION
+        WHEN 'FE'
+            MOVE 'UPDATE  ' TO AUD-ACTION
+    END-EVALUATE
+END-IF
+*--- End Enhancement ---
+```
 
-    STRING 'Transaction: ' DELIMITED BY SIZE
-           TRN-TYPE       DELIMITED BY SIZE
-           ' Amount: '    DELIMITED BY SIZE
-           TRN-AMOUNT     DELIMITED BY SIZE
-           ' Units: '     DELIMITED BY SIZE
-           TRN-QUANTITY   DELIMITED BY SIZE
-           ' Type: '      DELIMITED BY SIZE
-           TRANSACTION-TYPE DELIMITED BY SIZE
-       INTO AUD-MESSAGE
-*-- End Enhancement: TRANSACTION-TYPE included in audit message
-.
+**Audit Message Construction:**
+
+**Before:**  
+```cobol
+STRING 'Transaction: ' DELIMITED BY SIZE
+       TRN-TYPE
+       ' Amount: '    DELIMITED BY SIZE
+       TRN-AMOUNT     DELIMITED BY SIZE
+       ' Units: '     DELIMITED BY SIZE
+       TRN-QUANTITY   DELIMITED BY SIZE
+   INTO AUD-MESSAGE
+```
+
+**After:**  
+```cobol
+*--- Begin Enhancement: Report new Transaction Type field if present ---
+STRING 'Transaction: ' DELIMITED BY SIZE
+       (IF TRN-TRANSACTION-TYPE NOT = SPACES AND TRN-TRANSACTION-TYPE NOT = LOW-VALUES
+           TRN-TRANSACTION-TYPE
+        ELSE
+           TRN-TYPE)
+       ' Amount: '    DELIMITED BY SIZE
+       TRN-AMOUNT     DELIMITED BY SIZE
+       ' Units: '     DELIMITED BY SIZE
+       TRN-QUANTITY   DELIMITED BY SIZE
+   INTO AUD-MESSAGE
+*--- End Enhancement ---
 ```
 
 ## 4. Conclusion  
-The enhancements introduce a new `TRANSACTION-TYPE` field to the transaction record structure and integrate its validation and processing into the portfolio transaction application. These changes enable more granular transaction categorization for batch processing and reporting, improve data quality through validation, and enhance audit trails. The modifications are backward-compatible and clearly marked for maintainability. The system is now better equipped to support extended transaction types and future business requirements.
+The enhancements introduce a new, explicit transaction type field to the transaction record structure and update all relevant validation, processing, and audit logic to use this field. These changes enable more flexible and accurate transaction categorization, improve audit trail clarity, and maintain backward compatibility with existing data. The structured approach and clear insertion points ensure the system remains maintainable and extensible for future enhancements.
