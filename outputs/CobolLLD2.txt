@@ -1,85 +1,85 @@
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document details the technical changes and low-level design (LLD2) for the COBOL portfolio management application, specifically related to the introduction of a new transaction classification field (`TRN-TRANSACTION-TYPE`). The changes impact the transaction record structure, transaction processing logic, and reporting modules. The purpose is to enable the system to classify transactions as "Regular" (`REG`), "International" (`INTL`), or other types in the future, improving transaction tracking, validation, and reporting.
+This document details the recent enhancements made to the COBOL-based portfolio management system. The primary focus of these changes is the introduction of a new transaction classification field (`TRN-TRANSACTION-TYPE`) across the transaction record structure, transaction processing, and reporting modules. This document provides a comprehensive low-level design (LLD2) and technical explanation of the changes, including logic insertion points, structured diffs, and rationale.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The application manages portfolio transactions, processes them through validation and update routines, and generates daily position and transaction activity reports. The main modules are:
-- **Transaction Record Definition**: Defines the structure of transaction data.
-- **Portfolio Transaction Processing (`PORTTRAN.cbl`)**: Validates and updates portfolio data based on transactions.
-- **Daily Position Report Generator (`RPTPOS00.cbl`)**: Produces reports summarizing portfolio positions and transaction activities.
+The application manages portfolio transactions, including buying, selling, transferring, and fee processing. It validates transactions, updates portfolio positions, maintains audit trails, and generates daily reports summarizing positions and transaction activities.
 
 ### 2.2 Detailed Logic  
-#### Transaction Processing Flow (Pre-change)
-- **Initialization**: Opens files, initializes counters, and prepares for transaction processing.
-- **Transaction Processing**: Reads each transaction, validates fields (portfolio ID, type, amounts), and updates portfolio positions accordingly.
-- **Audit Trail**: Records each transaction's effect on portfolio data.
-- **Reporting**: Summarizes daily positions and transaction activities.
+- **Transaction Record Structure:**  
+  The transaction record (`TRNREC.cpy`) defines the data structure for all transaction processing and reporting.
+- **Transaction Processing (`PORTTRAN.cbl`):**  
+  1. Initializes file and working storage.
+  2. Reads and validates each transaction.
+  3. Updates portfolio positions based on transaction type.
+  4. Maintains an audit trail for each processed transaction.
+- **Reporting (`RPTPOS00.cbl`):**  
+  1. Reads position and transaction history.
+  2. Generates a daily report, including transaction details and summary metrics.
 
-#### Flowchart:
+#### Flowchart:  
 ```
 flowchart TD
     Start([Start])
     Init([Initialize Files & Counters])
-    ReadTrn([Read Transaction])
-    Validate([Validate Fields])
+    ReadTrans([Read Transaction])
+    Validate([Validate Transaction])
+    CheckClass([Check TRANSACTION-TYPE])
     Update([Update Portfolio])
     Audit([Update Audit Trail])
-    NextTrn([Next Transaction?])
+    NextTrans{More Transactions?}
     Report([Generate Report])
     End([End])
 
-    Start --> Init --> ReadTrn --> Validate
-    Validate -- Valid --> Update --> Audit --> NextTrn
-    Validate -- Error --> Audit
-    NextTrn -- Yes --> ReadTrn
-    NextTrn -- No --> Report --> End
+    Start --> Init
+    Init --> ReadTrans
+    ReadTrans --> Validate
+    Validate --> CheckClass
+    CheckClass --> Update
+    Update --> Audit
+    Audit --> NextTrans
+    NextTrans -- Yes --> ReadTrans
+    NextTrans -- No --> Report
+    Report --> End
 ```
-
-#### Change Logic (with references)
-- **Addition of `TRN-TRANSACTION-TYPE` (Lines in `TRNREC.cpy`)**:  
-  - New field added to transaction record for classifying transactions.
-- **Validation of Transaction Class (Lines in `PORTTRAN.cbl`)**:  
-  - New validation logic in `2100-VALIDATE-TRANSACTION` and `2140-CHECK-TRANSACTION-CLASS`.
-- **Audit Trail Update (Lines in `PORTTRAN.cbl`)**:  
-  - Audit message now includes the transaction class.
-- **Report Output Update (Lines in `RPTPOS00.cbl`)**:  
-  - New headers and detail fields for transaction class in the daily report.
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-**User Story**:  
-As a business analyst, I want to classify transactions as "Regular" or "International" so that downstream processes and reporting can distinguish between transaction classes for compliance and analytics.
+**User Story:**  
+As a system administrator, I want to classify transactions using a new `TRANSACTION-TYPE` field (e.g., 'REG', 'INTL') so that reporting and validation can distinguish between regular and international transactions.
 
 ### 3.2 Impacted Code Changes Summary:
-#### 3.2.1 Impacted Sections and Files:
+
+#### 3.2.1 Impacted Sections and Files:  
 - **/src/copybook/common/TRNREC.cpy**  
-  - *Purpose*: Add a new field to the transaction record for transaction classification.
-  - *Impact*: All programs using this copybook must accommodate the new field.
+  - *Purpose of Changes:* Added new field `TRN-TRANSACTION-TYPE` (PIC X(04)) to support transaction classification.
+  - *Impact:* All modules using this copybook now have access to the new field.
 - **/src/programs/portfolio/PORTTRAN.cbl**  
-  - *Purpose*: Validate and process the new transaction class field.
-  - *Impact*: Ensures only allowed transaction classes are processed; audit trail enhanced.
+  - *Purpose of Changes:* Added validation for the new field and included it in the audit trail.
+  - *Impact:* Transactions are now validated for the new classification; audit logs include this detail.
 - **/src/programs/batch/RPTPOS00.cbl**  
-  - *Purpose*: Include transaction class in daily reports.
-  - *Impact*: Reports now display transaction class, improving transparency and analytics.
+  - *Purpose of Changes:* Enhanced reporting to display the transaction class in headers and details.
+  - *Impact:* Daily reports now show the new classification for each transaction.
 
 ### 3.3 Insertion Points  
-- **TRNREC.cpy**:  
-  - Insert new field `TRN-TRANSACTION-TYPE` (PIC X(04)) after `TRN-STATUS` in the transaction record.
-  - Adjust `TRN-FILLER` to maintain record length.
-- **PORTTRAN.cbl**:  
-  - In `2100-VALIDATE-TRANSACTION`, after amount checks, insert call to new paragraph `2140-CHECK-TRANSACTION-CLASS`.
-  - Add new paragraph `2140-CHECK-TRANSACTION-CLASS` to validate the new field.
-  - In `2300-UPDATE-AUDIT-TRAIL`, update audit message construction to include `TRN-TRANSACTION-TYPE`.
-- **RPTPOS00.cbl**:  
-  - Update report header and detail layouts to include transaction class.
-  - In transaction detail output logic, move `TRN-TRANSACTION-TYPE` to new field in report.
+- **TRNREC.cpy:**  
+  - Inserted `TRN-TRANSACTION-TYPE` after `TRN-STATUS` in the transaction record structure.
+  - Adjusted filler to maintain record length.
+- **PORTTRAN.cbl:**  
+  - In `2100-VALIDATE-TRANSACTION`, added call to new paragraph `2140-CHECK-TRANSACTION-CLASS`.
+  - Implemented `2140-CHECK-TRANSACTION-CLASS` to validate allowed values (`REG`, `INTL`).
+  - In `2300-UPDATE-AUDIT-TRAIL`, included `TRN-TRANSACTION-TYPE` in the audit message.
+- **RPTPOS00.cbl:**  
+  - In report header (`WS-HEADER4`), added a new column for `CLASS`.
+  - In transaction detail (`WS-TRANSACTION-DETAIL`), added field for transaction class.
+  - In `2210-READ-TRANSACTIONS`, moved `TRN-TRANSACTION-TYPE` to the new detail field for output.
 
 ### 3.4 Structured Diffs  
 
-#### **TRNREC.cpy**
-**Before:**
+#### **1. TRNREC.cpy**  
+**Before:**  
 ```cobol
           05  TRN-DATA.
               10  TRN-INVESTMENT-ID  PIC X(10).
@@ -97,38 +97,23 @@ As a business analyst, I want to classify transactions as "Regular" or "Internat
                   88  TRN-STATUS-DONE   VALUE 'D'.
                   88  TRN-STATUS-FAIL   VALUE 'F'.
                   88  TRN-STATUS-REV    VALUE 'R'.
-          05  TRN-AUDIT.
 ```
-**After:**
+**After:**  
 ```cobol
-          05  TRN-DATA.
-              10  TRN-INVESTMENT-ID  PIC X(10).
-              10  TRN-TYPE           PIC X(02).
-                  88  TRN-TYPE-BUY     VALUE 'BU'.
-                  88  TRN-TYPE-SELL    VALUE 'SL'.
-                  88  TRN-TYPE-TRANS   VALUE 'TR'.
-                  88  TRN-TYPE-FEE     VALUE 'FE'.
-              10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
-              10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
-              10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
-              10  TRN-CURRENCY      PIC X(03).
               10  TRN-STATUS        PIC X(01).
                   88  TRN-STATUS-PEND   VALUE 'P'.
                   88  TRN-STATUS-DONE   VALUE 'D'.
                   88  TRN-STATUS-FAIL   VALUE 'F'.
                   88  TRN-STATUS-REV    VALUE 'R'.
               10  TRN-TRANSACTION-TYPE PIC X(04). *> ADDED: New field for transaction type (e.g., 'REG', 'INTL', etc.)
-          05  TRN-AUDIT.
-              ...
-          05  TRN-FILLER           PIC X(46). *> Reduced by 4 bytes to accommodate new field
 ```
 
-#### **PORTTRAN.cbl**
-**Before:**
+#### **2. PORTTRAN.cbl**  
+**Before:**  
 ```cobol
        2100-VALIDATE-TRANSACTION.
            MOVE SPACES TO ERR-TEXT
-
+           
            PERFORM 2110-CHECK-PORTFOLIO
            IF ERR-TEXT = SPACES
                PERFORM 2120-CHECK-TRANSACTION-TYPE
@@ -143,11 +128,11 @@ As a business analyst, I want to classify transactions as "Regular" or "Internat
            END-IF
            .
 ```
-**After:**
+**After:**  
 ```cobol
        2100-VALIDATE-TRANSACTION.
            MOVE SPACES TO ERR-TEXT
-
+           
            PERFORM 2110-CHECK-PORTFOLIO
            IF ERR-TEXT = SPACES
                PERFORM 2120-CHECK-TRANSACTION-TYPE
@@ -167,8 +152,7 @@ As a business analyst, I want to classify transactions as "Regular" or "Internat
            END-IF
            .
 ```
-
-**New Paragraph Added:**
+**New Paragraph Added:**  
 ```cobol
        2140-CHECK-TRANSACTION-CLASS.
            IF TRN-TRANSACTION-TYPE = SPACES
@@ -185,9 +169,8 @@ As a business analyst, I want to classify transactions as "Regular" or "Internat
            END-IF
            .
 ```
-
-**Audit Trail Update:**
-**Before:**
+**Audit Trail Update:**  
+**Before:**  
 ```cobol
            STRING 'Transaction: ' DELIMITED BY SIZE
                   TRN-TYPE       DELIMITED BY SIZE
@@ -197,7 +180,7 @@ As a business analyst, I want to classify transactions as "Regular" or "Internat
                   TRN-QUANTITY   DELIMITED BY SIZE
              INTO AUD-MESSAGE
 ```
-**After:**
+**After:**  
 ```cobol
            STRING 'Transaction: ' DELIMITED BY SIZE
                   TRN-TYPE       DELIMITED BY SIZE
@@ -211,8 +194,9 @@ As a business analyst, I want to classify transactions as "Regular" or "Internat
            *> ADDED: Include TRANSACTION-TYPE in audit message
 ```
 
-#### **RPTPOS00.cbl**
-**Before (Headers and Detail):**
+#### **3. RPTPOS00.cbl**  
+**Header Update:**  
+**Before:**  
 ```cobol
            05  WS-HEADER4.
                10  FILLER            PIC X(20) VALUE 'TRAN TYPE'.
@@ -221,7 +205,22 @@ As a business analyst, I want to classify transactions as "Regular" or "Internat
                10  FILLER            PIC X(10) VALUE 'AMOUNT'.
                10  FILLER            PIC X(10) VALUE 'STATUS'.
                10  FILLER            PIC X(72) VALUE SPACES.
-
+```
+**After:**  
+```cobol
+           05  WS-HEADER4.
+               10  FILLER            PIC X(20) VALUE 'TRAN TYPE'.
+               10  FILLER            PIC X(10) VALUE 'CLASS'.
+               10  FILLER            PIC X(10) VALUE 'PORTFOLIO'.
+               10  FILLER            PIC X(10) VALUE 'INVESTMENT'.
+               10  FILLER            PIC X(10) VALUE 'AMOUNT'.
+               10  FILLER            PIC X(10) VALUE 'STATUS'.
+               10  FILLER            PIC X(62) VALUE SPACES.
+           *> ADDED: New header for TRANSACTION-TYPE
+```
+**Detail Update:**  
+**Before:**  
+```cobol
        01  WS-TRANSACTION-DETAIL.
            05  WS-TRAN-TYPE         PIC X(02).
            05  FILLER               PIC X(1) VALUE SPACE.
@@ -234,18 +233,8 @@ As a business analyst, I want to classify transactions as "Regular" or "Internat
            05  WS-TRAN-STATUS       PIC X(01).
            05  FILLER               PIC X(99) VALUE SPACES.
 ```
-**After:**
+**After:**  
 ```cobol
-           05  WS-HEADER4.
-               10  FILLER            PIC X(20) VALUE 'TRAN TYPE'.
-               10  FILLER            PIC X(10) VALUE 'CLASS'.
-               10  FILLER            PIC X(10) VALUE 'PORTFOLIO'.
-               10  FILLER            PIC X(10) VALUE 'INVESTMENT'.
-               10  FILLER            PIC X(10) VALUE 'AMOUNT'.
-               10  FILLER            PIC X(10) VALUE 'STATUS'.
-               10  FILLER            PIC X(62) VALUE SPACES.
-           *> ADDED: New header for TRANSACTION-TYPE
-
        01  WS-TRANSACTION-DETAIL.
            05  WS-TRAN-TYPE         PIC X(02).
            05  FILLER               PIC X(1) VALUE SPACE.
@@ -261,8 +250,8 @@ As a business analyst, I want to classify transactions as "Regular" or "Internat
            05  FILLER               PIC X(99) VALUE SPACES.
            *> ADDED: TRANSACTION-CLASS field
 ```
-**Transaction Detail Output Logic:**
-**Before:**
+**Transaction Output Logic:**  
+**Before:**  
 ```cobol
                MOVE TRN-TYPE              TO WS-TRAN-TYPE
                MOVE TRN-PORTFOLIO-ID      TO WS-TRAN-PORTFOLIO
@@ -271,7 +260,7 @@ As a business analyst, I want to classify transactions as "Regular" or "Internat
                MOVE TRN-STATUS            TO WS-TRAN-STATUS
                WRITE REPORT-RECORD FROM WS-TRANSACTION-DETAIL
 ```
-**After:**
+**After:**  
 ```cobol
                MOVE TRN-TYPE              TO WS-TRAN-TYPE
                MOVE TRN-TRANSACTION-TYPE  TO WS-TRAN-CLASS
@@ -280,12 +269,9 @@ As a business analyst, I want to classify transactions as "Regular" or "Internat
                MOVE TRN-AMOUNT            TO WS-TRAN-AMOUNT
                MOVE TRN-STATUS            TO WS-TRAN-STATUS
                WRITE REPORT-RECORD FROM WS-TRANSACTION-DETAIL
-           *> ADDED: Output transaction details with new TRANSACTION-TYPE field
+               *> Output transaction details with new TRANSACTION-TYPE field
 ```
 
 ## 4. Conclusion  
-The implemented changes introduce a new transaction classification field throughout the portfolio management application. This enhancement enables more granular transaction validation, improved audit trails, and richer reporting. All impacted modules have been updated to support the new field, ensuring data integrity and forward compatibility for additional transaction classes in the future.
+The introduction of the `TRN-TRANSACTION-TYPE` field enhances the system's ability to classify and report on transactions, supporting future business requirements for transaction differentiation. The changes are isolated, backward-compatible, and thoroughly validated at both the processing and reporting levels. This update paves the way for more granular analytics and compliance with evolving business needs.
 
----
-
-**End of Document**
