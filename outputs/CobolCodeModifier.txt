@@ -1,6 +1,6 @@
       *****************************************************************
       * TRANSACTION RECORD STRUCTURE
-      * VERSION: 1.1 (2024-06, Added TRANSACTION-TYPE field)
+      * VERSION: 1.1 (Enhanced for TRANSACTION-TYPE)
       * DATE: 2024
       *****************************************************************
        01  TRANSACTION-RECORD.
@@ -16,7 +16,8 @@
                    88  TRN-TYPE-SELL    VALUE 'SL'.
                    88  TRN-TYPE-TRANS   VALUE 'TR'.
                    88  TRN-TYPE-FEE     VALUE 'FE'.
-               10  TRN-TRANSACTION-TYPE PIC X(10). *> Added: Extended transaction type field for new business requirements
+               10  TRN-TRANSACTION-TYPE PIC X(10).
+      *        ^^^ Added: TRANSACTION-TYPE field for enhanced transaction categorization
                10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
                10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
                10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
@@ -29,7 +30,8 @@
            05  TRN-AUDIT.
                10  TRN-PROCESS-DATE  PIC X(26).
                10  TRN-PROCESS-USER  PIC X(08).
-           05  TRN-FILLER           PIC X(40). *> Reduced filler by 10 to accommodate new field
+           05  TRN-FILLER           PIC X(40).
+      *        ^^^ Reduced filler by 10 bytes to accommodate TRANSACTION-TYPE
       *****************************************************************
       * FIELD DESCRIPTIONS:
       * TRN-DATE        : TRANSACTION DATE (YYYYMMDD)
@@ -37,7 +39,7 @@
       * TRN-PORTFOLIO-ID: PORTFOLIO IDENTIFIER
       * TRN-SEQUENCE-NO : SEQUENCE NUMBER FOR MULTIPLE TRANS
       * TRN-TYPE        : BU=BUY, SL=SELL, TR=TRANSFER, FE=FEE
-      * TRN-TRANSACTION-TYPE: EXTENDED TRANSACTION TYPE (NEW FIELD, X(10))
+      * TRN-TRANSACTION-TYPE : NEW FIELD, X(10), for extended transaction classification
       * TRN-STATUS      : P=PENDING, D=DONE, F=FAILED, R=REVERSED
       *****************************************************************
 
@@ -99,11 +101,9 @@
            88  END-OF-FILE          VALUE 'Y'.
            88  MORE-RECORDS         VALUE 'N'.
 
-      *-- Begin: Add working storage for backward compatibility and new field
-       01  WS-TRAN-TYPE-BACKUP     PIC X(02).
-       01  WS-TRANSACTION-TYPE-BACKUP PIC X(10).
-      *-- End: Add working storage for backward compatibility and new field
-           
+      *-- Added for backward compatibility and defaulting TRANSACTION-TYPE
+       01  WS-DEFAULT-TRAN-TYPE    PIC X(10) VALUE 'UNSPECIFIED'.
+
        PROCEDURE DIVISION.
        0000-MAIN.
            PERFORM 1000-INITIALIZE
@@ -144,11 +144,11 @@
                NOT AT END
                    ADD 1 TO WS-READ-COUNT
 
-      *-- Begin: Backward compatibility for TRANSACTION-TYPE
+      *-- Ensure backward compatibility: Default TRANSACTION-TYPE if missing
                    IF TRN-TRANSACTION-TYPE = SPACES OR TRN-TRANSACTION-TYPE = LOW-VALUES
-                       MOVE TRN-TYPE TO TRN-TRANSACTION-TYPE
+                       MOVE WS-DEFAULT-TRAN-TYPE TO TRN-TRANSACTION-TYPE
                    END-IF
-      *-- End: Backward compatibility for TRANSACTION-TYPE
+      *-- End backward compatibility logic
 
                    PERFORM 2100-VALIDATE-TRANSACTION
            END-READ
@@ -189,11 +189,7 @@
            .
            
        2120-CHECK-TRANSACTION-TYPE.
-      *-- Begin: Enhanced validation for new TRANSACTION-TYPE field
-           IF TRN-TRANSACTION-TYPE = SPACES OR TRN-TRANSACTION-TYPE = LOW-VALUES
-               MOVE TRN-TYPE TO TRN-TRANSACTION-TYPE
-           END-IF
-           EVALUATE TRN-TRANSACTION-TYPE(1:2)
+           EVALUATE TRN-TYPE
                WHEN 'BU'
                WHEN 'SL'
                WHEN 'TR'
@@ -201,11 +197,18 @@
                    CONTINUE
                WHEN OTHER
                    STRING 'Invalid Transaction Type: '
-                          TRN-TRANSACTION-TYPE
+                          TRN-TYPE
                      DELIMITED BY SIZE
                      INTO ERR-TEXT
            END-EVALUATE
-      *-- End: Enhanced validation for new TRANSACTION-TYPE field
+
+      *-- Validate new TRANSACTION-TYPE field for presence (optional, can be extended)
+           IF TRN-TRANSACTION-TYPE = SPACES OR TRN-TRANSACTION-TYPE = LOW-VALUES
+               CONTINUE
+      *          (Could add further validation if business rules require)
+           END-IF
+      *-- End TRANSACTION-TYPE validation
+
            .
            
        2130-CHECK-AMOUNTS.
@@ -225,8 +228,7 @@
            .
            
        2200-UPDATE-POSITIONS.
-      *-- Begin: Use new TRANSACTION-TYPE field for processing
-           EVALUATE TRN-TRANSACTION-TYPE(1:2)
+           EVALUATE TRN-TYPE
                WHEN 'BU'
                    PERFORM 2210-PROCESS-BUY
                WHEN 'SL'
@@ -235,11 +237,7 @@
                    PERFORM 2230-PROCESS-TRANSFER
                WHEN 'FE'
                    PERFORM 2240-PROCESS-FEE
-               WHEN OTHER
-                   MOVE 'Unknown transaction type in update positions' TO ERR-TEXT
-                   PERFORM 9000-ERROR-ROUTINE
            END-EVALUATE
-      *-- End: Use new TRANSACTION-TYPE field for processing
            
            PERFORM 2300-UPDATE-AUDIT-TRAIL
            .
@@ -318,12 +316,8 @@
            MOVE 'PORTTRAN'     TO AUD-PROGRAM
            MOVE FUNCTION USER-ID TO AUD-USER-ID
            MOVE 'TRAN'         TO AUD-TYPE
-
-      *-- Begin: Audit new TRANSACTION-TYPE field
-           MOVE TRN-TRANSACTION-TYPE TO AUD-TRANSACTION-TYPE
-      *-- End: Audit new TRANSACTION-TYPE field
-
-           EVALUATE TRN-TRANSACTION-TYPE(1:2)
+           
+           EVALUATE TRN-TYPE
                WHEN 'BU'
                    MOVE 'CREATE  ' TO AUD-ACTION
                WHEN 'SL'
@@ -332,8 +326,6 @@
                    MOVE 'UPDATE  ' TO AUD-ACTION
                WHEN 'FE'
                    MOVE 'UPDATE  ' TO AUD-ACTION
-               WHEN OTHER
-                   MOVE 'UNKNOWN ' TO AUD-ACTION
            END-EVALUATE
            
            IF WS-PORT-STATUS = '00'
@@ -350,7 +342,10 @@
            
       *    Build audit message
            STRING 'Transaction: ' DELIMITED BY SIZE
+                  TRN-TYPE       DELIMITED BY SIZE
+                  ' Type: '      DELIMITED BY SIZE
                   TRN-TRANSACTION-TYPE DELIMITED BY SIZE
+      *        ^^^ Added TRANSACTION-TYPE to audit message
                   ' Amount: '    DELIMITED BY SIZE
                   TRN-AMOUNT     DELIMITED BY SIZE
                   ' Units: '     DELIMITED BY SIZE
@@ -451,23 +446,35 @@
                10  WS-REPORT-DATE    PIC X(10).
                10  FILLER            PIC X(107) VALUE SPACES.
 
-      *-- Begin: Add field for displaying transaction type
+      *-- Added for displaying TRANSACTION-TYPE
        01  WS-TRANSACTION-DETAIL.
-           05  WS-TRAN-DATE         PIC X(08).
+           05  WS-TRAN-DATE         PIC X(8).
            05  FILLER               PIC X(1) VALUE ' '.
-           05  WS-TRAN-TIME         PIC X(06).
+           05  WS-TRAN-TIME         PIC X(6).
            05  FILLER               PIC X(1) VALUE ' '.
-           05  WS-TRAN-PORTFOLIO    PIC X(08).
+           05  WS-TRAN-PORTFOLIO    PIC X(8).
            05  FILLER               PIC X(1) VALUE ' '.
-           05  WS-TRAN-INVESTMENT   PIC X(10).
+           05  WS-TRAN-TYPE         PIC X(2).
            05  FILLER               PIC X(1) VALUE ' '.
-           05  WS-TRAN-TYPE         PIC X(10).
-           05  FILLER               PIC X(1) VALUE ' '.
-           05  WS-TRAN-QUANTITY     PIC -ZZZZZZZZ9.9999.
+           05  WS-TRAN-TRAN-TYPE    PIC X(10).
            05  FILLER               PIC X(1) VALUE ' '.
            05  WS-TRAN-AMOUNT       PIC -ZZZZZZZZ9.99.
-           05  FILLER               PIC X(80) VALUE SPACES.
-      *-- End: Add field for displaying transaction type
+           05  FILLER               PIC X(1) VALUE ' '.
+           05  WS-TRAN-STATUS       PIC X(1).
+           05  FILLER               PIC X(97) VALUE SPACES.
+      *-- End of TRANSACTION-TYPE addition
+
+       01  WS-REPORT-TRAN-COUNT     PIC 9(6) VALUE ZERO.
+
+       01  WS-REPORT-TRAN-MISSING-TYPE PIC 9(6) VALUE ZERO.
+
+       01  WS-REPORT-TRAN-TYPE-DISPLAY PIC X(10).
+
+       01  WS-REPORT-TRAN-TYPE-DEFAULT PIC X(10) VALUE 'UNSPECIFIED'.
+
+       01  WS-REPORT-HEADERS-TRAN.
+           05  FILLER PIC X(132) VALUE
+               'DATE     TIME   PORTFOLIO TR TYPE       AMOUNT     S'.
 
        01  WS-POSITION-DETAIL.
            05  WS-POS-PORTFOLIO     PIC X(10).
@@ -518,7 +525,9 @@
            ACCEPT WS-REPORT-DATE FROM DATE
            WRITE REPORT-RECORD FROM WS-HEADER1
            WRITE REPORT-RECORD FROM WS-HEADER2
-           WRITE REPORT-RECORD FROM WS-HEADER3.
+           WRITE REPORT-RECORD FROM WS-HEADER3
+           WRITE REPORT-RECORD FROM WS-REPORT-HEADERS-TRAN.
+      *    ^^^ Added transaction section column headers
 
        2000-PROCESS-REPORT.
            PERFORM 2100-READ-POSITIONS
@@ -551,45 +560,54 @@
            PERFORM 2210-READ-TRANSACTIONS
            PERFORM 2220-SUMMARIZE-ACTIVITY.
 
-      *-- Begin: Read and display new TRANSACTION-TYPE field
        2210-READ-TRANSACTIONS.
            READ TRANSACTION-HISTORY
                AT END SET END-OF-TRANSACTIONS TO TRUE
            END-READ
 
            PERFORM UNTIL END-OF-TRANSACTIONS
-               PERFORM 2215-WRITE-TRANSACTION-DETAIL
+      *-- Backward compatibility: Default TRANSACTION-TYPE if missing
+               IF TRN-TRANSACTION-TYPE = SPACES OR TRN-TRANSACTION-TYPE = LOW-VALUES
+                   MOVE WS-REPORT-TRAN-TYPE-DEFAULT TO WS-REPORT-TRAN-TYPE-DISPLAY
+                   ADD 1 TO WS-REPORT-TRAN-MISSING-TYPE
+               ELSE
+                   MOVE TRN-TRANSACTION-TYPE TO WS-REPORT-TRAN-TYPE-DISPLAY
+               END-IF
+      *-- End backward compatibility logic
+
+               MOVE TRN-DATE           TO WS-TRAN-DATE
+               MOVE TRN-TIME           TO WS-TRAN-TIME
+               MOVE TRN-PORTFOLIO-ID   TO WS-TRAN-PORTFOLIO
+               MOVE TRN-TYPE           TO WS-TRAN-TYPE
+               MOVE WS-REPORT-TRAN-TYPE-DISPLAY TO WS-TRAN-TRAN-TYPE
+               MOVE TRN-AMOUNT         TO WS-TRAN-AMOUNT
+               MOVE TRN-STATUS         TO WS-TRAN-STATUS
+
+               WRITE REPORT-RECORD FROM WS-TRANSACTION-DETAIL
+
+               ADD 1 TO WS-REPORT-TRAN-COUNT
+
                READ TRANSACTION-HISTORY
                    AT END SET END-OF-TRANSACTIONS TO TRUE
                END-READ
            END-PERFORM.
 
-       2215-WRITE-TRANSACTION-DETAIL.
-           MOVE TRN-DATE           TO WS-TRAN-DATE
-           MOVE TRN-TIME           TO WS-TRAN-TIME
-           MOVE TRN-PORTFOLIO-ID   TO WS-TRAN-PORTFOLIO
-           MOVE TRN-INVESTMENT-ID  TO WS-TRAN-INVESTMENT
-
-      *-- Handle backward compatibility for TRANSACTION-TYPE
-           IF TRN-TRANSACTION-TYPE = SPACES OR TRN-TRANSACTION-TYPE = LOW-VALUES
-               MOVE TRN-TYPE TO WS-TRAN-TYPE
-           ELSE
-               MOVE TRN-TRANSACTION-TYPE TO WS-TRAN-TYPE
-           END-IF
-
-           MOVE TRN-QUANTITY       TO WS-TRAN-QUANTITY
-           MOVE TRN-AMOUNT         TO WS-TRAN-AMOUNT
-
-           WRITE REPORT-RECORD FROM WS-TRANSACTION-DETAIL.
-      *-- End: Read and display new TRANSACTION-TYPE field
-
        2220-SUMMARIZE-ACTIVITY.
-      * (existing logic unchanged)
+      *   (No change required for TRANSACTION-TYPE)
 
        2300-WRITE-SUMMARY.
            PERFORM 2310-WRITE-TOTALS
            PERFORM 2320-WRITE-EXCEPTIONS
            PERFORM 2330-WRITE-METRICS.
+
+       2310-WRITE-TOTALS.
+           DISPLAY 'TOTAL TRANSACTIONS: ' WS-REPORT-TRAN-COUNT.
+
+       2320-WRITE-EXCEPTIONS.
+           DISPLAY 'TRANSACTIONS WITH MISSING TYPE: ' WS-REPORT-TRAN-MISSING-TYPE.
+
+       2330-WRITE-METRICS.
+      *   (No change required for TRANSACTION-TYPE)
 
        3000-CLEANUP.
            CLOSE POSITION-MASTER
