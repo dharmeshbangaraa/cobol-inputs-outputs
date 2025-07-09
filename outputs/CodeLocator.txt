@@ -1,24 +1,35 @@
-Impact Analysis Report
-
-User Story: Add Transaction Type Field to Batch Processing and Reporting  
-- 4 impacted components identified  
-- Medium complexity change affecting transaction data structure, batch processing, and reporting chain
+# Impact Analysis Report: Add Transaction Type Field to Batch Processing and Reporting
 
 ---
 
-Ranked Impact List:
+## Summary
 
-| Program/Copybook         | Impact | Nature   | Affected Paragraphs/Sections       | Dependency Path                                   |
-|--------------------------|--------|----------|------------------------------------|---------------------------------------------------|
-| TRNREC.cpy               | High   | Direct   | Transaction record layout          | Shared by all transaction processing/reporting     |
-| PORTTRAN.cbl             | High   | Direct   | 2100-VALIDATE-TRANSACTION, 2120-CHECK-TRANSACTION-TYPE, 2200-UPDATE-POSITIONS, 2210-2240, 2300-UPDATE-AUDIT-TRAIL | Uses TRNREC.cpy, main transaction batch processor  |
-| RPTPOS00.cbl             | High   | Direct   | Transaction reporting, report output, transaction record handling | Uses TRNREC.cpy, main reporting program           |
-| Any program using TRNREC.cpy (e.g., AUDPROC, ERRPROC, other batch/reporting utilities) | Medium | Indirect | All paragraphs referencing transaction record      | Via copybook inclusion and data flow               |
+**User Story:**  
+Add Transaction Type field to transaction processing and reporting in COBOL portfolio system
+
+- **Goal:** Record and display the type of each transaction (e.g., BUY, SELL, DIVIDEND) in both processing and reporting programs for compliance and business insights.
+- **Scope:** Update transaction record layout (copybook), batch processing, and reporting programs. Ensure backward compatibility.
+- **Total Impacted Components:** 6 primary COBOL programs/copybooks (plus indirect batch control).
+- **Complexity:** Medium-High. Affects core data structure, multiple programs, and requires backward compatibility logic.
 
 ---
 
-JSON Metadata:
-```
+## Ranked Impact List
+
+| Program/Copybook    | Impact   | Nature   | Affected Paragraphs/Sections         | Dependency Path                        |
+|---------------------|----------|----------|--------------------------------------|----------------------------------------|
+| TRNREC.cpy          | High     | Direct   | N/A (data structure)                 | N/A                                    |
+| PORTTRAN.cbl        | High     | Direct   | 2100-VALIDATE-TRANSACTION, 2120-CHECK-TRANSACTION-TYPE, 2200-UPDATE-POSITIONS, 2300-UPDATE-AUDIT-TRAIL | [PORTTRAN.cbl]                         |
+| RPTPOS00.cbl        | High     | Direct   | 2200-PROCESS-TRANSACTIONS, 2110-FORMAT-POSITION | [RPTPOS00.cbl]                         |
+| UTLVAL00.cbl        | Medium   | Direct   | 2400-CHECK-FORMAT, 2420-CHECK-TRANSACTION-FORMAT | [UTLVAL00.cbl]                         |
+| TSTGEN00.cbl        | Medium   | Direct   | 2300-GEN-TRANSACTION, 2310-GEN-TRAN-DATA | [TSTGEN00.cbl]                         |
+| TSTVAL00.cbl        | Low      | Direct   | 2100-EXECUTE-TEST (if applicable)    | [TSTVAL00.cbl]                         |
+
+---
+
+## JSON Metadata
+
+```json
 {
   "impactAnalysis": {
     "userStory": "Add Transaction Type Field to Batch Processing and Reporting",
@@ -28,9 +39,9 @@ JSON Metadata:
         "impactScore": 1.0,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["Transaction record layout"],
-        "dependencyPath": ["TRNREC.cpy"],
-        "rationale": "Copybook defining the transaction record structure; adding TRANSACTION-TYPE field directly impacts all programs including this copybook."
+        "affectedParagraphs": [],
+        "dependencyPath": [],
+        "rationale": "Primary copybook for transaction record layout; all programs using transaction records depend on this."
       },
       {
         "programName": "PORTTRAN.cbl",
@@ -41,14 +52,10 @@ JSON Metadata:
           "2100-VALIDATE-TRANSACTION",
           "2120-CHECK-TRANSACTION-TYPE",
           "2200-UPDATE-POSITIONS",
-          "2210-PROCESS-BUY",
-          "2220-PROCESS-SELL",
-          "2230-PROCESS-TRANSFER",
-          "2240-PROCESS-FEE",
           "2300-UPDATE-AUDIT-TRAIL"
         ],
-        "dependencyPath": ["PORTTRAN.cbl", "TRNREC.cpy"],
-        "rationale": "Main batch transaction processing program; processes and validates transaction records, will need to read, store, and process the new TRANSACTION-TYPE field."
+        "dependencyPath": ["PORTTRAN.cbl"],
+        "rationale": "Main batch processing program for transactions; directly reads, validates, and processes transaction type."
       },
       {
         "programName": "RPTPOS00.cbl",
@@ -56,21 +63,46 @@ JSON Metadata:
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": [
-          "Transaction reporting",
-          "Report output",
-          "Transaction record handling"
+          "2200-PROCESS-TRANSACTIONS",
+          "2110-FORMAT-POSITION"
         ],
-        "dependencyPath": ["RPTPOS00.cbl", "TRNREC.cpy"],
-        "rationale": "Main reporting program; generates reports using transaction records, will need to read and display the new TRANSACTION-TYPE field."
+        "dependencyPath": ["RPTPOS00.cbl"],
+        "rationale": "Main reporting program; reads and displays transaction type in summary reports."
       },
       {
-        "programName": "Other programs using TRNREC.cpy (e.g., AUDPROC, ERRPROC, utilities)",
-        "impactScore": 0.6,
+        "programName": "UTLVAL00.cbl",
+        "impactScore": 0.7,
         "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["Any referencing transaction record"],
-        "dependencyPath": ["AUDPROC/ERRPROC/etc.", "TRNREC.cpy"],
-        "rationale": "Any utility or batch/reporting program that includes the transaction record copybook may require review for compatibility or enhancements to use the new field."
+        "impactType": "Direct",
+        "affectedParagraphs": [
+          "2400-CHECK-FORMAT",
+          "2420-CHECK-TRANSACTION-FORMAT"
+        ],
+        "dependencyPath": ["UTLVAL00.cbl"],
+        "rationale": "Utility program for transaction validation; validates transaction type field."
+      },
+      {
+        "programName": "TSTGEN00.cbl",
+        "impactScore": 0.7,
+        "impactLevel": "Medium",
+        "impactType": "Direct",
+        "affectedParagraphs": [
+          "2300-GEN-TRANSACTION",
+          "2310-GEN-TRAN-DATA"
+        ],
+        "dependencyPath": ["TSTGEN00.cbl"],
+        "rationale": "Test data generator; must generate both old and new transaction type fields for test cases."
+      },
+      {
+        "programName": "TSTVAL00.cbl",
+        "impactScore": 0.4,
+        "impactLevel": "Low",
+        "impactType": "Direct",
+        "affectedParagraphs": [
+          "2100-EXECUTE-TEST"
+        ],
+        "dependencyPath": ["TSTVAL00.cbl"],
+        "rationale": "Test validation program; may need updates for new transaction type field in test assertions."
       }
     ]
   }
@@ -79,40 +111,39 @@ JSON Metadata:
 
 ---
 
-Visualization:
+## Visualization
 
 ```mermaid
 graph TD
-    subgraph Copybook
-        TRNREC[TRNREC.cpy]
-    end
-    subgraph Batch Processing
-        PORTTRAN[PORTTRAN.cbl]
-    end
-    subgraph Reporting
-        RPTPOS[RPTPOS00.cbl]
-    end
-    subgraph Utilities
-        AUDPROC[AUDPROC/ERRPROC/Other]
-    end
+  TRNREC[TRNREC.cpy]:::high
+  PORTTRAN[PORTTRAN.cbl]:::high
+  RPTPOS00[RPTPOS00.cbl]:::high
+  UTLVAL00[UTLVAL00.cbl]:::medium
+  TSTGEN00[TSTGEN00.cbl]:::medium
+  TSTVAL00[TSTVAL00.cbl]:::low
 
-    TRNREC -- High Impact --> PORTTRAN
-    TRNREC -- High Impact --> RPTPOS
-    TRNREC -- Medium Impact --> AUDPROC
+  TRNREC --> PORTTRAN
+  TRNREC --> RPTPOS00
+  TRNREC --> UTLVAL00
+  TRNREC --> TSTGEN00
+  TRNREC --> TSTVAL00
 
-    style TRNREC fill:#ffcccc,stroke:#d33,stroke-width:2px
-    style PORTTRAN fill:#ffcccc,stroke:#d33,stroke-width:2px
-    style RPTPOS fill:#ffcccc,stroke:#d33,stroke-width:2px
-    style AUDPROC fill:#fff2cc,stroke:#e6b800,stroke-width:2px
+  classDef high fill:#ffcccc,stroke:#d33,stroke-width:2px;
+  classDef medium fill:#fff2cc,stroke:#e6b800,stroke-width:2px;
+  classDef low fill:#ccffcc,stroke:#3c3,stroke-width:2px;
+
+  class TRNREC,PORTTRAN,RPTPOS00 high;
+  class UTLVAL00,TSTGEN00 medium;
+  class TSTVAL00 low;
 ```
 
 ---
 
-Reasoning:
-- The copybook `TRNREC.cpy` is the canonical definition of the transaction record. Adding a new field here is a direct, high-impact change, as all programs including this copybook will see the new field.
-- `PORTTRAN.cbl` is the main batch transaction processor, directly reading, validating, and processing transaction records. It will require updates to handle the new field in all relevant paragraphs.
-- `RPTPOS00.cbl` is the main reporting program, generating reports from transaction records. It must be updated to read and display the new field.
-- Any other program or utility that includes `TRNREC.cpy` (such as audit or error processing utilities) may be indirectly impacted and should be reviewed for compatibility or enhancement opportunities.
-- The impact is ranked based on directness of dependency, criticality of the business function, and the likelihood of code changes required.
+**Reasoning:**  
+- **TRNREC.cpy** is the central copybook for transaction records and must be updated to add the new field.
+- **PORTTRAN.cbl** and **RPTPOS00.cbl** are the main batch processing and reporting programs, directly handling the transaction type.
+- **UTLVAL00.cbl**, **TSTGEN00.cbl**, and **TSTVAL00.cbl** are support/test programs that use the transaction record and must be updated for validation and test coverage.
+- Impact levels are based on proximity to the data structure, business criticality, and the likelihood of requiring code changes.
+- All identified programs use the transaction record copybook directly and are logically connected to the user story's requirements.
 
-This report provides a comprehensive, ranked analysis of COBOL components impacted by the user story, with detailed JSON metadata and a clear dependency visualization.
+---
