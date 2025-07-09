@@ -34,29 +34,30 @@ If the transaction type is missing for older records, the programs should handle
 
 ----------
 
-## Summary
+# Impact Analysis Report: Add TRANSACTION-TYPE Field to Batch Processing and Reporting
 
-**User Story:** Add Transaction Type Field to Batch Processing and Reporting  
-**Description:**  
-As a Portfolio operations analyst, I want to record and display the type of each transaction (e.g., BUY, SELL, DIVIDEND) in both processing and reporting programs so that I can track, analyze, and report on different types of portfolio transactions for compliance and business insights.
+## 1. Summary
 
-- **Total impacted components:** 3 (1 copybook, 2 programs)
-- **High-level assessment:**  
-  This is a medium-complexity change. It requires a data structure update in a shared copybook and coordinated changes in both batch transaction processing and reporting programs. The impact is direct and critical, as both business logic and reporting depend on the transaction type. Indirect impacts may occur in any downstream consumers of the transaction record, but only directly related programs are included here.
+This analysis addresses the user story to add a new `TRANSACTION-TYPE` field (PIC X(10)) to the transaction record layout, update both batch processing and reporting COBOL programs, and ensure backward compatibility. The COBOL-Legacy-Benchmark-Suite codebase was reviewed for all impacted programs, copybooks, and dependencies. The analysis identifies direct and indirect impacts, affected paragraphs/sections, and provides a ranked list by proximity, complexity, and business criticality. A color-coded Mermaid dependency graph and JSON metadata are included.
 
 ---
 
-## Ranked Impact List
+## 2. Ranked Impact List
 
-| Program/Copybook      | Impact   | Nature   | Affected Paragraphs/Sections           | Dependency Path                    |
-|-----------------------|----------|----------|----------------------------------------|------------------------------------|
-| TRNREC.cpy            | High     | Direct   | TRANSACTION-RECORD, TRN-TYPE           | [TRNREC.cpy]                       |
-| PORTTRAN.cbl          | High     | Direct   | 2100-VALIDATE-TRANSACTION, 2120-CHECK-TRANSACTION-TYPE, 2200-UPDATE-POSITIONS, 2210-PROCESS-BUY, 2220-PROCESS-SELL, 2230-PROCESS-TRANSFER, 2240-PROCESS-FEE, 2300-UPDATE-AUDIT-TRAIL | [PORTTRAN.cbl → TRNREC.cpy]        |
-| RPTPOS00.cbl          | High     | Direct   | 2000-PROCESS-REPORT, 2100-TRANSACTION-DETAIL, 2200-WRITE-TRANSACTION-DETAIL | [RPTPOS00.cbl → TRNREC.cpy]        |
+| Program/Copybook                       | Impact     | Nature    | Affected Paragraphs/Sections           | Dependency Path(s)                                                                 | Rationale                                                                                   |
+|----------------------------------------|------------|-----------|----------------------------------------|------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
+| src/copybook/common/TRNREC.cpy         | High       | Direct    | Entire Record Layout                   | Used by TRNVAL00, POSUPD00, RPTPOS00, UTLVAL00, TSTGEN00, TSTVAL00                  | Central transaction record; must add field and ensure all consumers are compatible           |
+| src/programs/batch/TRNVAL00.cbl        | High       | Direct    | File Section, 2100-VALIDATE-TRANSACTION, 2120-CHECK-TRANSACTION-TYPE | Uses TRNREC.cpy, processes transactions                                            | Core batch transaction validation; must accept and validate new field                        |
+| src/programs/batch/POSUPDT.cbl         | High       | Direct    | File Section, Transaction Processing   | Uses TRNREC.cpy, updates positions                                                 | Updates positions based on transaction type; must process new field                          |
+| src/programs/batch/RPTPOS00.cbl        | High       | Direct    | File Section, 2200-PROCESS-TRANSACTIONS, Report Formatting | Uses TRNREC.cpy, generates report                                                  | Must read and display new field in summary report                                            |
+| src/programs/utility/UTLVAL00.cbl      | Medium     | Indirect  | File Section, 2200-CHECK-INTEGRITY     | Uses TRNREC.cpy for validation                                                     | Data validation utility; must validate new field for integrity and format                    |
+| src/programs/test/TSTGEN00.cbl         | Medium     | Indirect  | File Section, 2300-GEN-TRANSACTION     | Uses TRNREC.cpy to generate test data                                              | Test data generator; must populate new field for test scenarios                              |
+| src/programs/test/TSTVAL00.cbl         | Medium     | Indirect  | File Section, 2100-EXECUTE-TEST        | Uses TRNREC.cpy to validate test results                                           | Test validation suite; must check new field in test validation                               |
+| src/copybook/common/COMMON.cpy         | Low        | Indirect  | TRANSACTION-TYPES                      | Provides constants for transaction types                                           | May need to update valid values or constants for extended type field                         |
 
 ---
 
-## JSON Metadata
+## 3. JSON Metadata
 
 ```json
 {
@@ -64,44 +65,103 @@ As a Portfolio operations analyst, I want to record and display the type of each
     "userStory": "Add Transaction Type Field to Batch Processing and Reporting",
     "impactedComponents": [
       {
-        "programName": "TRNREC.cpy",
-        "impactScore": 1.0,
+        "programName": "src/copybook/common/TRNREC.cpy",
+        "impactScore": 0.99,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["TRANSACTION-RECORD", "TRN-TYPE"],
-        "dependencyPath": ["TRNREC.cpy"],
-        "rationale": "The transaction record copybook is the canonical definition of transaction data. Adding TRANSACTION-TYPE here is required for both processing and reporting."
+        "affectedParagraphs": ["Entire Record Layout"],
+        "dependencyPath": [
+          "TRNVAL00.cbl -> TRNREC.cpy",
+          "POSUPDT.cbl -> TRNREC.cpy",
+          "RPTPOS00.cbl -> TRNREC.cpy",
+          "UTLVAL00.cbl -> TRNREC.cpy",
+          "TSTGEN00.cbl -> TRNREC.cpy",
+          "TSTVAL00.cbl -> TRNREC.cpy"
+        ],
+        "rationale": "Central transaction record; all programs using this copybook must be updated for the new field and backward compatibility."
       },
       {
-        "programName": "PORTTRAN.cbl",
-        "impactScore": 0.98,
+        "programName": "src/programs/batch/TRNVAL00.cbl",
+        "impactScore": 0.97,
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": [
+          "File Section",
           "2100-VALIDATE-TRANSACTION",
-          "2120-CHECK-TRANSACTION-TYPE",
-          "2200-UPDATE-POSITIONS",
-          "2210-PROCESS-BUY",
-          "2220-PROCESS-SELL",
-          "2230-PROCESS-TRANSFER",
-          "2240-PROCESS-FEE",
-          "2300-UPDATE-AUDIT-TRAIL"
+          "2120-CHECK-TRANSACTION-TYPE"
         ],
-        "dependencyPath": ["PORTTRAN.cbl", "TRNREC.cpy"],
-        "rationale": "This is the main batch transaction processing program. It reads and writes transaction records, validates TRN-TYPE, and routes business logic based on transaction type."
+        "dependencyPath": ["TRNVAL00.cbl -> TRNREC.cpy"],
+        "rationale": "Validates and processes transactions; must accept, store, and process the new field."
       },
       {
-        "programName": "RPTPOS00.cbl",
+        "programName": "src/programs/batch/POSUPDT.cbl",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": [
-          "2000-PROCESS-REPORT",
-          "2100-TRANSACTION-DETAIL",
-          "2200-WRITE-TRANSACTION-DETAIL"
+          "File Section",
+          "Transaction Processing"
         ],
-        "dependencyPath": ["RPTPOS00.cbl", "TRNREC.cpy"],
-        "rationale": "This reporting program reads transaction records and generates reports. It must be updated to display the new TRANSACTION-TYPE field and handle missing values gracefully."
+        "dependencyPath": ["POSUPDT.cbl -> TRNREC.cpy"],
+        "rationale": "Updates positions based on transaction type; must process new field."
+      },
+      {
+        "programName": "src/programs/batch/RPTPOS00.cbl",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [
+          "File Section",
+          "2200-PROCESS-TRANSACTIONS",
+          "Report Formatting"
+        ],
+        "dependencyPath": ["RPTPOS00.cbl -> TRNREC.cpy"],
+        "rationale": "Reads and displays transaction type in summary report."
+      },
+      {
+        "programName": "src/programs/utility/UTLVAL00.cbl",
+        "impactScore": 0.80,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": [
+          "File Section",
+          "2200-CHECK-INTEGRITY"
+        ],
+        "dependencyPath": ["UTLVAL00.cbl -> TRNREC.cpy"],
+        "rationale": "Performs data validation; must validate new field for integrity and format."
+      },
+      {
+        "programName": "src/programs/test/TSTGEN00.cbl",
+        "impactScore": 0.75,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": [
+          "File Section",
+          "2300-GEN-TRANSACTION"
+        ],
+        "dependencyPath": ["TSTGEN00.cbl -> TRNREC.cpy"],
+        "rationale": "Generates test data; must populate new field for test scenarios."
+      },
+      {
+        "programName": "src/programs/test/TSTVAL00.cbl",
+        "impactScore": 0.75,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": [
+          "File Section",
+          "2100-EXECUTE-TEST"
+        ],
+        "dependencyPath": ["TSTVAL00.cbl -> TRNREC.cpy"],
+        "rationale": "Validates test results; must check new field in test validation."
+      },
+      {
+        "programName": "src/copybook/common/COMMON.cpy",
+        "impactScore": 0.50,
+        "impactLevel": "Low",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["TRANSACTION-TYPES"],
+        "dependencyPath": ["TRNREC.cpy -> COMMON.cpy"],
+        "rationale": "Defines valid transaction types; may need to update for new/extended types."
       }
     ]
   }
@@ -110,26 +170,55 @@ As a Portfolio operations analyst, I want to record and display the type of each
 
 ---
 
-## Visualization
+## 4. Visualization
 
 ```mermaid
 graph TD
-    TRNREC[TRNREC.cpy<br/>(Transaction Record Copybook)]:::high
-    PORTTRAN[PORTTRAN.cbl<br/>(Batch Processing)]:::high
-    RPTPOS00[RPTPOS00.cbl<br/>(Reporting)]:::high
+    subgraph Copybooks
+        TRNREC[TRNREC.cpy]:::high
+        COMMON[COMMON.cpy]:::low
+    end
+    subgraph Batch_Programs
+        TRNVAL[TRNVAL00.cbl]:::high
+        POSUPD[POSUPDT.cbl]:::high
+        RPTPOS[RPTPOS00.cbl]:::high
+    end
+    subgraph Utility_Test
+        UTLVAL[UTLVAL00.cbl]:::medium
+        TSTGEN[TSTGEN00.cbl]:::medium
+        TSTVAL[TSTVAL00.cbl]:::medium
+    end
 
-    PORTTRAN --> TRNREC
-    RPTPOS00 --> TRNREC
+    TRNVAL --> TRNREC
+    POSUPD --> TRNREC
+    RPTPOS --> TRNREC
+    UTLVAL --> TRNREC
+    TSTGEN --> TRNREC
+    TSTVAL --> TRNREC
+    TRNREC --> COMMON
 
     classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
+    classDef medium fill:#fff2cc,stroke:#b8860b,stroke-width:2px;
+    classDef low fill:#e0e0e0,stroke:#666,stroke-width:1px;
+
+    class TRNREC,TRNVAL,POSUPD,RPTPOS high;
+    class UTLVAL,TSTGEN,TSTVAL medium;
+    class COMMON low;
 ```
 
 ---
 
-**Reasoning:**  
-- `TRNREC.cpy` is the shared copybook that defines the transaction record structure. All changes to the transaction record must be made here.
-- `PORTTRAN.cbl` is the batch processing program that reads, validates, and processes transactions. It uses `TRNREC.cpy` and contains logic that depends on transaction type.
-- `RPTPOS00.cbl` is the reporting program that generates transaction reports. It also uses `TRNREC.cpy` and must be updated to display the new field and handle missing values.
-- No other programs or copybooks are directly or indirectly impacted based on the repository structure and dependency map.
+### Detailed Rationale for Each Impacted Component
 
-**Note:** If additional programs or utilities consume the transaction record copybook or process transaction data, they should be reviewed for impact, but only the above components are directly and logically connected to the user story as described.
+**TRNREC.cpy:** Central transaction record copybook; all programs using this must be updated for the new field and backward compatibility.  
+**TRNVAL00.cbl:** Validates and processes transactions; must accept, store, and process the new field.  
+**POSUPDT.cbl:** Updates positions based on transaction type; must process new field.  
+**RPTPOS00.cbl:** Reads and displays transaction type in summary report.  
+**UTLVAL00.cbl:** Performs data validation; must validate new field for integrity and format.  
+**TSTGEN00.cbl:** Generates test data; must populate new field for test scenarios.  
+**TSTVAL00.cbl:** Validates test results; must check new field in test validation.  
+**COMMON.cpy:** Defines valid transaction types; may need to update for new/extended types.
+
+---
+
+*Prepared by: COBOL Legacy System Analyst*
