@@ -34,12 +34,214 @@ If the transaction type is missing for older records, the programs should handle
 
 ----------
 
-# Impact Analysis Report: Add Transaction Type Field to Batch Processing and Reporting
+# COBOL-Legacy-Benchmark-Suite: Impact Analysis for "Add Transaction Type Field to Batch Processing and Reporting"
 
 ---
 
-## Summary
+## 1. Summary
 
 **User Story:**  
-Add Transaction Type Field to Batch Processing and Reporting  
-_As a Portfolio operations analyst
+_Add Transaction Type Field to Batch Processing and Reporting. As a Portfolio operations analyst, I want to record and display the type of each transaction (e.g., BUY, SELL, DIVIDEND) in both processing and reporting programs so that I can track, analyze, and report on different types of portfolio transactions for compliance and business insights._
+
+**Acceptance Criteria:**
+1. Add a new field, TRANSACTION-TYPE (PIC X(10)), to the transaction record layout in the relevant copybook used by both the batch processing and reporting programs.
+2. Update the transaction processing COBOL program (e.g., TRNVAL00.cbl or similar) to accept, store, and process the new transaction type field when reading or writing transaction records.
+3. Update the transaction report COBOL program (e.g., RPTPOS00.cbl or similar) to read and display the transaction type in the generated summary report.
+4. Ensure backward compatibility for missing transaction type values.
+
+**Analysis Approach:**  
+- Parsed the user story and codebase structure.
+- Identified business functions, data elements, and COBOL components related to transaction processing and reporting.
+- Mapped direct and indirect dependencies using codebase copybooks, programs, and JCL.
+- Filtered out unrelated components.
+- Ranked impacted components by proximity, complexity, and criticality.
+
+---
+
+## 2. Ranked Impact List
+
+| Program/Component                                 | Impact | Nature   | Affected Paragraphs/Sections        | Dependency Path                                  |
+|---------------------------------------------------|--------|----------|-------------------------------------|--------------------------------------------------|
+| src/copybook/common/TRNREC.cpy                    | High   | Direct   | 01-TRANSACTION-RECORD, TRN-TYPE     | Used by all transaction processing/reporting      |
+| src/programs/portfolio/PORTTRAN.cbl               | High   | Direct   | READ-TRANSACTION, WRITE-TRANSACTION | Uses TRNREC.cpy for transaction processing        |
+| src/programs/batch/RPTPOS00.cbl                   | High   | Direct   | REPORT-TRANSACTION, DISPLAY-TYPE    | Uses TRNREC.cpy for reporting                    |
+| src/copybook/common/COMMON.cpy                    | Medium | Indirect | TRANSACTION-TYPE-VALUES             | May define constants for transaction types        |
+| src/programs/test/TSTGEN00.cbl                    | Medium | Indirect | GEN-TRANSACTION-RECORD              | Generates test transactions using TRNREC.cpy      |
+| src/programs/test/TSTVAL00.cbl                    | Medium | Indirect | VALIDATE-TRANSACTION-RECORD         | Validates test transactions                      |
+| src/jcl/batch/RPTPOS.jcl                          | Low    | Indirect | DD-STATEMENTS                       | Runs RPTPOS00.cbl, may need record length update  |
+| src/jcl/test/TSTGEN.jcl, src/jcl/test/TSTVAL.jcl  | Low    | Indirect | DD-STATEMENTS                       | Run test programs, may need record length update  |
+| src/copybook/common/ERRHAND.cpy, RTNCODE.cpy      | Low    | Indirect | ERROR-HANDLING, RETURN-CODES        | May need update for new field error handling      |
+
+---
+
+## 3. JSON Metadata
+
+```json
+{
+  "impactAnalysis": {
+    "userStory": "Add Transaction Type Field to Batch Processing and Reporting. As a Portfolio operations analyst, I want to record and display the type of each transaction (e.g., BUY, SELL, DIVIDEND) in both processing and reporting programs so that I can track, analyze, and report on different types of portfolio transactions for compliance and business insights.",
+    "impactedComponents": [
+      {
+        "programName": "src/copybook/common/TRNREC.cpy",
+        "impactScore": 0.98,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["01-TRANSACTION-RECORD", "TRN-TYPE"],
+        "dependencyPath": ["TRNREC.cpy"],
+        "rationale": "Defines the transaction record layout; all programs using transaction records will be affected by this field addition/expansion."
+      },
+      {
+        "programName": "src/programs/portfolio/PORTTRAN.cbl",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["READ-TRANSACTION", "WRITE-TRANSACTION"],
+        "dependencyPath": ["PORTTRAN.cbl", "TRNREC.cpy"],
+        "rationale": "Main batch transaction processor; must read, write, and process the new transaction type field."
+      },
+      {
+        "programName": "src/programs/batch/RPTPOS00.cbl",
+        "impactScore": 0.93,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["REPORT-TRANSACTION", "DISPLAY-TYPE"],
+        "dependencyPath": ["RPTPOS00.cbl", "TRNREC.cpy"],
+        "rationale": "Reporting program; must read and display the new transaction type field in reports."
+      },
+      {
+        "programName": "src/copybook/common/COMMON.cpy",
+        "impactScore": 0.65,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["TRANSACTION-TYPE-VALUES"],
+        "dependencyPath": ["COMMON.cpy"],
+        "rationale": "Defines transaction type constants; may require update for new types or expanded field."
+      },
+      {
+        "programName": "src/programs/test/TSTGEN00.cbl",
+        "impactScore": 0.60,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["GEN-TRANSACTION-RECORD"],
+        "dependencyPath": ["TSTGEN00.cbl", "TRNREC.cpy"],
+        "rationale": "Test data generator; must generate new field for test coverage."
+      },
+      {
+        "programName": "src/programs/test/TSTVAL00.cbl",
+        "impactScore": 0.60,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["VALIDATE-TRANSACTION-RECORD"],
+        "dependencyPath": ["TSTVAL00.cbl", "TRNREC.cpy"],
+        "rationale": "Test validation; must check new field in test scenarios."
+      },
+      {
+        "programName": "src/jcl/batch/RPTPOS.jcl",
+        "impactScore": 0.35,
+        "impactLevel": "Low",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["DD-STATEMENTS"],
+        "dependencyPath": ["RPTPOS.jcl", "RPTPOS00.cbl"],
+        "rationale": "Runs report; may need update if record length changes."
+      },
+      {
+        "programName": "src/jcl/test/TSTGEN.jcl",
+        "impactScore": 0.30,
+        "impactLevel": "Low",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["DD-STATEMENTS"],
+        "dependencyPath": ["TSTGEN.jcl", "TSTGEN00.cbl"],
+        "rationale": "Test job; may need update for new field."
+      },
+      {
+        "programName": "src/jcl/test/TSTVAL.jcl",
+        "impactScore": 0.30,
+        "impactLevel": "Low",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["DD-STATEMENTS"],
+        "dependencyPath": ["TSTVAL.jcl", "TSTVAL00.cbl"],
+        "rationale": "Test job; may need update for new field."
+      },
+      {
+        "programName": "src/copybook/common/ERRHAND.cpy",
+        "impactScore": 0.20,
+        "impactLevel": "Low",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["ERROR-HANDLING"],
+        "dependencyPath": ["ERRHAND.cpy"],
+        "rationale": "Error handling; ensure proper error messages for new field."
+      },
+      {
+        "programName": "src/copybook/common/RTNCODE.cpy",
+        "impactScore": 0.20,
+        "impactLevel": "Low",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["RETURN-CODES"],
+        "dependencyPath": ["RTNCODE.cpy"],
+        "rationale": "Return code handling; ensure proper handling for backward compatibility."
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 4. Visualization
+
+```mermaid
+graph TD
+    subgraph "Copybooks"
+        TRNREC["TRNREC.cpy (Transaction Record)"]:::high
+        COMMON["COMMON.cpy (Constants)"]:::medium
+        ERRHAND["ERRHAND.cpy (Error Handling)"]:::low
+        RTNCODE["RTNCODE.cpy (Return Codes)"]:::low
+    end
+
+    subgraph "Batch Programs"
+        PORTTRAN["PORTTRAN.cbl (Transaction Processing)"]:::high
+        RPTPOS["RPTPOS00.cbl (Position Report)"]:::high
+    end
+
+    subgraph "Test Programs"
+        TSTGEN["TSTGEN00.cbl (Test Data Generator)"]:::medium
+        TSTVAL["TSTVAL00.cbl (Test Validator)"]:::medium
+    end
+
+    subgraph "JCL"
+        RPTPOSJCL["RPTPOS.jcl"]:::low
+        TSTGENJCL["TSTGEN.jcl"]:::low
+        TSTVALJCL["TSTVAL.jcl"]:::low
+    end
+
+    TRNREC --> PORTTRAN
+    TRNREC --> RPTPOS
+    TRNREC --> TSTGEN
+    TRNREC --> TSTVAL
+    COMMON --> PORTTRAN
+    COMMON --> RPTPOS
+    COMMON --> TSTGEN
+    COMMON --> TSTVAL
+    ERRHAND --> PORTTRAN
+    ERRHAND --> RPTPOS
+    ERRHAND --> TSTGEN
+    ERRHAND --> TSTVAL
+    RTNCODE --> PORTTRAN
+    RTNCODE --> RPTPOS
+    RTNCODE --> TSTGEN
+    RTNCODE --> TSTVAL
+    PORTTRAN --> RPTPOS
+    PORTTRAN --> TSTGEN
+    PORTTRAN --> TSTVAL
+    RPTPOS --> RPTPOSJCL
+    TSTGEN --> TSTGENJCL
+    TSTVAL --> TSTVALJCL
+
+    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
+    classDef medium fill:#fff2cc,stroke:#b8860b,stroke-width:2px;
+    classDef low fill:#e6f7ff,stroke:#4682b4,stroke-width:2px;
+```
+
+---
+
+**This analysis provides a comprehensive, ranked impact assessment for the requested feature, ensuring all relevant COBOL components and dependencies are identified for a robust and compliant implementation.**
