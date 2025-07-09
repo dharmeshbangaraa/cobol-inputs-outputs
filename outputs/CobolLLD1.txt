@@ -1,5 +1,12 @@
-There is currently no user story or analysis report provided in your input that outlines the required changes to be made to the COBOL application in the repository https://github.com/sentientsergio/COBOL-Legacy-Benchmark-Suite. 
+Hello,
 
-To generate a comprehensive technical document and Low-Level Design (LLD) that includes both the existing logic and the proposed changes, I need the specific user story or analysis report describing the required enhancement or modification. 
+To proceed with the comprehensive technical documentation and Low-Level Design (LLD) for the COBOL application at [https://github.com/sentientsergio/COBOL-Legacy-Benchmark-Suite](https://github.com/sentientsergio/COBOL-Legacy-Benchmark-Suite), I need the specific user story or analysis report that outlines the required enhancements or modifications. This information is crucial for:
 
-**Please provide the user story or analysis report for the required changes.** Once you provide this, I will deliver a complete markdown document as per your instructions, including detailed explanations, diagrams in mermaid format, structured diffs, and all required sections.
+- Identifying the impacted modules and code sections
+- Determining insertion points for new logic or changes
+- Preparing accurate structured diffs
+- Ensuring the LLD aligns with the business and technical requirements
+
+Could you please provide the detailed user story, business requirements, or analysis report describing the changes to be made? Once I have this, I can accurately document the impacted areas and proceed with the LLD as required.
+
+Thank you!
