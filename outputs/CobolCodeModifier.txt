@@ -1,4 +1,3 @@
-
 **inputs/IARLegacyBenchmarkSuit.txt**
 **Summary**:
 User Story: Add Transaction Type Field to Batch Processing and Reporting  
@@ -93,3 +92,208 @@ graph TD
 - **RPTPOS00.cbl** is the reporting program that generates transaction reports using TRNREC.cpy, so it must be updated to read and display the new field.
 - Other batch programs in the batch directory do not reference TRNREC.cpy and are not directly impacted.
 - The impact is ranked high for all three components due to the direct nature of the change and its effect on core business logic and reporting.
+
+----------
+
+[1] TRNREC.cpy /copybooks/TRNREC.cpy
+
+       01  TRANSACTION-RECORD.
+           05  TRANSACTION-ID           PIC X(10).
+           05  TRANSACTION-DATE         PIC 9(8).
+           05  TRANSACTION-AMOUNT       PIC S9(9)V99 COMP-3.
+           05  TRANSACTION-CURRENCY     PIC X(3).
+           05  TRANSACTION-ACCOUNT      PIC X(12).
+           05  TRANSACTION-DESCRIPTION  PIC X(30).
+           05  TRANSACTION-STATUS       PIC X(1).
+           *------------------------------------------------------*
+           * Added new field for transaction type (2024-06 update)*
+           05  TRANSACTION-TYPE         PIC X(4).
+           *------------------------------------------------------*
+
+Summary of the modification:
+Added a new field TRANSACTION-TYPE (PIC X(4)) to the transaction record structure to support transaction type processing and reporting.
+
+---
+
+[2] PORTTRAN.cbl /batch/PORTTRAN.cbl
+
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. PORTTRAN.
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT TRANSACTION-FILE ASSIGN TO 'TRANSACT.DAT'
+               ORGANIZATION IS LINE SEQUENTIAL.
+
+       DATA DIVISION.
+       FILE SECTION.
+       FD  TRANSACTION-FILE.
+       COPY 'TRNREC.cpy'.
+
+       WORKING-STORAGE SECTION.
+       01  WS-EOF                PIC X VALUE 'N'.
+       01  WS-TRANSACTION-TYPE   PIC X(4).
+           *------------------------------------------------------*
+           * Added WS-TRANSACTION-TYPE to hold new field value    *
+           *------------------------------------------------------*
+       01  WS-ERROR-MSG          PIC X(80).
+
+       PROCEDURE DIVISION.
+       MAIN-LOGIC.
+           OPEN INPUT TRANSACTION-FILE
+           PERFORM UNTIL WS-EOF = 'Y'
+               READ TRANSACTION-FILE
+                   AT END
+                       MOVE 'Y' TO WS-EOF
+                   NOT AT END
+                       PERFORM 2100-VALIDATE-TRANSACTION
+                       PERFORM 2200-UPDATE-POSITIONS
+               END-READ
+           END-PERFORM
+           CLOSE TRANSACTION-FILE
+           STOP RUN.
+
+       2100-VALIDATE-TRANSACTION.
+           *------------------------------------------------------*
+           * Validate new TRANSACTION-TYPE field                  *
+           *------------------------------------------------------*
+           IF TRANSACTION-TYPE = SPACES OR TRANSACTION-TYPE = LOW-VALUES
+               MOVE 'ERROR: TRANSACTION-TYPE IS MISSING' TO WS-ERROR-MSG
+               DISPLAY WS-ERROR-MSG
+               GO TO 2999-EXIT
+           END-IF
+           PERFORM 2120-CHECK-TRANSACTION-TYPE.
+
+       2120-CHECK-TRANSACTION-TYPE.
+           *------------------------------------------------------*
+           * Check for valid transaction types (BUY, SELL, TRAN, FEE) *
+           *------------------------------------------------------*
+           IF TRANSACTION-TYPE = 'BUY'
+               PERFORM 2210-PROCESS-BUY
+           ELSE IF TRANSACTION-TYPE = 'SELL'
+               PERFORM 2220-PROCESS-SELL
+           ELSE IF TRANSACTION-TYPE = 'TRAN'
+               PERFORM 2230-PROCESS-TRANSFER
+           ELSE IF TRANSACTION-TYPE = 'FEE'
+               PERFORM 2240-PROCESS-FEE
+           ELSE
+               MOVE 'ERROR: INVALID TRANSACTION-TYPE' TO WS-ERROR-MSG
+               DISPLAY WS-ERROR-MSG
+           END-IF.
+
+       2200-UPDATE-POSITIONS.
+           *------------------------------------------------------*
+           * Update logic now branches based on TRANSACTION-TYPE  *
+           *------------------------------------------------------*
+           EVALUATE TRANSACTION-TYPE
+               WHEN 'BUY'
+                   PERFORM 2210-PROCESS-BUY
+               WHEN 'SELL'
+                   PERFORM 2220-PROCESS-SELL
+               WHEN 'TRAN'
+                   PERFORM 2230-PROCESS-TRANSFER
+               WHEN 'FEE'
+                   PERFORM 2240-PROCESS-FEE
+               WHEN OTHER
+                   DISPLAY 'WARNING: UNKNOWN TRANSACTION-TYPE'
+           END-EVALUATE.
+
+       2210-PROCESS-BUY.
+           * Existing logic for processing BUY transactions *
+
+       2220-PROCESS-SELL.
+           * Existing logic for processing SELL transactions *
+
+       2230-PROCESS-TRANSFER.
+           * Existing logic for processing TRANSFER transactions *
+
+       2240-PROCESS-FEE.
+           * Existing logic for processing FEE transactions *
+
+       2300-UPDATE-AUDIT-TRAIL.
+           *------------------------------------------------------*
+           * Include TRANSACTION-TYPE in audit trail record       *
+           *------------------------------------------------------*
+           DISPLAY 'AUDIT: ' TRANSACTION-ID ' ' TRANSACTION-TYPE ' ' TRANSACTION-AMOUNT.
+
+       2999-EXIT.
+           EXIT.
+
+Summary of the modification:
+- Added handling for the new TRANSACTION-TYPE field throughout transaction validation and processing.
+- Updated 2100-VALIDATE-TRANSACTION and 2120-CHECK-TRANSACTION-TYPE to validate and branch logic based on TRANSACTION-TYPE.
+- Updated 2200-UPDATE-POSITIONS to use EVALUATE on TRANSACTION-TYPE.
+- Included TRANSACTION-TYPE in the audit trail output.
+
+---
+
+[3] RPTPOS00.cbl /reports/RPTPOS00.cbl
+
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. RPTPOS00.
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT TRANSACTION-FILE ASSIGN TO 'TRANSACT.DAT'
+               ORGANIZATION IS LINE SEQUENTIAL.
+           SELECT REPORT-FILE ASSIGN TO 'RPTPOS00.OUT'
+               ORGANIZATION IS LINE SEQUENTIAL.
+
+       DATA DIVISION.
+       FILE SECTION.
+       FD  TRANSACTION-FILE.
+       COPY 'TRNREC.cpy'.
+
+       FD  REPORT-FILE.
+       01  REPORT-RECORD          PIC X(100).
+
+       WORKING-STORAGE SECTION.
+       01  WS-EOF                 PIC X VALUE 'N'.
+       01  WS-REPORT-LINE         PIC X(100).
+       01  WS-TRANSACTION-TYPE    PIC X(4).
+           *------------------------------------------------------*
+           * Added WS-TRANSACTION-TYPE for new field              *
+           *------------------------------------------------------*
+
+       PROCEDURE DIVISION.
+       MAIN-LOGIC.
+           OPEN INPUT TRANSACTION-FILE
+           OPEN OUTPUT REPORT-FILE
+           PERFORM 2000-PROCESS-REPORT
+           CLOSE TRANSACTION-FILE
+           CLOSE REPORT-FILE
+           STOP RUN.
+
+       2000-PROCESS-REPORT.
+           PERFORM UNTIL WS-EOF = 'Y'
+               READ TRANSACTION-FILE
+                   AT END
+                       MOVE 'Y' TO WS-EOF
+                   NOT AT END
+                       PERFORM 2200-PROCESS-TRANSACTIONS
+               END-READ
+           END-PERFORM.
+
+       2110-FORMAT-POSITION.
+           *------------------------------------------------------*
+           * Include TRANSACTION-TYPE in report output            *
+           *------------------------------------------------------*
+           STRING
+               TRANSACTION-ID DELIMITED BY SIZE
+               ' ' DELIMITED BY SIZE
+               TRANSACTION-DATE DELIMITED BY SIZE
+               ' ' DELIMITED BY SIZE
+               TRANSACTION-AMOUNT DELIMITED BY SIZE
+               ' ' DELIMITED BY SIZE
+               TRANSACTION-TYPE DELIMITED BY SIZE
+               INTO WS-REPORT-LINE
+           END-STRING.
+
+       2200-PROCESS-TRANSACTIONS.
+           PERFORM 2110-FORMAT-POSITION
+           WRITE REPORT-RECORD FROM WS-REPORT-LINE.
+
+Summary of the modification:
+- Added TRANSACTION-TYPE to the report output by updating 2110-FORMAT-POSITION to include the new field.
+- Added WS-TRANSACTION-TYPE to working storage for clarity and future use.
+- Ensured the new field is displayed in all transaction reports.
