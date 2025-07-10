@@ -1,35 +1,34 @@
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document details the technical changes and low-level design for the enhancement of the COBOL-based transaction processing system. The primary objective is to introduce a new `CHANNEL-CODE` field to transaction files and ensure its integration across all related batch, reporting, validation, and test data components. This addition enables channel identification for improved batch processing and reporting capabilities.
+This document details the technical changes and low-level design (LLD) for the enhancement of the COBOL-based transaction processing system to support a new `CHANNEL-CODE` field. The purpose is to enable channel identification in batch processing and reporting by adding a `CHANNEL-CODE` field (`PIC X(04)`) to transaction files and all related processing, reporting, and validation logic.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The application suite processes transaction records across multiple stages, including data ingestion, validation, reporting, and auditing. Transaction data is defined in shared copybooks and accessed by various batch and reporting programs. The system ensures data consistency through centralized record layouts and coordinated file handling.
+The application suite processes transaction records through a series of batch, utility, and reporting programs. Transaction data is defined in shared copybooks and flows through various stages: file I/O, validation, processing, reporting, and audit.
 
 ### 2.2 Detailed Logic  
-- **File Initialization:** Programs open transaction files and set up record layouts using copybooks (e.g., `TRNREC.cpy`, `POSREC.cpy`).  
-- **Transaction Processing:** Core programs (e.g., `RPTPOS00.cbl`, `UTLVAL00.cbl`) read, validate, and process transaction records, applying business rules and generating reports or outputs.  
-- **Test Data Generation/Validation:** Test utilities (`TSTGEN00.cbl`, `TSTVAL00.cbl`) create and verify transaction files for system testing.  
-- **Reporting & Auditing:** Reporting modules (`RPTPOS00.cbl`, `RPTAUD00.cbl`) aggregate and display transaction data, while audit programs ensure compliance and traceability.  
-- **Job Control (JCL):** JCL scripts define file attributes (e.g., LRECL) and orchestrate batch execution.
+- **File Layouts:** Transaction records are defined in copybooks (`TRNREC.cpy`, `POSREC.cpy`) and referenced by all programs handling transaction data.
+- **Batch Processing:** Programs like `RPTPOS00.cbl` and `UTLVAL00.cbl` read, validate, and process transaction files, generating reports or performing data validation.
+- **Test Data:** `TSTGEN00.cbl` generates test transaction files, while `TSTVAL00.cbl` validates them.
+- **Reporting/Audit:** `RPTPOS00.cbl` and `RPTAUD00.cbl` produce reports and audit trails based on transaction data.
+- **JCL:** Job Control Language scripts define file layouts (LRECL) and orchestrate batch/report jobs.
 
 #### Flowchart:  
 ```
 flowchart TD
     Start(["Start"])
-    OpenFiles["Open
-Files (Copybooks)"]
+    OpenFiles["1100-OPEN-FILES"]
     ReadTrans["Read
-Transaction Record"]
+Transaction
+Record"]
     ValidateTrans["Validate
-Transaction Data"]
+Transaction
+Format"]
     ProcessTrans["Process
 Transaction"]
     WriteOutput["Write
 Output/Report"]
-    AuditTrail["Audit
-Trail Processing"]
     End(["End"])
 
     Start --> OpenFiles
@@ -37,125 +36,103 @@ Trail Processing"]
     ReadTrans --> ValidateTrans
     ValidateTrans --> ProcessTrans
     ProcessTrans --> WriteOutput
-    WriteOutput --> AuditTrail
-    AuditTrail --> End
+    WriteOutput --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
 **User Story:**  
-Add a `CHANNEL-CODE` field (`PIC X(04)`) to transaction files for channel identification in batch processing and reporting. This field must be incorporated into all relevant copybooks, program logic, test data, file layouts, and JCL, ensuring end-to-end support for channel-based reporting and analytics.
+Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting.  
+- The new field enables downstream systems and reports to identify the source channel for each transaction.
 
 ### 3.2 Impacted Code Changes Summary:
 
 #### 3.2.1 Impacted Sections and Files:
-- **TRNREC.cpy** (Entire copybook)  
-- **POSREC.cpy** (Entire copybook)  
-- **RPTPOS00.cbl** (`1100-OPEN-FILES`, `2200-PROCESS-TRANSACTIONS`)  
-- **UTLVAL00.cbl** (`1100-OPEN-FILES`, `2420-CHECK-TRANSACTION-FORMAT`)  
-- **TSTGEN00.cbl** (`2300-GEN-TRANSACTION`, `2320-WRITE-TRAN-RECORD`)  
-- **TSTVAL00.cbl** (`1100-OPEN-FILES`, `2000-PROCESS`)  
-- **RPTAUD00.cbl** (`1100-OPEN-FILES`, `2100-PROCESS-AUDIT-TRAIL`)  
-- **JCL (Batch/Report jobs)** (`DD statements`, `LRECL`)  
-- **BCHCTL00.cbl** (`1000-PROCESS-INITIALIZE`)  
-
-**Purpose of Changes:**  
-To enable the system to record and utilize the channel through which each transaction is processed, supporting enhanced reporting, auditing, and operational analytics.
-
-**Impact:**  
-- All programs and copybooks defining, reading, writing, or validating transaction records are updated to include and process the new `CHANNEL-CODE` field.
-- File layouts and LRECL in JCL are modified to accommodate the new field.
-- Test data generators and validators are updated to handle the new field.
-- Reporting and audit programs are enhanced to display or utilize the channel information.
-- System-wide regression testing is required to ensure data integrity and backward compatibility.
+- **TRNREC.cpy** (Entire copybook):  
+  - *Purpose of Changes:* Add `CHANNEL-CODE` to the transaction record layout.
+  - *Impact:* All programs referencing this copybook must be recompiled and updated to handle the new field.
+- **POSREC.cpy** (Entire copybook):  
+  - *Purpose of Changes:* Add `CHANNEL-CODE` to position record layout for reporting/validation.
+  - *Impact:* Ensures consistency in reporting and validation logic.
+- **RPTPOS00.cbl** (`1100-OPEN-FILES`, `2200-PROCESS-TRANSACTIONS`):  
+  - *Purpose of Changes:* Read/write and report on the new field.
+  - *Impact:* Reports now include channel information.
+- **UTLVAL00.cbl** (`1100-OPEN-FILES`, `2420-CHECK-TRANSACTION-FORMAT`):  
+  - *Purpose of Changes:* Validate presence and format of `CHANNEL-CODE`.
+  - *Impact:* Prevents processing of records with missing/invalid channel codes.
+- **TSTGEN00.cbl** (`2300-GEN-TRANSACTION`, `2320-WRITE-TRAN-RECORD`):  
+  - *Purpose of Changes:* Generate test data with valid `CHANNEL-CODE`.
+  - *Impact:* Test files reflect new structure.
+- **TSTVAL00.cbl** (`1100-OPEN-FILES`, `2000-PROCESS`):  
+  - *Purpose of Changes:* Validate test data includes correct `CHANNEL-CODE`.
+  - *Impact:* Ensures test data integrity.
+- **RPTAUD00.cbl** (`1100-OPEN-FILES`, `2100-PROCESS-AUDIT-TRAIL`):  
+  - *Purpose of Changes:* Optionally display/process `CHANNEL-CODE` in audit logs.
+  - *Impact:* Audit trails can be filtered or grouped by channel.
+- **JCL (Batch/Report jobs)** (`DD statements`, `LRECL`):  
+  - *Purpose of Changes:* Update LRECL to accommodate new field.
+  - *Impact:* Prevents truncation or misalignment of transaction records.
+- **BCHCTL00.cbl** (`1000-PROCESS-INITIALIZE`):  
+  - *Purpose of Changes:* Reference updated transaction structure for control totals.
+  - *Impact:* Maintains batch control accuracy.
 
 ### 3.3 Insertion Points  
 - **Copybooks (`TRNREC.cpy`, `POSREC.cpy`):**  
-  - Add `CHANNEL-CODE` field at the appropriate position in the record layout.
-- **Program Logic:**  
-  - In file open/init sections (`1100-OPEN-FILES`), ensure the new field is recognized and mapped.
-  - In transaction processing sections (e.g., `2200-PROCESS-TRANSACTIONS`, `2420-CHECK-TRANSACTION-FORMAT`), update logic to read, write, and validate `CHANNEL-CODE`.
-  - In test data generation (`2300-GEN-TRANSACTION`, `2320-WRITE-TRAN-RECORD`), populate `CHANNEL-CODE` with valid values.
-  - In validation and audit modules, check for presence and correctness of the new field.
+  - Insert `CHANNEL-CODE` field at the appropriate position in the record layout (typically after existing key fields).
+- **Programs:**  
+  - Update all `MOVE`, `READ`, `WRITE`, and `DISPLAY` statements to include `CHANNEL-CODE`.
+  - In validation sections (e.g., `2420-CHECK-TRANSACTION-FORMAT`), add logic to check for valid `CHANNEL-CODE` values.
+  - In reporting sections, add `CHANNEL-CODE` to output layouts and report lines.
 - **JCL:**  
-  - Update DD statements and LRECL to reflect the increased record length.
+  - Update `LRECL` in DD statements for all transaction file definitions to reflect the increased record length.
 
-**References to Specific Sections:**
-- `TRNREC.cpy` and `POSREC.cpy`: Entire copybook updates.
-- `RPTPOS00.cbl`: `1100-OPEN-FILES`, `2200-PROCESS-TRANSACTIONS`
-- `UTLVAL00.cbl`: `1100-OPEN-FILES`, `2420-CHECK-TRANSACTION-FORMAT`
-- `TSTGEN00.cbl`: `2300-GEN-TRANSACTION`, `2320-WRITE-TRAN-RECORD`
-- `TSTVAL00.cbl`: `1100-OPEN-FILES`, `2000-PROCESS`
-- `RPTAUD00.cbl`: `1100-OPEN-FILES`, `2100-PROCESS-AUDIT-TRAIL`
-- `JCL`: DD statements, LRECL
+#### Example Insertion Points:
+- `TRNREC.cpy` (after last existing field, e.g., `TRANSACTION-TYPE`):
+  ```cobol
+  05  TRANSACTION-TYPE      PIC X(02).
+  *-- Insert new field here
+  05  CHANNEL-CODE          PIC X(04).
+  ```
+- `RPTPOS00.cbl` (`2200-PROCESS-TRANSACTIONS`):
+  ```cobol
+  MOVE TRANSACTION-TYPE TO REPORT-TYPE
+  *-- Insert new logic
+  MOVE CHANNEL-CODE TO REPORT-CHANNEL
+  ```
 
 ### 3.4 Structured Diffs  
-
-**Copybook Example (`TRNREC.cpy`):**
-
-_Before:_
+**Before:**  
+*TRNREC.cpy*  
 ```cobol
-01  TRANSACTION-RECORD.
-    05  TRANSACTION-ID         PIC X(10).
-    05  TRANSACTION-DATE       PIC 9(08).
-    05  AMOUNT                 PIC 9(09)V99.
-    ...
+05  TRANSACTION-TYPE      PIC X(02).
+05  TRANSACTION-AMOUNT    PIC 9(09)V99.
 ```
-
-_After:_
+*RPTPOS00.cbl*  
 ```cobol
-01  TRANSACTION-RECORD.
-    05  TRANSACTION-ID         PIC X(10).
-    05  TRANSACTION-DATE       PIC 9(08).
-    05  AMOUNT                 PIC 9(09)V99.
-    05  CHANNEL-CODE           PIC X(04).
-    ...
+MOVE TRANSACTION-TYPE TO REPORT-TYPE.
 ```
-
-**Program Example (`RPTPOS00.cbl`):**
-
-_Before:_
-```cobol
-MOVE TRANSACTION-ID TO WS-TRAN-ID.
-MOVE TRANSACTION-DATE TO WS-TRAN-DATE.
-MOVE AMOUNT TO WS-AMOUNT.
-```
-
-_After:_
-```cobol
-MOVE TRANSACTION-ID TO WS-TRAN-ID.
-MOVE TRANSACTION-DATE TO WS-TRAN-DATE.
-MOVE AMOUNT TO WS-AMOUNT.
-MOVE CHANNEL-CODE TO WS-CHANNEL-CODE.
-```
-
-**JCL Example:**
-
-_Before:_
+*JCL*  
 ```jcl
-//TRANFILE  DD  DSN=PROD.TRAN.FILE,DISP=SHR,LRECL=50,RECFM=FB
+//TRANFILE DD DSN=... LRECL=100,RECFM=FB
 ```
 
-_After:_
+**After:**  
+*TRNREC.cpy*  
+```cobol
+05  TRANSACTION-TYPE      PIC X(02).
+05  TRANSACTION-AMOUNT    PIC 9(09)V99.
+05  CHANNEL-CODE          PIC X(04).
+```
+*RPTPOS00.cbl*  
+```cobol
+MOVE TRANSACTION-TYPE TO REPORT-TYPE.
+MOVE CHANNEL-CODE TO REPORT-CHANNEL.
+```
+*JCL*  
 ```jcl
-//TRANFILE  DD  DSN=PROD.TRAN.FILE,DISP=SHR,LRECL=54,RECFM=FB
-```
-
-**Test Data Generation Example (`TSTGEN00.cbl`):**
-
-_Before:_
-```cobol
-MOVE "20230601" TO TRANSACTION-DATE.
-MOVE 10000 TO AMOUNT.
-```
-
-_After:_
-```cobol
-MOVE "20230601" TO TRANSACTION-DATE.
-MOVE 10000 TO AMOUNT.
-MOVE "WEB " TO CHANNEL-CODE.
+//TRANFILE DD DSN=... LRECL=104,RECFM=FB
 ```
 
 ## 4. Conclusion  
-The introduction of the `CHANNEL-CODE` field across all transaction-related components enhances the system's ability to track, process, and report on the channel of origin for each transaction. This change impacts core data structures, batch/reporting programs, test utilities, and JCL, necessitating coordinated updates and thorough regression testing. The modifications lay the groundwork for improved analytics, operational insights, and compliance with future reporting requirements.
+The addition of the `CHANNEL-CODE` field to transaction files and all related processing components enables robust channel identification throughout batch processing and reporting. This change requires coordinated updates to copybooks, COBOL programs, test data, and JCL. All impacted programs must be regression tested, and documentation updated to reflect the new field. The expected outcome is improved traceability and reporting of transaction source channels, supporting business and audit requirements.
 
