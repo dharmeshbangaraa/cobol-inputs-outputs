@@ -1,141 +1,262 @@
-## Summary
+      *****************************************************************
+      * TRANSACTION RECORD STRUCTURE
+      * VERSION: 1.1
+      * DATE: 2024-06-XX
+      * MODIFIED: Added CHANNEL-CODE field for channel identification
+      *           (User Story: Add CHANNEL-CODE Field to Transaction File)
+      *****************************************************************
+       01  TRANSACTION-RECORD.
+           05  TRN-KEY.
+               10  TRN-DATE           PIC X(08).
+               10  TRN-TIME           PIC X(06).
+               10  TRN-PORTFOLIO-ID   PIC X(08).
+               10  TRN-SEQUENCE-NO    PIC X(06).
+           05  TRN-DATA.
+               10  TRN-INVESTMENT-ID  PIC X(10).
+               10  TRN-TYPE           PIC X(02).
+                   88  TRN-TYPE-BUY     VALUE 'BU'.
+                   88  TRN-TYPE-SELL    VALUE 'SL'.
+                   88  TRN-TYPE-TRANS   VALUE 'TR'.
+                   88  TRN-TYPE-FEE     VALUE 'FE'.
+               10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+               10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+               10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+               10  TRN-CURRENCY      PIC X(03).
+               10  TRN-STATUS        PIC X(01).
+                   88  TRN-STATUS-PEND   VALUE 'P'.
+                   88  TRN-STATUS-DONE   VALUE 'D'.
+                   88  TRN-STATUS-FAIL   VALUE 'F'.
+                   88  TRN-STATUS-REV    VALUE 'R'.
+               10  TRN-CHANNEL-CODE  PIC X(04).
+                   88  TRN-CHANNEL-BATCH   VALUE 'BCH'.
+                   88  TRN-CHANNEL-ONLINE  VALUE 'ONLN'.
+                   88  TRN-CHANNEL-API     VALUE 'API'.
+                   88  TRN-CHANNEL-OTHER   VALUE 'OTHR'.
+                   *> Added for channel identification in batch/reporting
+           05  TRN-AUDIT.
+               10  TRN-PROCESS-DATE  PIC X(26).
+               10  TRN-PROCESS-USER  PIC X(08).
+           05  TRN-FILLER           PIC X(46).
+               *> Reduced filler by 4 bytes to accommodate CHANNEL-CODE
+      *****************************************************************
+      * FIELD DESCRIPTIONS:
+      * TRN-DATE        : TRANSACTION DATE (YYYYMMDD)
+      * TRN-TIME        : TRANSACTION TIME (HHMMSS)
+      * TRN-PORTFOLIO-ID: PORTFOLIO IDENTIFIER
+      * TRN-SEQUENCE-NO : SEQUENCE NUMBER FOR MULTIPLE TRANS
+      * TRN-TYPE        : BU=BUY, SL=SELL, TR=TRANSFER, FE=FEE
+      * TRN-STATUS      : P=PENDING, D=DONE, F=FAILED, R=REVERSED
+      * TRN-CHANNEL-CODE: CHANNEL IDENTIFICATION (BCH/ONLN/API/OTHR)
+      *****************************************************************
 
-**User Story:**  
-Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting  
-- As a COBOL developer, I want to add a `CHANNEL-CODE` field to the transaction file, so that the source of each transaction (e.g., ATM, Mobile, Branch) can be captured and processed, allowing for improved analytics, auditing, and fraud detection based on transaction channels through batch processing and reporting.
+      *****************************************************************
+      * POSITION RECORD STRUCTURE
+      * VERSION: 1.1
+      * DATE: 2024-06-XX
+      * MODIFIED: Added CHANNEL-CODE field for channel identification
+      *           (User Story: Add CHANNEL-CODE Field to Transaction File)
+      *****************************************************************
+       01  POSITION-RECORD.
+           05  POS-KEY.
+               10  POS-PORTFOLIO-ID   PIC X(08).
+               10  POS-DATE           PIC X(08).
+               10  POS-INVESTMENT-ID  PIC X(10).
+           05  POS-DATA.
+               10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
+               10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
+               10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
+               10  POS-CURRENCY       PIC X(03).
+               10  POS-STATUS         PIC X(01).
+                   88  POS-STATUS-ACTIVE  VALUE 'A'.
+                   88  POS-STATUS-CLOSED  VALUE 'C'.
+                   88  POS-STATUS-PEND    VALUE 'P'.
+               10  POS-CHANNEL-CODE   PIC X(04).
+                   *> Added for channel identification in batch/reporting
+           05  POS-AUDIT.
+               10  POS-LAST-MAINT-DATE   PIC X(26).
+               10  POS-LAST-MAINT-USER   PIC X(08).
+           05  POS-FILLER               PIC X(46).
+               *> Reduced filler by 4 bytes to accommodate CHANNEL-CODE
+      *****************************************************************
+      * FIELD DESCRIPTIONS:
+      * POS-PORTFOLIO-ID : PORTFOLIO IDENTIFIER
+      * POS-DATE         : POSITION DATE (YYYYMMDD)
+      * POS-INVESTMENT-ID: INVESTMENT IDENTIFIER
+      * POS-QUANTITY     : HOLDING QUANTITY
+      * POS-COST-BASIS   : TOTAL COST BASIS
+      * POS-MARKET-VALUE : CURRENT MARKET VALUE
+      * POS-STATUS       : A=ACTIVE, C=CLOSED, P=PENDING
+      * POS-CHANNEL-CODE : CHANNEL IDENTIFICATION (BCH/ONLN/API/OTHR)
+      *****************************************************************
 
-**Total Impacted Components:** 8 (COBOL programs and copybooks directly or indirectly handling transaction files)
+[...unchanged code above...]
+       FD  TRANSACTION-OUT
+           RECORDING MODE IS F
+           BLOCK CONTAINS 0 RECORDS.
+       01  TRANSACTION-RECORD.
+           COPY TRNREC REPLACING ==:PREFIX:== BY ==TRAN==.
+[...unchanged code above...]
 
-**Change Complexity:**  
-High. This change affects core data structures (copybooks), file layouts, multiple batch and reporting programs, and requires updates to file definitions, record lengths, and reporting logic. It also impacts test data and documentation.
+       01  WS-TRANSACTION-DATA.
+           05  WS-TRAN-ID           PIC X(12).
+           05  WS-TRAN-TYPE         PIC X(2).
+           05  WS-TRAN-AMOUNT       PIC 9(15)V99.
+           05  WS-TRAN-DATE         PIC X(8).
+           05  WS-TRAN-STATUS       PIC X(1).
+           05  WS-TRAN-CHANNEL      PIC X(4).
+               *> Added for channel identification
 
----
+[...unchanged code above...]
 
-## Ranked Impact List
+       2300-GEN-TRANSACTION.
+           PERFORM VARYING WS-RECORDS-WRITTEN FROM 1 BY 1
+                   UNTIL WS-RECORDS-WRITTEN > CFG-VOLUME
+               PERFORM 2310-GEN-TRAN-DATA
+               *> Set channel code for each generated transaction
+               MOVE 'BCH' TO TRAN-CHANNEL-CODE
+                   *> Default to 'BCH' for batch test data; update as needed
+               PERFORM 2320-WRITE-TRAN-RECORD
+           END-PERFORM.
 
-| Program/Copybook         | Impact | Nature   | Affected Paragraphs/Sections         | Dependency Path                                   |
-|--------------------------|--------|----------|--------------------------------------|---------------------------------------------------|
-| TRANSACTION.CPY          | High   | Direct   | All                                  | Core transaction record structure                 |
-| TRNREC (TRNREC.CPY)      | High   | Direct   | All                                  | Used in transaction file layouts                  |
-| TSTGEN00                 | High   | Direct   | 2300-GEN-TRANSACTION, 2320-WRITE-TRAN-RECORD | Writes transaction output files                   |
-| RPTPOS00                 | High   | Direct   | 2200-PROCESS-TRANSACTIONS, 2210-READ-TRANSACTIONS | Reads transaction history for reporting           |
-| UTLVAL00                 | High   | Direct   | 1100-OPEN-FILES, 2420-CHECK-TRANSACTION-FORMAT | Reads/validates transaction history               |
-| TSTVAL00                 | Medium | Indirect | 1100-OPEN-FILES, 2100-EXECUTE-TEST   | Test validation using transaction data            |
-| POSREC (POSREC.CPY)      | Medium | Indirect | All                                  | Used in programs that process transaction data    |
-| RPTAUD00                 | Medium | Indirect | 2100-PROCESS-AUDIT-TRAIL, 2200-PROCESS-ERROR-LOG | May include transaction details in audit reports  |
+[...unchanged code below...]
 
----
+       *> In 2310-GEN-TRAN-DATA, ensure TRAN-CHANNEL-CODE is set appropriately
+       2310-GEN-TRAN-DATA.
+           *> ...existing logic...
+           *> Set channel code for test data
+           MOVE 'BCH' TO TRAN-CHANNEL-CODE
+               *> Default to 'BCH' for batch; can randomize or parameterize as needed
+           *> ...rest of logic...
 
-## JSON Metadata
+[...unchanged code above...]
+       FILE SECTION.
+           COPY POSREC.
+           COPY TRNREC.
+[...unchanged code above...]
 
-```json
-{
-  "impactAnalysis": {
-    "userStory": "Add CHANNEL-CODE Field to Transaction File for Channel Identification in Batch Processing and Reporting",
-    "impactedComponents": [
-      {
-        "programName": "TRANSACTION.CPY",
-        "impactScore": 1.0,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["All"],
-        "dependencyPath": ["TRANSACTION.CPY"],
-        "rationale": "Primary copybook for transaction record; all programs using this must be updated for the new field."
-      },
-      {
-        "programName": "TRNREC",
-        "impactScore": 0.98,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["All"],
-        "dependencyPath": ["TRNREC"],
-        "rationale": "Copybook for transaction record layout; directly affected by new field addition."
-      },
-      {
-        "programName": "TSTGEN00",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["2300-GEN-TRANSACTION", "2320-WRITE-TRAN-RECORD"],
-        "dependencyPath": ["TSTGEN00"],
-        "rationale": "Generates transaction output files; must write new CHANNEL-CODE field."
-      },
-      {
-        "programName": "RPTPOS00",
-        "impactScore": 0.93,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["2200-PROCESS-TRANSACTIONS", "2210-READ-TRANSACTIONS"],
-        "dependencyPath": ["RPTPOS00"],
-        "rationale": "Reads transaction history for reporting; must read and report CHANNEL-CODE."
-      },
-      {
-        "programName": "UTLVAL00",
-        "impactScore": 0.92,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["1100-OPEN-FILES", "2420-CHECK-TRANSACTION-FORMAT"],
-        "dependencyPath": ["UTLVAL00"],
-        "rationale": "Validates transaction files; must validate new field and adjust file handling."
-      },
-      {
-        "programName": "TSTVAL00",
-        "impactScore": 0.80,
-        "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["1100-OPEN-FILES", "2100-EXECUTE-TEST"],
-        "dependencyPath": ["TSTVAL00"],
-        "rationale": "Test validation program; indirectly affected by changes to transaction file structure."
-      },
-      {
-        "programName": "POSREC",
-        "impactScore": 0.75,
-        "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["All"],
-        "dependencyPath": ["POSREC"],
-        "rationale": "Copybook used in programs that process transaction data; may need alignment with new field."
-      },
-      {
-        "programName": "RPTAUD00",
-        "impactScore": 0.70,
-        "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["2100-PROCESS-AUDIT-TRAIL", "2200-PROCESS-ERROR-LOG"],
-        "dependencyPath": ["RPTAUD00"],
-        "rationale": "Audit reporting program; may include transaction details and require new field."
-      }
-    ]
-  }
-}
-```
+       01  WS-POSITION-DETAIL.
+           05  WS-POS-PORTFOLIO     PIC X(10).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-POS-DESCRIPTION   PIC X(30).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-POS-QUANTITY      PIC ZZZ,ZZZ,ZZ9.99.
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-POS-VALUE         PIC $$$$,$$$,$$9.99.
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-POS-CHANGE-PCT    PIC +ZZ9.99.
+           05  FILLER               PIC X(4) VALUE SPACES.
+           05  WS-POS-CHANNEL       PIC X(4).
+               *> Added for channel reporting
+           05  FILLER               PIC X(36) VALUE SPACES.
 
----
+[...unchanged code above...]
 
-## Visualization
+       2110-FORMAT-POSITION.
+           MOVE POS-PORTFOLIO-ID   TO WS-POS-PORTFOLIO
+           MOVE POS-DESCRIPTION    TO WS-POS-DESCRIPTION
+           MOVE POS-QUANTITY       TO WS-POS-QUANTITY
+           MOVE POS-CURRENT-VALUE  TO WS-POS-VALUE
+           COMPUTE WS-POS-CHANGE-PCT = 
+               (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
+                POS-PREVIOUS-VALUE * 100
+           MOVE POS-CHANNEL-CODE   TO WS-POS-CHANNEL
+               *> Added: report channel code for each position
+           WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
 
-```mermaid
-graph TD
-  TRANSACTION.CPY:::high --> TRNREC:::high
-  TRANSACTION.CPY:::high --> TSTGEN00:::high
-  TRANSACTION.CPY:::high --> RPTPOS00:::high
-  TRANSACTION.CPY:::high --> UTLVAL00:::high
-  TRANSACTION.CPY:::high --> TSTVAL00:::medium
-  TRANSACTION.CPY:::high --> POSREC:::medium
-  TRANSACTION.CPY:::high --> RPTAUD00:::medium
-  TRNREC:::high --> TSTGEN00:::high
-  TRNREC:::high --> RPTPOS00:::high
-  TRNREC:::high --> UTLVAL00:::high
-  TRNREC:::high --> TSTVAL00:::medium
-  TRNREC:::high --> RPTAUD00:::medium
-  classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
-  classDef medium fill:#fff2cc,stroke:#b8860b,stroke-width:2px;
-```
+[...unchanged code below...]
 
----
+[...unchanged code above...]
+       FILE SECTION.
+           COPY POSREC.
+           COPY TRNREC.
+[...unchanged code above...]
 
-**Reasoning:**  
-- The `TRANSACTION.CPY` and `TRNREC` copybooks are the core data structures for transaction records and must be updated for the new field.
-- Programs that generate, read, validate, or report on transaction files (TSTGEN00, RPTPOS00, UTLVAL00) are directly impacted and must be updated to handle the new field in file I/O and logic.
-- Test and reporting programs (TSTVAL00, RPTAUD00) and related copybooks (POSREC) are indirectly impacted due to their use of transaction data structures or files.
-- All affected programs must update file layouts, LRECL, FD sections, and potentially reporting logic to include the new `CHANNEL-CODE` field.
+       01  WS-ERROR-LINE.
+           05  WS-ERR-TYPE          PIC X(10).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-ERR-KEY           PIC X(20).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-ERR-DESC          PIC X(98).
+
+[...unchanged code above...]
+
+       2220-CHECK-TRANSACTION-INTEGRITY.
+           *> Existing logic...
+           *> Add validation for CHANNEL-CODE
+           IF TRAN-CHANNEL-CODE = SPACES OR
+              (TRAN-CHANNEL-CODE NOT = 'BCH' AND
+               TRAN-CHANNEL-CODE NOT = 'ONLN' AND
+               TRAN-CHANNEL-CODE NOT = 'API' AND
+               TRAN-CHANNEL-CODE NOT = 'OTHR')
+               MOVE 'CHANNEL-CODE INVALID OR MISSING' TO WS-ERR-DESC
+               MOVE 'INTEGRITY' TO WS-ERR-TYPE
+               MOVE TRAN-KEY TO WS-ERR-KEY
+               WRITE ERROR-RECORD FROM WS-ERROR-LINE
+           END-IF
+           *> ...rest of logic...
+
+[...unchanged code below...]
+
+[...unchanged code above...]
+       FILE SECTION.
+       FD  TEST-CASES
+           RECORDING MODE IS F
+           BLOCK CONTAINS 0 RECORDS.
+       01  TEST-CASE-RECORD.
+           05  TEST-ID              PIC X(10).
+           05  TEST-TYPE            PIC X(10).
+           05  TEST-DESCRIPTION     PIC X(50).
+           05  TEST-PARAMETERS      PIC X(100).
+       *> If transaction records are parsed, ensure CHANNEL-CODE is checked
+
+[...unchanged code above...]
+
+       2600-VALIDATE-RESULTS.
+           *> Existing logic...
+           *> If validating transaction records, check CHANNEL-CODE
+           IF ACTUAL-RECORD(appropriate-offset:4) = SPACES
+               OR (ACTUAL-RECORD(appropriate-offset:4) NOT = 'BCH'
+                   AND ACTUAL-RECORD(appropriate-offset:4) NOT = 'ONLN'
+                   AND ACTUAL-RECORD(appropriate-offset:4) NOT = 'API'
+                   AND ACTUAL-RECORD(appropriate-offset:4) NOT = 'OTHR')
+               MOVE 'CHANNEL-CODE INVALID OR MISSING IN ACTUAL RESULT'
+                 TO WS-ERROR-MESSAGE
+               PERFORM 9999-ERROR-HANDLER
+           END-IF
+           *> ...rest of logic...
+
+[...unchanged code below...]
+
+[...unchanged code above...]
+       FILE SECTION.
+           COPY AUDITLOG.
+           COPY ERRHAND.
+[...unchanged code above...]
+
+       01  WS-AUDIT-DETAIL.
+           05  WS-AUD-TIMESTAMP     PIC X(26).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-AUD-PROGRAM       PIC X(8).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-AUD-TYPE          PIC X(10).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-AUD-CHANNEL       PIC X(4).
+               *> Added for channel reporting
+           05  WS-AUD-MESSAGE       PIC X(76).
+
+[...unchanged code above...]
+
+       2110-READ-AUDIT-RECORDS.
+           *> When reading audit records, extract and report channel code if present
+           MOVE AUD-TIMESTAMP TO WS-AUD-TIMESTAMP
+           MOVE AUD-PROGRAM   TO WS-AUD-PROGRAM
+           MOVE AUD-TYPE      TO WS-AUD-TYPE
+           IF AUD-CHANNEL-CODE NOT = SPACES
+               MOVE AUD-CHANNEL-CODE TO WS-AUD-CHANNEL
+           ELSE
+               MOVE 'N/A' TO WS-AUD-CHANNEL
+           END-IF
+           MOVE AUD-MESSAGE  TO WS-AUD-MESSAGE
+           WRITE REPORT-RECORD FROM WS-AUDIT-DETAIL
+
+[...unchanged code below...]
