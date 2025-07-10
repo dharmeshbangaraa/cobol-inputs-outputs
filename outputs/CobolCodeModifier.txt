@@ -1,271 +1,152 @@
-TRANSACTION.CPY /copybooks/TRANSACTION.CPY
+## Summary
 
-       01  TRANSACTION-RECORD.
-           05  TRANSACTION-ID         PIC 9(10).
-           05  TRANSACTION-DATE       PIC 9(08).
-           05  TRANSACTION-TIME       PIC 9(06).
-           05  ACCOUNT-NUMBER         PIC X(12).
-           05  TRANSACTION-AMOUNT     PIC S9(9)V99 COMP-3.
-           05  TRANSACTION-TYPE       PIC X(02).
-           05  TRANSACTION-STATUS     PIC X(01).
-           05  CHANNEL-CODE           PIC X(04).   * Added for channel identification (ATM, MOBL, BRCH, NETB)
-           05  FILLER                 PIC X(15).
+**User Story:**  
+Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting  
+As a COBOL developer, I want to add a `CHANNEL-CODE` field to the transaction file, so that the source of each transaction (e.g., ATM, Mobile, Branch) can be captured and processed, allowing for improved analytics, auditing, and fraud detection based on transaction channels through batch processing and reporting.
 
-POSREC.CPY /copybooks/POSREC.CPY
+- **Total impacted components:** 7 COBOL programs (batch, reporting, utility), 1 primary copybook, and associated JCL.
+- **Change complexity:** High. The change affects core data structures (copybooks), file layouts, multiple batch and reporting programs, and requires LRECL/FD adjustments and test data updates.
 
-       01  POS-RECORD.
-           05  POS-ID                 PIC 9(10).
-           05  POS-DATE               PIC 9(08).
-           05  POS-TIME               PIC 9(06).
-           05  POS-ACCOUNT-NUMBER     PIC X(12).
-           05  POS-AMOUNT             PIC S9(9)V99 COMP-3.
-           05  POS-TYPE               PIC X(02).
-           05  POS-STATUS             PIC X(01).
-           05  CHANNEL-CODE           PIC X(04).   * Added for channel identification (ATM, MOBL, BRCH, NETB)
-           05  FILLER                 PIC X(15).
+---
 
-RPTPOS00.CBL /programs/RPTPOS00.CBL
+## Ranked Impact List
 
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. RPTPOS00.
-       ENVIRONMENT DIVISION.
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT TRANSACTION-FILE ASSIGN TO 'TRANSACT.DAT'
-               ORGANIZATION IS SEQUENTIAL.
+| Program         | Impact | Nature   | Affected Paragraphs/Sections         | Dependency Path                                  |
+|-----------------|--------|----------|--------------------------------------|--------------------------------------------------|
+| TRNREC.cpy      | High   | Direct   | All (copybook structure)             | Used by all transaction-processing programs      |
+| BCHTRN00.cbl    | High   | Direct   | FILE-CONTROL, 1000-INITIALIZE, 2000-PROCESS, FD | Reads/writes transaction file, uses TRNREC       |
+| RPTPOS00.cbl    | High   | Direct   | FILE-CONTROL, 1100-OPEN-FILES, 2200-PROCESS-TRANSACTIONS | Reads transaction file for reporting, uses TRNREC|
+| UTLVAL00.cbl    | High   | Direct   | FILE-CONTROL, 1100-OPEN-FILES, 2100-PROCESS-VALIDATION | Reads transaction file for validation, uses TRNREC|
+| TSTGEN00.cbl    | Medium | Direct   | 2300-GEN-TRANSACTION, 2320-WRITE-TRAN-RECORD | Generates test transaction files, uses TRNREC    |
+| TSTVAL00.cbl    | Medium | Indirect | 1100-OPEN-FILES, 2000-PROCESS       | Validates test transaction files, uses TRNREC    |
+| RPTAUD00.cbl    | Medium | Indirect | 1100-OPEN-FILES, 2000-PROCESS-REPORT| May include transaction channel in audit reports |
+| JCL (BCHTRN00, RPTPOS00, UTLVAL00) | Medium | Direct | DD statements, LRECL updates | JCL for batch/report jobs referencing transaction files |
 
-       DATA DIVISION.
-       FILE SECTION.
-       FD  TRANSACTION-FILE
-           LABEL RECORDS ARE STANDARD
-           BLOCK CONTAINS 0 RECORDS
-           RECORD CONTAINS 68 CHARACTERS.  * Updated LRECL: +4 for CHANNEL-CODE
-       01  TRANSACTION-RECORD-IN.
-           COPY TRANSACTION.CPY.
+---
 
-       WORKING-STORAGE SECTION.
-       77  WS-EOF                PIC X VALUE 'N'.
-       77  WS-CHANNEL-CODE       PIC X(04).  * Added for channel reporting
+## JSON Metadata
 
-       PROCEDURE DIVISION.
-       1100-OPEN-FILES.
-           OPEN INPUT TRANSACTION-FILE.
+```json
+{
+  "impactAnalysis": {
+    "userStory": "Add CHANNEL-CODE Field to Transaction File for Channel Identification in Batch Processing and Reporting",
+    "impactedComponents": [
+      {
+        "programName": "TRNREC.cpy",
+        "impactScore": 1.0,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["COPYBOOK STRUCTURE"],
+        "dependencyPath": ["TRNREC.cpy"],
+        "rationale": "Primary copybook for transaction record; all programs using transaction data must be updated to include CHANNEL-CODE."
+      },
+      {
+        "programName": "BCHTRN00.cbl",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["FILE-CONTROL", "1000-INITIALIZE", "2000-PROCESS", "FD"],
+        "dependencyPath": ["BCHTRN00.cbl", "TRNREC.cpy"],
+        "rationale": "Batch transaction processor; reads/writes transaction file, requires FD and logic updates for CHANNEL-CODE."
+      },
+      {
+        "programName": "RPTPOS00.cbl",
+        "impactScore": 0.90,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["FILE-CONTROL", "1100-OPEN-FILES", "2200-PROCESS-TRANSACTIONS"],
+        "dependencyPath": ["RPTPOS00.cbl", "TRNREC.cpy"],
+        "rationale": "Reporting program; reads transaction file, must include CHANNEL-CODE in output and logic."
+      },
+      {
+        "programName": "UTLVAL00.cbl",
+        "impactScore": 0.90,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["FILE-CONTROL", "1100-OPEN-FILES", "2100-PROCESS-VALIDATION"],
+        "dependencyPath": ["UTLVAL00.cbl", "TRNREC.cpy"],
+        "rationale": "Utility validation program; processes transaction file, must validate and handle CHANNEL-CODE."
+      },
+      {
+        "programName": "TSTGEN00.cbl",
+        "impactScore": 0.75,
+        "impactLevel": "Medium",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2300-GEN-TRANSACTION", "2320-WRITE-TRAN-RECORD"],
+        "dependencyPath": ["TSTGEN00.cbl", "TRNREC.cpy"],
+        "rationale": "Test data generator; must generate CHANNEL-CODE in test transaction files."
+      },
+      {
+        "programName": "TSTVAL00.cbl",
+        "impactScore": 0.70,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["1100-OPEN-FILES", "2000-PROCESS"],
+        "dependencyPath": ["TSTVAL00.cbl", "TRNREC.cpy"],
+        "rationale": "Test data validator; must validate presence and correctness of CHANNEL-CODE in test files."
+      },
+      {
+        "programName": "RPTAUD00.cbl",
+        "impactScore": 0.65,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["1100-OPEN-FILES", "2000-PROCESS-REPORT"],
+        "dependencyPath": ["RPTAUD00.cbl", "TRNREC.cpy"],
+        "rationale": "Audit reporting; may need to include CHANNEL-CODE in audit trail or reports."
+      },
+      {
+        "programName": "JCL (BCHTRN00, RPTPOS00, UTLVAL00)",
+        "impactScore": 0.70,
+        "impactLevel": "Medium",
+        "impactType": "Direct",
+        "affectedParagraphs": ["DD statements", "LRECL updates"],
+        "dependencyPath": ["JCL", "BCHTRN00", "RPTPOS00", "UTLVAL00"],
+        "rationale": "JCL scripts must update LRECL and DD statements for new transaction file layout."
+      }
+    ]
+  }
+}
+```
 
-       2200-PROCESS-TRANSACTIONS.
-           PERFORM UNTIL WS-EOF = 'Y'
-               READ TRANSACTION-FILE
-                   AT END
-                       MOVE 'Y' TO WS-EOF
-                   NOT AT END
-                       MOVE CHANNEL-CODE TO WS-CHANNEL-CODE  * Capture channel code
-                       DISPLAY 'TRANSACTION: ' TRANSACTION-ID ' CHANNEL: ' CHANNEL-CODE  * Output channel code
-               END-READ
-           END-PERFORM.
+---
 
-       9999-EXIT.
-           CLOSE TRANSACTION-FILE.
-           STOP RUN.
+## Visualization
 
-UTLVAL00.CBL /programs/UTLVAL00.CBL
+```mermaid
+graph TD
+    TRNREC[TRNREC.cpy]:::high
+    BCHTRN00[BCHTRN00.cbl]:::high
+    RPTPOS00[RPTPOS00.cbl]:::high
+    UTLVAL00[UTLVAL00.cbl]:::high
+    TSTGEN00[TSTGEN00.cbl]:::medium
+    TSTVAL00[TSTVAL00.cbl]:::medium
+    RPTAUD00[RPTAUD00.cbl]:::medium
+    JCL[JCL (BCHTRN00, RPTPOS00, UTLVAL00)]:::medium
 
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. UTLVAL00.
-       ENVIRONMENT DIVISION.
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT TRANSACTION-FILE ASSIGN TO 'TRANSACT.DAT'
-               ORGANIZATION IS SEQUENTIAL.
+    TRNREC --> BCHTRN00
+    TRNREC --> RPTPOS00
+    TRNREC --> UTLVAL00
+    TRNREC --> TSTGEN00
+    TRNREC --> TSTVAL00
+    TRNREC --> RPTAUD00
+    BCHTRN00 --> JCL
+    RPTPOS00 --> JCL
+    UTLVAL00 --> JCL
 
-       DATA DIVISION.
-       FILE SECTION.
-       FD  TRANSACTION-FILE
-           LABEL RECORDS ARE STANDARD
-           BLOCK CONTAINS 0 RECORDS
-           RECORD CONTAINS 68 CHARACTERS.  * Updated LRECL: +4 for CHANNEL-CODE
-       01  TRANSACTION-RECORD-IN.
-           COPY TRANSACTION.CPY.
+    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
+    classDef medium fill:#fff2cc,stroke:#b8860b,stroke-width:2px;
+    class TRNREC,BCHTRN00,RPTPOS00,UTLVAL00 high;
+    class TSTGEN00,TSTVAL00,RPTAUD00,JCL medium;
+```
 
-       WORKING-STORAGE SECTION.
-       77  WS-EOF                PIC X VALUE 'N'.
-       77  WS-CHANNEL-CODE       PIC X(04).  * Added for validation
+---
 
-       PROCEDURE DIVISION.
-       1100-OPEN-FILES.
-           OPEN INPUT TRANSACTION-FILE.
+**Reasoning:**  
+- The `TRNREC.cpy` copybook is the central definition for transaction records and is included in all transaction-processing programs.
+- All batch, reporting, and utility programs that read/write transaction files must update their FD, LRECL, and logic to handle the new field.
+- Test data generators and validators must be updated to include and check the new field.
+- JCL scripts referencing the transaction file must update LRECL and DD statements.
+- Reporting and audit programs must include the new field in outputs where transaction details are shown.
 
-       2100-PROCESS-VALIDATION.
-           PERFORM UNTIL WS-EOF = 'Y'
-               READ TRANSACTION-FILE
-                   AT END
-                       MOVE 'Y' TO WS-EOF
-                   NOT AT END
-                       MOVE CHANNEL-CODE TO WS-CHANNEL-CODE  * Capture channel code
-                       IF CHANNEL-CODE NOT = 'ATM' AND
-                          CHANNEL-CODE NOT = 'MOBL' AND
-                          CHANNEL-CODE NOT = 'BRCH' AND
-                          CHANNEL-CODE NOT = 'NETB'
-                           DISPLAY 'INVALID CHANNEL-CODE: ' CHANNEL-CODE
-                       END-IF
-               END-READ
-           END-PERFORM.
-
-       9999-EXIT.
-           CLOSE TRANSACTION-FILE.
-           STOP RUN.
-
-TSTGEN00.CBL /programs/TSTGEN00.CBL
-
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. TSTGEN00.
-       ENVIRONMENT DIVISION.
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT TRANSACTION-FILE ASSIGN TO 'TRANSACT.DAT'
-               ORGANIZATION IS SEQUENTIAL.
-
-       DATA DIVISION.
-       FILE SECTION.
-       FD  TRANSACTION-FILE
-           LABEL RECORDS ARE STANDARD
-           BLOCK CONTAINS 0 RECORDS
-           RECORD CONTAINS 68 CHARACTERS.  * Updated LRECL: +4 for CHANNEL-CODE
-       01  TRANSACTION-RECORD-OUT.
-           COPY TRANSACTION.CPY.
-
-       WORKING-STORAGE SECTION.
-       77  WS-CHANNEL-CODE-TABLE  PIC X(04) OCCURS 4 VALUE 'BRCH', 'ATM ', 'MOBL', 'NETB'.
-       77  WS-CHANNEL-INDEX       PIC 9(01) VALUE 1.
-
-       PROCEDURE DIVISION.
-       2300-GEN-TRANSACTION.
-           PERFORM VARYING WS-CHANNEL-INDEX FROM 1 BY 1 UNTIL WS-CHANNEL-INDEX > 4
-               MOVE 1234567890 TO TRANSACTION-ID
-               MOVE 20240601 TO TRANSACTION-DATE
-               MOVE 123000 TO TRANSACTION-TIME
-               MOVE '000000000001' TO ACCOUNT-NUMBER
-               MOVE 10000 TO TRANSACTION-AMOUNT
-               MOVE '01' TO TRANSACTION-TYPE
-               MOVE 'A' TO TRANSACTION-STATUS
-               MOVE WS-CHANNEL-CODE-TABLE(WS-CHANNEL-INDEX) TO CHANNEL-CODE  * Populate channel code
-               MOVE SPACES TO FILLER
-               WRITE TRANSACTION-RECORD-OUT
-           END-PERFORM.
-
-       2320-WRITE-TRAN-RECORD.
-           * No changes needed; handled in 2300-GEN-TRANSACTION
-
-       9999-EXIT.
-           CLOSE TRANSACTION-FILE.
-           STOP RUN.
-
-TSTVAL00.CBL /programs/TSTVAL00.CBL
-
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. TSTVAL00.
-       ENVIRONMENT DIVISION.
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT TRANSACTION-FILE ASSIGN TO 'TRANSACT.DAT'
-               ORGANIZATION IS SEQUENTIAL.
-
-       DATA DIVISION.
-       FILE SECTION.
-       FD  TRANSACTION-FILE
-           LABEL RECORDS ARE STANDARD
-           BLOCK CONTAINS 0 RECORDS
-           RECORD CONTAINS 68 CHARACTERS.  * Updated LRECL: +4 for CHANNEL-CODE
-       01  TRANSACTION-RECORD-IN.
-           COPY TRANSACTION.CPY.
-
-       WORKING-STORAGE SECTION.
-       77  WS-EOF                PIC X VALUE 'N'.
-       77  WS-CHANNEL-CODE       PIC X(04).  * Added for test validation
-
-       PROCEDURE DIVISION.
-       1100-OPEN-FILES.
-           OPEN INPUT TRANSACTION-FILE.
-
-       2100-EXECUTE-TEST.
-           PERFORM UNTIL WS-EOF = 'Y'
-               READ TRANSACTION-FILE
-                   AT END
-                       MOVE 'Y' TO WS-EOF
-                   NOT AT END
-                       MOVE CHANNEL-CODE TO WS-CHANNEL-CODE  * Capture channel code
-                       DISPLAY 'TEST TRANSACTION CHANNEL: ' CHANNEL-CODE
-               END-READ
-           END-PERFORM.
-
-       9999-EXIT.
-           CLOSE TRANSACTION-FILE.
-           STOP RUN.
-
-RPTAUD00.CBL /programs/RPTAUD00.CBL
-
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. RPTAUD00.
-       ENVIRONMENT DIVISION.
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT TRANSACTION-FILE ASSIGN TO 'TRANSACT.DAT'
-               ORGANIZATION IS SEQUENTIAL.
-
-       DATA DIVISION.
-       FILE SECTION.
-       FD  TRANSACTION-FILE
-           LABEL RECORDS ARE STANDARD
-           BLOCK CONTAINS 0 RECORDS
-           RECORD CONTAINS 68 CHARACTERS.  * Updated LRECL: +4 for CHANNEL-CODE
-       01  TRANSACTION-RECORD-IN.
-           COPY TRANSACTION.CPY.
-
-       WORKING-STORAGE SECTION.
-       77  WS-EOF                PIC X VALUE 'N'.
-       77  WS-CHANNEL-CODE       PIC X(04).  * Added for audit reporting
-
-       PROCEDURE DIVISION.
-       1100-OPEN-FILES.
-           OPEN INPUT TRANSACTION-FILE.
-
-       2100-PROCESS-AUDIT-TRAIL.
-           PERFORM UNTIL WS-EOF = 'Y'
-               READ TRANSACTION-FILE
-                   AT END
-                       MOVE 'Y' TO WS-EOF
-                   NOT AT END
-                       MOVE CHANNEL-CODE TO WS-CHANNEL-CODE  * Capture channel code
-                       DISPLAY 'AUDIT: TRANSACTION-ID=' TRANSACTION-ID ' CHANNEL=' CHANNEL-CODE
-               END-READ
-           END-PERFORM.
-
-       9999-EXIT.
-           CLOSE TRANSACTION-FILE.
-           STOP RUN.
-
-RPTPOS00.JCL /jcl/RPTPOS00.JCL
-
-//RPTPOS00 JOB (ACCT),'REPORT POS',CLASS=A,MSGCLASS=X,NOTIFY=&SYSUID
-//STEP1    EXEC PGM=RPTPOS00
-//INFILE   DD DSN=TRANSACT.DAT,DISP=SHR,LRECL=68,RECFM=FB  // Updated LRECL for CHANNEL-CODE
-//SYSOUT   DD SYSOUT=*
-
-UTLVAL00.JCL /jcl/UTLVAL00.JCL
-
-//UTLVAL00 JOB (ACCT),'VALIDATE',CLASS=A,MSGCLASS=X,NOTIFY=&SYSUID
-//STEP1    EXEC PGM=UTLVAL00
-//INFILE   DD DSN=TRANSACT.DAT,DISP=SHR,LRECL=68,RECFM=FB  // Updated LRECL for CHANNEL-CODE
-//SYSOUT   DD SYSOUT=*
-
-TSTGEN00.JCL /jcl/TSTGEN00.JCL
-
-//TSTGEN00 JOB (ACCT),'GEN TEST DATA',CLASS=A,MSGCLASS=X,NOTIFY=&SYSUID
-//STEP1    EXEC PGM=TSTGEN00
-//OUTFILE  DD DSN=TRANSACT.DAT,DISP=SHR,LRECL=68,RECFM=FB  // Updated LRECL for CHANNEL-CODE
-//SYSOUT   DD SYSOUT=*
-
-TSTVAL00.JCL /jcl/TSTVAL00.JCL
-
-//TSTVAL00 JOB (ACCT),'TEST VALIDATE',CLASS=A,MSGCLASS=X,NOTIFY=&SYSUID
-//STEP1    EXEC PGM=TSTVAL00
-//INFILE   DD DSN=TRANSACT.DAT,DISP=SHR,LRECL=68,RECFM=FB  // Updated LRECL for CHANNEL-CODE
-//SYSOUT   DD SYSOUT=*
+**Note:**  
+This analysis is based on the dependency map and structure of the COBOL-Legacy-Benchmark-Suite repository. Actual implementation may require further review of program logic and test coverage for edge cases.
