@@ -1,123 +1,149 @@
-[1] TRANSACTION.CPY /src/copybook/TRANSACTION.CPY
+## Summary
 
-      01  TRANSACTION-RECORD.
-          05  TRANSACTION-ID           PIC X(10).
-          05  TRANSACTION-DATE         PIC 9(8).
-          05  TRANSACTION-AMOUNT       PIC S9(9)V99 COMP-3.
-          05  TRANSACTION-TYPE         PIC X(2).
-          05  ACCOUNT-NUMBER           PIC X(12).
-          05  CHANNEL-CODE             PIC X(4).    * Added for channel identification
+**User Story:**  
+Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting  
+- As a COBOL developer, I want to add a `CHANNEL-CODE` field to the transaction file, so that the source of each transaction (e.g., ATM, Mobile, Branch) can be captured and processed, allowing for improved analytics, auditing, and fraud detection based on transaction channels through batch processing and reporting.
 
-Summary: Added CHANNEL-CODE field (PIC X(4)) to the transaction record structure for channel identification.
+**Total Impacted Components:** 8 (COBOL programs and copybooks directly or indirectly handling transaction files)
 
-[2] TRNREC.CPY /src/copybook/TRNREC.CPY
+**Change Complexity:**  
+High. This change affects core data structures (copybooks), file layouts, multiple batch and reporting programs, and requires updates to file definitions, record lengths, and reporting logic. It also impacts test data and documentation.
 
-      01  TRNREC-RECORD.
-          05  TRNREC-ID                PIC X(10).
-          05  TRNREC-DATE              PIC 9(8).
-          05  TRNREC-AMOUNT            PIC S9(9)V99 COMP-3.
-          05  TRNREC-TYPE              PIC X(2).
-          05  TRNREC-ACCOUNT           PIC X(12).
-          05  TRNREC-CHANNEL-CODE      PIC X(4).    * Added for channel identification
+---
 
-Summary: Added TRNREC-CHANNEL-CODE field (PIC X(4)) to the TRNREC record structure for channel identification.
+## Ranked Impact List
 
-[3] TSTGEN00.CBL /src/programs/TSTGEN00.CBL
+| Program/Copybook         | Impact | Nature   | Affected Paragraphs/Sections         | Dependency Path                                   |
+|--------------------------|--------|----------|--------------------------------------|---------------------------------------------------|
+| TRANSACTION.CPY          | High   | Direct   | All                                  | Core transaction record structure                 |
+| TRNREC (TRNREC.CPY)      | High   | Direct   | All                                  | Used in transaction file layouts                  |
+| TSTGEN00                 | High   | Direct   | 2300-GEN-TRANSACTION, 2320-WRITE-TRAN-RECORD | Writes transaction output files                   |
+| RPTPOS00                 | High   | Direct   | 2200-PROCESS-TRANSACTIONS, 2210-READ-TRANSACTIONS | Reads transaction history for reporting           |
+| UTLVAL00                 | High   | Direct   | 1100-OPEN-FILES, 2420-CHECK-TRANSACTION-FORMAT | Reads/validates transaction history               |
+| TSTVAL00                 | Medium | Indirect | 1100-OPEN-FILES, 2100-EXECUTE-TEST   | Test validation using transaction data            |
+| POSREC (POSREC.CPY)      | Medium | Indirect | All                                  | Used in programs that process transaction data    |
+| RPTAUD00                 | Medium | Indirect | 2100-PROCESS-AUDIT-TRAIL, 2200-PROCESS-ERROR-LOG | May include transaction details in audit reports  |
 
-      ...
-      2300-GEN-TRANSACTION.
-          MOVE WS-TRANSACTION-ID        TO TRANSACTION-ID
-          MOVE WS-TRANSACTION-DATE      TO TRANSACTION-DATE
-          MOVE WS-TRANSACTION-AMOUNT    TO TRANSACTION-AMOUNT
-          MOVE WS-TRANSACTION-TYPE      TO TRANSACTION-TYPE
-          MOVE WS-ACCOUNT-NUMBER        TO ACCOUNT-NUMBER
-          MOVE WS-CHANNEL-CODE          TO CHANNEL-CODE    *> Added: Set channel code in transaction record
-          .
-      2320-WRITE-TRAN-RECORD.
-          WRITE TRANSACTION-RECORD
-          .
-      ...
+---
 
-Summary: Updated 2300-GEN-TRANSACTION to move WS-CHANNEL-CODE into CHANNEL-CODE field; ensures new field is populated in generated transactions.
+## JSON Metadata
 
-[4] RPTPOS00.CBL /src/programs/RPTPOS00.CBL
+```json
+{
+  "impactAnalysis": {
+    "userStory": "Add CHANNEL-CODE Field to Transaction File for Channel Identification in Batch Processing and Reporting",
+    "impactedComponents": [
+      {
+        "programName": "TRANSACTION.CPY",
+        "impactScore": 1.0,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["All"],
+        "dependencyPath": ["TRANSACTION.CPY"],
+        "rationale": "Primary copybook for transaction record; all programs using this must be updated for the new field."
+      },
+      {
+        "programName": "TRNREC",
+        "impactScore": 0.98,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["All"],
+        "dependencyPath": ["TRNREC"],
+        "rationale": "Copybook for transaction record layout; directly affected by new field addition."
+      },
+      {
+        "programName": "TSTGEN00",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2300-GEN-TRANSACTION", "2320-WRITE-TRAN-RECORD"],
+        "dependencyPath": ["TSTGEN00"],
+        "rationale": "Generates transaction output files; must write new CHANNEL-CODE field."
+      },
+      {
+        "programName": "RPTPOS00",
+        "impactScore": 0.93,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2200-PROCESS-TRANSACTIONS", "2210-READ-TRANSACTIONS"],
+        "dependencyPath": ["RPTPOS00"],
+        "rationale": "Reads transaction history for reporting; must read and report CHANNEL-CODE."
+      },
+      {
+        "programName": "UTLVAL00",
+        "impactScore": 0.92,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["1100-OPEN-FILES", "2420-CHECK-TRANSACTION-FORMAT"],
+        "dependencyPath": ["UTLVAL00"],
+        "rationale": "Validates transaction files; must validate new field and adjust file handling."
+      },
+      {
+        "programName": "TSTVAL00",
+        "impactScore": 0.80,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["1100-OPEN-FILES", "2100-EXECUTE-TEST"],
+        "dependencyPath": ["TSTVAL00"],
+        "rationale": "Test validation program; indirectly affected by changes to transaction file structure."
+      },
+      {
+        "programName": "POSREC",
+        "impactScore": 0.75,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["All"],
+        "dependencyPath": ["POSREC"],
+        "rationale": "Copybook used in programs that process transaction data; may need alignment with new field."
+      },
+      {
+        "programName": "RPTAUD00",
+        "impactScore": 0.70,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["2100-PROCESS-AUDIT-TRAIL", "2200-PROCESS-ERROR-LOG"],
+        "dependencyPath": ["RPTAUD00"],
+        "rationale": "Audit reporting program; may include transaction details and require new field."
+      }
+    ]
+  }
+}
+```
 
-      ...
-      2200-PROCESS-TRANSACTIONS.
-          READ TRANSACTION-FILE INTO TRANSACTION-RECORD
-              AT END
-                  SET EOF-TRANSACTION TO TRUE
-              NOT AT END
-                  PERFORM 2210-READ-TRANSACTIONS
-          END-READ
-          .
-      2210-READ-TRANSACTIONS.
-          DISPLAY "TRANSACTION ID: " TRANSACTION-ID
-          DISPLAY "DATE: " TRANSACTION-DATE
-          DISPLAY "AMOUNT: " TRANSACTION-AMOUNT
-          DISPLAY "TYPE: " TRANSACTION-TYPE
-          DISPLAY "ACCOUNT: " ACCOUNT-NUMBER
-          DISPLAY "CHANNEL: " CHANNEL-CODE    *> Added: Report channel code
-          .
-      ...
+---
 
-Summary: Updated reporting logic to display CHANNEL-CODE in 2210-READ-TRANSACTIONS.
+## Visualization
 
-[5] UTLVAL00.CBL /src/programs/UTLVAL00.CBL
+```mermaid
+graph TD
+  TRANSACTION.CPY:::high --> TRNREC:::high
+  TRANSACTION.CPY:::high --> TSTGEN00:::high
+  TRANSACTION.CPY:::high --> RPTPOS00:::high
+  TRANSACTION.CPY:::high --> UTLVAL00:::high
+  TRANSACTION.CPY:::high --> TSTVAL00:::medium
+  TRANSACTION.CPY:::high --> POSREC:::medium
+  TRANSACTION.CPY:::high --> RPTAUD00:::medium
+  TRNREC:::high --> TSTGEN00:::high
+  TRNREC:::high --> RPTPOS00:::high
+  TRNREC:::high --> UTLVAL00:::high
+  TRNREC:::high --> TSTVAL00:::medium
+  TRNREC:::high --> RPTAUD00:::medium
+  classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
+  classDef medium fill:#fff2cc,stroke:#b8860b,stroke-width:2px;
+```
 
-      ...
-      1100-OPEN-FILES.
-          OPEN INPUT TRANSACTION-FILE
-          .
-      2420-CHECK-TRANSACTION-FORMAT.
-          IF CHANNEL-CODE = SPACES
-              DISPLAY "WARNING: CHANNEL-CODE MISSING IN TRANSACTION"
-          END-IF
-          .
-      ...
+---
 
-Summary: Added validation for CHANNEL-CODE in 2420-CHECK-TRANSACTION-FORMAT to warn if missing.
+**Reasoning:**  
+- The `TRANSACTION.CPY` and `TRNREC` copybooks are the core data structures for transaction records and must be updated for the new field.
+- Programs that generate, read, validate, or report on transaction files (TSTGEN00, RPTPOS00, UTLVAL00) are directly impacted and must be updated to handle the new field in file I/O and logic.
+- Test and reporting programs (TSTVAL00, RPTAUD00) and related copybooks (POSREC) are indirectly impacted due to their use of transaction data structures or files.
+- All affected programs must update file layouts, LRECL, FD sections, and potentially reporting logic to include the new `CHANNEL-CODE` field.
 
-[6] TSTVAL00.CBL /src/programs/TSTVAL00.CBL
+---
 
-      ...
-      1100-OPEN-FILES.
-          OPEN INPUT TRANSACTION-FILE
-          .
-      2100-EXECUTE-TEST.
-          IF CHANNEL-CODE NOT = EXPECTED-CHANNEL-CODE
-              DISPLAY "TEST FAILED: CHANNEL-CODE MISMATCH"
-          END-IF
-          .
-      ...
+(Passing the extracted file content to the next agent as instructed.)
 
-Summary: Updated test validation to check CHANNEL-CODE in 2100-EXECUTE-TEST.
+----------
 
-[7] POSREC.CPY /src/copybook/POSREC.CPY
-
-      01  POSREC-RECORD.
-          05  POSREC-ID                PIC X(10).
-          05  POSREC-DATE              PIC 9(8).
-          05  POSREC-AMOUNT            PIC S9(9)V99 COMP-3.
-          05  POSREC-TYPE              PIC X(2).
-          05  POSREC-ACCOUNT           PIC X(12).
-          05  POSREC-CHANNEL-CODE      PIC X(4).    * Added for channel identification
-
-Summary: Added POSREC-CHANNEL-CODE field (PIC X(4)) to POSREC record structure for channel identification.
-
-[8] RPTAUD00.CBL /src/programs/RPTAUD00.CBL
-
-      ...
-      2100-PROCESS-AUDIT-TRAIL.
-          DISPLAY "AUDIT TRAIL ENTRY:"
-          DISPLAY "TRANSACTION ID: " TRANSACTION-ID
-          DISPLAY "CHANNEL: " CHANNEL-CODE    *> Added: Audit includes channel code
-          .
-      2200-PROCESS-ERROR-LOG.
-          IF CHANNEL-CODE = SPACES
-              DISPLAY "ERROR: MISSING CHANNEL-CODE IN TRANSACTION"
-          END-IF
-          .
-      ...
-
-Summary: Updated audit trail and error log processing to include and validate CHANNEL-CODE.
+I have delegated the task to the Developer Assistant Agent to locate and update all impacted COBOL, JCL, and copybook files as specified in the Impact Analysis Report. The instructions provided ensure that the CHANNEL-CODE field will be added to all relevant data structures and logic, with strict adherence to COBOL formatting and structure. The output will include the complete, updated source code for each impacted file, along with a structured summary of the changes made, as required by the criteria.
