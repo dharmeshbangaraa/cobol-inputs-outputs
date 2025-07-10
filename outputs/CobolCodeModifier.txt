@@ -1,433 +1,123 @@
-## Summary
+[1] TRANSACTION.CPY /src/copybook/TRANSACTION.CPY
 
-**User Story:**  
-Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting  
-- As a COBOL developer, I want to add a `CHANNEL-CODE` field to the transaction file, so that the source of each transaction (e.g., ATM, Mobile, Branch) can be captured and processed, allowing for improved analytics, auditing, and fraud detection based on transaction channels through batch processing and reporting.
+      01  TRANSACTION-RECORD.
+          05  TRANSACTION-ID           PIC X(10).
+          05  TRANSACTION-DATE         PIC 9(8).
+          05  TRANSACTION-AMOUNT       PIC S9(9)V99 COMP-3.
+          05  TRANSACTION-TYPE         PIC X(2).
+          05  ACCOUNT-NUMBER           PIC X(12).
+          05  CHANNEL-CODE             PIC X(4).    * Added for channel identification
 
-**Total Impacted Components:** 8 (COBOL programs and copybooks directly or indirectly handling transaction files)
+Summary: Added CHANNEL-CODE field (PIC X(4)) to the transaction record structure for channel identification.
 
-**Change Complexity:**  
-High. This change affects core data structures (copybooks), file layouts, multiple batch and reporting programs, and requires updates to file definitions, record lengths, and reporting logic. It also impacts test data and documentation.
+[2] TRNREC.CPY /src/copybook/TRNREC.CPY
 
----
+      01  TRNREC-RECORD.
+          05  TRNREC-ID                PIC X(10).
+          05  TRNREC-DATE              PIC 9(8).
+          05  TRNREC-AMOUNT            PIC S9(9)V99 COMP-3.
+          05  TRNREC-TYPE              PIC X(2).
+          05  TRNREC-ACCOUNT           PIC X(12).
+          05  TRNREC-CHANNEL-CODE      PIC X(4).    * Added for channel identification
 
-## Ranked Impact List
+Summary: Added TRNREC-CHANNEL-CODE field (PIC X(4)) to the TRNREC record structure for channel identification.
 
-| Program/Copybook         | Impact | Nature   | Affected Paragraphs/Sections         | Dependency Path                                   |
-|--------------------------|--------|----------|--------------------------------------|---------------------------------------------------|
-| TRANSACTION.CPY          | High   | Direct   | All                                  | Core transaction record structure                 |
-| TRNREC (TRNREC.CPY)      | High   | Direct   | All                                  | Used in transaction file layouts                  |
-| TSTGEN00                 | High   | Direct   | 2300-GEN-TRANSACTION, 2320-WRITE-TRAN-RECORD | Writes transaction output files                   |
-| RPTPOS00                 | High   | Direct   | 2200-PROCESS-TRANSACTIONS, 2210-READ-TRANSACTIONS | Reads transaction history for reporting           |
-| UTLVAL00                 | High   | Direct   | 1100-OPEN-FILES, 2420-CHECK-TRANSACTION-FORMAT | Reads/validates transaction history               |
-| TSTVAL00                 | Medium | Indirect | 1100-OPEN-FILES, 2100-EXECUTE-TEST   | Test validation using transaction data            |
-| POSREC (POSREC.CPY)      | Medium | Indirect | All                                  | Used in programs that process transaction data    |
-| RPTAUD00                 | Medium | Indirect | 2100-PROCESS-AUDIT-TRAIL, 2200-PROCESS-ERROR-LOG | May include transaction details in audit reports  |
+[3] TSTGEN00.CBL /src/programs/TSTGEN00.CBL
 
----
+      ...
+      2300-GEN-TRANSACTION.
+          MOVE WS-TRANSACTION-ID        TO TRANSACTION-ID
+          MOVE WS-TRANSACTION-DATE      TO TRANSACTION-DATE
+          MOVE WS-TRANSACTION-AMOUNT    TO TRANSACTION-AMOUNT
+          MOVE WS-TRANSACTION-TYPE      TO TRANSACTION-TYPE
+          MOVE WS-ACCOUNT-NUMBER        TO ACCOUNT-NUMBER
+          MOVE WS-CHANNEL-CODE          TO CHANNEL-CODE    *> Added: Set channel code in transaction record
+          .
+      2320-WRITE-TRAN-RECORD.
+          WRITE TRANSACTION-RECORD
+          .
+      ...
 
-## JSON Metadata
+Summary: Updated 2300-GEN-TRANSACTION to move WS-CHANNEL-CODE into CHANNEL-CODE field; ensures new field is populated in generated transactions.
 
-```json
-{
-  "impactAnalysis": {
-    "userStory": "Add CHANNEL-CODE Field to Transaction File for Channel Identification in Batch Processing and Reporting",
-    "impactedComponents": [
-      {
-        "programName": "TRANSACTION.CPY",
-        "impactScore": 1.0,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["All"],
-        "dependencyPath": ["TRANSACTION.CPY"],
-        "rationale": "Primary copybook for transaction record; all programs using this must be updated for the new field."
-      },
-      {
-        "programName": "TRNREC",
-        "impactScore": 0.98,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["All"],
-        "dependencyPath": ["TRNREC"],
-        "rationale": "Copybook for transaction record layout; directly affected by new field addition."
-      },
-      {
-        "programName": "TSTGEN00",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["2300-GEN-TRANSACTION", "2320-WRITE-TRAN-RECORD"],
-        "dependencyPath": ["TSTGEN00"],
-        "rationale": "Generates transaction output files; must write new CHANNEL-CODE field."
-      },
-      {
-        "programName": "RPTPOS00",
-        "impactScore": 0.93,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["2200-PROCESS-TRANSACTIONS", "2210-READ-TRANSACTIONS"],
-        "dependencyPath": ["RPTPOS00"],
-        "rationale": "Reads transaction history for reporting; must read and report CHANNEL-CODE."
-      },
-      {
-        "programName": "UTLVAL00",
-        "impactScore": 0.92,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["1100-OPEN-FILES", "2420-CHECK-TRANSACTION-FORMAT"],
-        "dependencyPath": ["UTLVAL00"],
-        "rationale": "Validates transaction files; must validate new field and adjust file handling."
-      },
-      {
-        "programName": "TSTVAL00",
-        "impactScore": 0.80,
-        "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["1100-OPEN-FILES", "2100-EXECUTE-TEST"],
-        "dependencyPath": ["TSTVAL00"],
-        "rationale": "Test validation program; indirectly affected by changes to transaction file structure."
-      },
-      {
-        "programName": "POSREC",
-        "impactScore": 0.75,
-        "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["All"],
-        "dependencyPath": ["POSREC"],
-        "rationale": "Copybook used in programs that process transaction data; may need alignment with new field."
-      },
-      {
-        "programName": "RPTAUD00",
-        "impactScore": 0.70,
-        "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["2100-PROCESS-AUDIT-TRAIL", "2200-PROCESS-ERROR-LOG"],
-        "dependencyPath": ["RPTAUD00"],
-        "rationale": "Audit reporting program; may include transaction details and require new field."
-      }
-    ]
-  }
-}
-```
+[4] RPTPOS00.CBL /src/programs/RPTPOS00.CBL
 
----
+      ...
+      2200-PROCESS-TRANSACTIONS.
+          READ TRANSACTION-FILE INTO TRANSACTION-RECORD
+              AT END
+                  SET EOF-TRANSACTION TO TRUE
+              NOT AT END
+                  PERFORM 2210-READ-TRANSACTIONS
+          END-READ
+          .
+      2210-READ-TRANSACTIONS.
+          DISPLAY "TRANSACTION ID: " TRANSACTION-ID
+          DISPLAY "DATE: " TRANSACTION-DATE
+          DISPLAY "AMOUNT: " TRANSACTION-AMOUNT
+          DISPLAY "TYPE: " TRANSACTION-TYPE
+          DISPLAY "ACCOUNT: " ACCOUNT-NUMBER
+          DISPLAY "CHANNEL: " CHANNEL-CODE    *> Added: Report channel code
+          .
+      ...
 
-## Visualization
+Summary: Updated reporting logic to display CHANNEL-CODE in 2210-READ-TRANSACTIONS.
 
-```mermaid
-graph TD
-  TRANSACTION.CPY:::high --> TRNREC:::high
-  TRANSACTION.CPY:::high --> TSTGEN00:::high
-  TRANSACTION.CPY:::high --> RPTPOS00:::high
-  TRANSACTION.CPY:::high --> UTLVAL00:::high
-  TRANSACTION.CPY:::high --> TSTVAL00:::medium
-  TRANSACTION.CPY:::high --> POSREC:::medium
-  TRANSACTION.CPY:::high --> RPTAUD00:::medium
-  TRNREC:::high --> TSTGEN00:::high
-  TRNREC:::high --> RPTPOS00:::high
-  TRNREC:::high --> UTLVAL00:::high
-  TRNREC:::high --> TSTVAL00:::medium
-  TRNREC:::high --> RPTAUD00:::medium
-  classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
-  classDef medium fill:#fff2cc,stroke:#b8860b,stroke-width:2px;
-```
+[5] UTLVAL00.CBL /src/programs/UTLVAL00.CBL
 
----
+      ...
+      1100-OPEN-FILES.
+          OPEN INPUT TRANSACTION-FILE
+          .
+      2420-CHECK-TRANSACTION-FORMAT.
+          IF CHANNEL-CODE = SPACES
+              DISPLAY "WARNING: CHANNEL-CODE MISSING IN TRANSACTION"
+          END-IF
+          .
+      ...
 
-**Reasoning:**  
-- The `TRANSACTION.CPY` and `TRNREC` copybooks are the core data structures for transaction records and must be updated for the new field.
-- Programs that generate, read, validate, or report on transaction files (TSTGEN00, RPTPOS00, UTLVAL00) are directly impacted and must be updated to handle the new field in file I/O and logic.
-- Test and reporting programs (TSTVAL00, RPTAUD00) and related copybooks (POSREC) are indirectly impacted due to their use of transaction data structures or files.
-- All affected programs must update file layouts, LRECL, FD sections, and potentially reporting logic to include the new `CHANNEL-CODE` field.
+Summary: Added validation for CHANNEL-CODE in 2420-CHECK-TRANSACTION-FORMAT to warn if missing.
 
----
+[6] TSTVAL00.CBL /src/programs/TSTVAL00.CBL
 
-----------
+      ...
+      1100-OPEN-FILES.
+          OPEN INPUT TRANSACTION-FILE
+          .
+      2100-EXECUTE-TEST.
+          IF CHANNEL-CODE NOT = EXPECTED-CHANNEL-CODE
+              DISPLAY "TEST FAILED: CHANNEL-CODE MISMATCH"
+          END-IF
+          .
+      ...
 
-[1] TRNREC.cpy /src/copybook/common/TRNREC.cpy
+Summary: Updated test validation to check CHANNEL-CODE in 2100-EXECUTE-TEST.
 
-       01  TRANSACTION-RECORD.
-           05  TRANSACTION-ID           PIC 9(10).
-           05  TRANSACTION-DATE         PIC 9(8).
-           05  TRANSACTION-TIME         PIC 9(6).
-           05  ACCOUNT-NUMBER           PIC X(16).
-           05  TRANSACTION-AMOUNT       PIC S9(9)V99 COMP-3.
-           05  TRANSACTION-TYPE         PIC X(2).
-           05  TRANSACTION-STATUS       PIC X(1).
-           05  CHANNEL-CODE             PIC X(4).
-               * Added field to capture transaction channel (e.g., ATM, MOBL, BRCH)
-           05  FILLER                   PIC X(15).
+[7] POSREC.CPY /src/copybook/POSREC.CPY
 
-Summary: Added CHANNEL-CODE field (PIC X(4)) to the transaction record structure to capture the source channel of each transaction. Updated filler to maintain record length.
+      01  POSREC-RECORD.
+          05  POSREC-ID                PIC X(10).
+          05  POSREC-DATE              PIC 9(8).
+          05  POSREC-AMOUNT            PIC S9(9)V99 COMP-3.
+          05  POSREC-TYPE              PIC X(2).
+          05  POSREC-ACCOUNT           PIC X(12).
+          05  POSREC-CHANNEL-CODE      PIC X(4).    * Added for channel identification
 
-[2] TSTGEN00.cbl /src/programs/test/TSTGEN00.cbl
+Summary: Added POSREC-CHANNEL-CODE field (PIC X(4)) to POSREC record structure for channel identification.
 
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. TSTGEN00.
+[8] RPTAUD00.CBL /src/programs/RPTAUD00.CBL
 
-       ENVIRONMENT DIVISION.
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT TRAN-OUT ASSIGN TO 'TRANSACT.DAT'
-               ORGANIZATION IS SEQUENTIAL.
+      ...
+      2100-PROCESS-AUDIT-TRAIL.
+          DISPLAY "AUDIT TRAIL ENTRY:"
+          DISPLAY "TRANSACTION ID: " TRANSACTION-ID
+          DISPLAY "CHANNEL: " CHANNEL-CODE    *> Added: Audit includes channel code
+          .
+      2200-PROCESS-ERROR-LOG.
+          IF CHANNEL-CODE = SPACES
+              DISPLAY "ERROR: MISSING CHANNEL-CODE IN TRANSACTION"
+          END-IF
+          .
+      ...
 
-       DATA DIVISION.
-       FILE SECTION.
-       FD  TRAN-OUT
-           LABEL RECORDS ARE STANDARD
-           BLOCK CONTAINS 0 RECORDS
-           RECORD CONTAINS 62 CHARACTERS
-           DATA RECORD IS TRANSACTION-RECORD-OUT.
-       01  TRANSACTION-RECORD-OUT.
-           05  TRANSACTION-ID           PIC 9(10).
-           05  TRANSACTION-DATE         PIC 9(8).
-           05  TRANSACTION-TIME         PIC 9(6).
-           05  ACCOUNT-NUMBER           PIC X(16).
-           05  TRANSACTION-AMOUNT       PIC S9(9)V99 COMP-3.
-           05  TRANSACTION-TYPE         PIC X(2).
-           05  TRANSACTION-STATUS       PIC X(1).
-           05  CHANNEL-CODE             PIC X(4).
-               * Added field to capture transaction channel (e.g., ATM, MOBL, BRCH)
-           05  FILLER                   PIC X(15).
-
-       WORKING-STORAGE SECTION.
-       COPY 'TRNREC.CPY'.
-
-       PROCEDURE DIVISION.
-       2300-GEN-TRANSACTION.
-           MOVE 1234567890         TO TRANSACTION-ID
-           MOVE 20240601           TO TRANSACTION-DATE
-           MOVE 123045             TO TRANSACTION-TIME
-           MOVE '0001234567890123' TO ACCOUNT-NUMBER
-           MOVE +10000             TO TRANSACTION-AMOUNT
-           MOVE '01'               TO TRANSACTION-TYPE
-           MOVE 'A'                TO TRANSACTION-STATUS
-           MOVE 'ATM '             TO CHANNEL-CODE
-               * Example: Set channel to ATM for this generated transaction
-           MOVE SPACES             TO FILLER OF TRANSACTION-RECORD-OUT
-           PERFORM 2320-WRITE-TRAN-RECORD.
-
-       2320-WRITE-TRAN-RECORD.
-           WRITE TRANSACTION-RECORD-OUT.
-           .
-
-Summary: Updated FD and record layout to include CHANNEL-CODE. Modified transaction generation logic to populate CHANNEL-CODE with 'ATM ' as an example.
-
-[3] RPTPOS00.cbl /src/programs/batch/RPTPOS00.cbl
-
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. RPTPOS00.
-
-       ENVIRONMENT DIVISION.
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT TRAN-IN ASSIGN TO 'TRANSACT.DAT'
-               ORGANIZATION IS SEQUENTIAL.
-
-       DATA DIVISION.
-       FILE SECTION.
-       FD  TRAN-IN
-           LABEL RECORDS ARE STANDARD
-           BLOCK CONTAINS 0 RECORDS
-           RECORD CONTAINS 62 CHARACTERS
-           DATA RECORD IS TRANSACTION-RECORD-IN.
-       01  TRANSACTION-RECORD-IN.
-           05  TRANSACTION-ID           PIC 9(10).
-           05  TRANSACTION-DATE         PIC 9(8).
-           05  TRANSACTION-TIME         PIC 9(6).
-           05  ACCOUNT-NUMBER           PIC X(16).
-           05  TRANSACTION-AMOUNT       PIC S9(9)V99 COMP-3.
-           05  TRANSACTION-TYPE         PIC X(2).
-           05  TRANSACTION-STATUS       PIC X(1).
-           05  CHANNEL-CODE             PIC X(4).
-               * Added field to capture transaction channel (e.g., ATM, MOBL, BRCH)
-           05  FILLER                   PIC X(15).
-
-       WORKING-STORAGE SECTION.
-       COPY 'TRNREC.CPY'.
-
-       PROCEDURE DIVISION.
-       2200-PROCESS-TRANSACTIONS.
-           PERFORM 2210-READ-TRANSACTIONS
-               UNTIL END-OF-FILE.
-
-       2210-READ-TRANSACTIONS.
-           READ TRAN-IN INTO TRANSACTION-RECORD-IN
-               AT END
-                   SET END-OF-FILE TO TRUE
-               NOT AT END
-                   DISPLAY 'TRANSACTION CHANNEL: ' CHANNEL-CODE
-                       * Reporting now includes CHANNEL-CODE for analytics
-                   CONTINUE
-           .
-
-Summary: Updated FD and record layout to include CHANNEL-CODE. Enhanced reporting logic to display CHANNEL-CODE for each transaction.
-
-[4] UTLVAL00.cbl /src/programs/utility/UTLVAL00.cbl
-
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. UTLVAL00.
-
-       ENVIRONMENT DIVISION.
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT TRAN-IN ASSIGN TO 'TRANSACT.DAT'
-               ORGANIZATION IS SEQUENTIAL.
-
-       DATA DIVISION.
-       FILE SECTION.
-       FD  TRAN-IN
-           LABEL RECORDS ARE STANDARD
-           BLOCK CONTAINS 0 RECORDS
-           RECORD CONTAINS 62 CHARACTERS
-           DATA RECORD IS TRANSACTION-RECORD-IN.
-       01  TRANSACTION-RECORD-IN.
-           05  TRANSACTION-ID           PIC 9(10).
-           05  TRANSACTION-DATE         PIC 9(8).
-           05  TRANSACTION-TIME         PIC 9(6).
-           05  ACCOUNT-NUMBER           PIC X(16).
-           05  TRANSACTION-AMOUNT       PIC S9(9)V99 COMP-3.
-           05  TRANSACTION-TYPE         PIC X(2).
-           05  TRANSACTION-STATUS       PIC X(1).
-           05  CHANNEL-CODE             PIC X(4).
-               * Added field to capture transaction channel (e.g., ATM, MOBL, BRCH)
-           05  FILLER                   PIC X(15).
-
-       WORKING-STORAGE SECTION.
-       COPY 'TRNREC.CPY'.
-
-       PROCEDURE DIVISION.
-       1100-OPEN-FILES.
-           OPEN INPUT TRAN-IN.
-
-       2420-CHECK-TRANSACTION-FORMAT.
-           READ TRAN-IN INTO TRANSACTION-RECORD-IN
-               AT END
-                   CLOSE TRAN-IN
-                   STOP RUN
-               NOT AT END
-                   IF CHANNEL-CODE = SPACES
-                       DISPLAY 'WARNING: CHANNEL-CODE IS BLANK'
-                           * Validation for new CHANNEL-CODE field
-                   END-IF
-                   CONTINUE
-           .
-
-Summary: Updated FD and record layout to include CHANNEL-CODE. Added validation logic to check for blank CHANNEL-CODE values.
-
-[5] TSTVAL00.cbl /src/programs/test/TSTVAL00.cbl
-
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. TSTVAL00.
-
-       ENVIRONMENT DIVISION.
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT TRAN-IN ASSIGN TO 'TRANSACT.DAT'
-               ORGANIZATION IS SEQUENTIAL.
-
-       DATA DIVISION.
-       FILE SECTION.
-       FD  TRAN-IN
-           LABEL RECORDS ARE STANDARD
-           BLOCK CONTAINS 0 RECORDS
-           RECORD CONTAINS 62 CHARACTERS
-           DATA RECORD IS TRANSACTION-RECORD-IN.
-       01  TRANSACTION-RECORD-IN.
-           05  TRANSACTION-ID           PIC 9(10).
-           05  TRANSACTION-DATE         PIC 9(8).
-           05  TRANSACTION-TIME         PIC 9(6).
-           05  ACCOUNT-NUMBER           PIC X(16).
-           05  TRANSACTION-AMOUNT       PIC S9(9)V99 COMP-3.
-           05  TRANSACTION-TYPE         PIC X(2).
-           05  TRANSACTION-STATUS       PIC X(1).
-           05  CHANNEL-CODE             PIC X(4).
-               * Added field to capture transaction channel (e.g., ATM, MOBL, BRCH)
-           05  FILLER                   PIC X(15).
-
-       WORKING-STORAGE SECTION.
-       COPY 'TRNREC.CPY'.
-
-       PROCEDURE DIVISION.
-       1100-OPEN-FILES.
-           OPEN INPUT TRAN-IN.
-
-       2100-EXECUTE-TEST.
-           READ TRAN-IN INTO TRANSACTION-RECORD-IN
-               AT END
-                   CLOSE TRAN-IN
-                   STOP RUN
-               NOT AT END
-                   IF CHANNEL-CODE NOT = 'ATM '
-                       DISPLAY 'TEST: NON-ATM CHANNEL FOUND: ' CHANNEL-CODE
-                           * Test validation now includes CHANNEL-CODE
-                   END-IF
-                   CONTINUE
-           .
-
-Summary: Updated FD and record layout to include CHANNEL-CODE. Test validation logic now checks for non-ATM channel codes.
-
-[6] POSREC.cpy /src/copybook/common/POSREC.cpy
-
-       01  POS-RECORD.
-           05  POS-TRANSACTION-ID      PIC 9(10).
-           05  POS-ACCOUNT-NUMBER      PIC X(16).
-           05  POS-TRANSACTION-AMOUNT  PIC S9(9)V99 COMP-3.
-           05  POS-TRANSACTION-TYPE    PIC X(2).
-           05  POS-TRANSACTION-STATUS  PIC X(1).
-           05  POS-CHANNEL-CODE        PIC X(4).
-               * Added field to align with transaction record structure
-           05  FILLER                  PIC X(19).
-
-Summary: Added POS-CHANNEL-CODE field (PIC X(4)) to align POS record structure with transaction record changes.
-
-[7] RPTAUD00.cbl /src/programs/batch/RPTAUD00.cbl
-
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. RPTAUD00.
-
-       ENVIRONMENT DIVISION.
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT TRAN-IN ASSIGN TO 'TRANSACT.DAT'
-               ORGANIZATION IS SEQUENTIAL.
-
-       DATA DIVISION.
-       FILE SECTION.
-       FD  TRAN-IN
-           LABEL RECORDS ARE STANDARD
-           BLOCK CONTAINS 0 RECORDS
-           RECORD CONTAINS 62 CHARACTERS
-           DATA RECORD IS TRANSACTION-RECORD-IN.
-       01  TRANSACTION-RECORD-IN.
-           05  TRANSACTION-ID           PIC 9(10).
-           05  TRANSACTION-DATE         PIC 9(8).
-           05  TRANSACTION-TIME         PIC 9(6).
-           05  ACCOUNT-NUMBER           PIC X(16).
-           05  TRANSACTION-AMOUNT       PIC S9(9)V99 COMP-3.
-           05  TRANSACTION-TYPE         PIC X(2).
-           05  TRANSACTION-STATUS       PIC X(1).
-           05  CHANNEL-CODE             PIC X(4).
-               * Added field to capture transaction channel (e.g., ATM, MOBL, BRCH)
-           05  FILLER                   PIC X(15).
-
-       WORKING-STORAGE SECTION.
-       COPY 'TRNREC.CPY'.
-
-       PROCEDURE DIVISION.
-       2100-PROCESS-AUDIT-TRAIL.
-           READ TRAN-IN INTO TRANSACTION-RECORD-IN
-               AT END
-                   CLOSE TRAN-IN
-                   STOP RUN
-               NOT AT END
-                   DISPLAY 'AUDIT: TRANSACTION ' TRANSACTION-ID
-                   DISPLAY '       CHANNEL: ' CHANNEL-CODE
-                       * Audit report now includes CHANNEL-CODE
-                   CONTINUE
-           .
-
-       2200-PROCESS-ERROR-LOG.
-           * No changes required for CHANNEL-CODE in error log processing
-
-Summary: Updated FD and record layout to include CHANNEL-CODE. Audit reporting now displays CHANNEL-CODE for each transaction.
+Summary: Updated audit trail and error log processing to include and validate CHANNEL-CODE.
