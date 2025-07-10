@@ -6,27 +6,27 @@
 
 **User Story:**  
 Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting  
-- As a COBOL developer, I want to add a `CHANNEL-CODE` field to the transaction file, so that the source of each transaction (e.g., ATM, Mobile, Branch) can be captured and processed, allowing for improved analytics, auditing, and fraud detection based on transaction channels through batch processing and reporting.
+As a COBOL developer, I want to add a `CHANNEL-CODE` field to the transaction file, so that the source of each transaction (e.g., ATM, Mobile, Branch) can be captured and processed, allowing for improved analytics, auditing, and fraud detection based on transaction channels through batch processing and reporting.
 
-**Total Impacted Components:** 8 (COBOL programs and copybooks directly or indirectly handling transaction files)
-
-**Change Complexity:**  
-High. This change affects core data structures (copybooks), file layouts, multiple batch and reporting programs, and requires updates to file definitions, record lengths, and reporting logic. It also impacts test data and documentation.
+- **Total impacted components:** 10 (programs, copybooks, JCL)
+- **Change complexity:** High. This change affects core transaction data structures, file layouts, batch processing, reporting, and requires updates to copybooks, file definitions, and all programs that read/write transaction data.
 
 ---
 
 ## Ranked Impact List
 
-| Program/Copybook         | Impact | Nature   | Affected Paragraphs/Sections         | Dependency Path                                   |
-|--------------------------|--------|----------|--------------------------------------|---------------------------------------------------|
-| TRANSACTION.CPY          | High   | Direct   | All                                  | Core transaction record structure                 |
-| TRNREC (TRNREC.CPY)      | High   | Direct   | All                                  | Used in transaction file layouts                  |
-| TSTGEN00                 | High   | Direct   | 2300-GEN-TRANSACTION, 2320-WRITE-TRAN-RECORD | Writes transaction output files                   |
-| RPTPOS00                 | High   | Direct   | 2200-PROCESS-TRANSACTIONS, 2210-READ-TRANSACTIONS | Reads transaction history for reporting           |
-| UTLVAL00                 | High   | Direct   | 1100-OPEN-FILES, 2420-CHECK-TRANSACTION-FORMAT | Reads/validates transaction history               |
-| TSTVAL00                 | Medium | Indirect | 1100-OPEN-FILES, 2100-EXECUTE-TEST   | Test validation using transaction data            |
-| POSREC (POSREC.CPY)      | Medium | Indirect | All                                  | Used in programs that process transaction data    |
-| RPTAUD00                 | Medium | Indirect | 2100-PROCESS-AUDIT-TRAIL, 2200-PROCESS-ERROR-LOG | May include transaction details in audit reports  |
+| Program/Copybook         | Impact   | Nature   | Affected Paragraphs/Sections         | Dependency Path                                   |
+|--------------------------|----------|----------|--------------------------------------|---------------------------------------------------|
+| TRANSACTION.CPY          | High     | Direct   | All (copybook)                       | Used by all transaction-processing programs       |
+| TRNREC.CPY               | High     | Direct   | All (copybook)                       | Used by batch/reporting programs                  |
+| POSREC.CPY               | High     | Direct   | All (copybook)                       | Used by batch/reporting programs                  |
+| BCHCTL00                 | High     | Direct   | FILE-CONTROL, 0000-MAIN, 1000-*      | Uses transaction file copybooks                   |
+| RPTPOS00                 | High     | Direct   | FILE-CONTROL, 1100-OPEN-FILES, 2200-PROCESS-TRANSACTIONS | Reads transaction file for reporting              |
+| RPTAUD00                 | Medium   | Indirect | FILE-CONTROL, 1100-OPEN-FILES        | Reads audit logs, may reference transaction data  |
+| UTLVAL00                 | High     | Direct   | FILE-CONTROL, 1100-OPEN-FILES, 2400-CHECK-FORMAT | Validates transaction file                        |
+| TSTGEN00                 | Medium   | Direct   | 2300-GEN-TRANSACTION, 2320-WRITE-TRAN-RECORD | Generates test transaction files                  |
+| TSTVAL00                 | Medium   | Indirect | 2100-EXECUTE-TEST, 2200-RUN-FUNCTIONAL-TEST | Validates test transaction files                  |
+| JCL (Batch/Report jobs)  | Medium   | Direct   | DD statements for transaction files   | LRECL/FD changes for new field                    |
 
 ---
 
@@ -42,72 +42,90 @@ High. This change affects core data structures (copybooks), file layouts, multip
         "impactScore": 1.0,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["All"],
-        "dependencyPath": ["TRANSACTION.CPY"],
-        "rationale": "Primary copybook for transaction record; all programs using this must be updated for the new field."
+        "affectedParagraphs": ["ALL"],
+        "dependencyPath": ["All programs using transaction file"],
+        "rationale": "Primary copybook for transaction file structure; must be updated to define CHANNEL-CODE."
       },
       {
-        "programName": "TRNREC",
+        "programName": "TRNREC.CPY",
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["All"],
-        "dependencyPath": ["TRNREC"],
-        "rationale": "Copybook for transaction record layout; directly affected by new field addition."
+        "affectedParagraphs": ["ALL"],
+        "dependencyPath": ["Batch/reporting programs"],
+        "rationale": "Copybook used for transaction record layout in batch/reporting programs."
       },
       {
-        "programName": "TSTGEN00",
+        "programName": "POSREC.CPY",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2300-GEN-TRANSACTION", "2320-WRITE-TRAN-RECORD"],
-        "dependencyPath": ["TSTGEN00"],
-        "rationale": "Generates transaction output files; must write new CHANNEL-CODE field."
+        "affectedParagraphs": ["ALL"],
+        "dependencyPath": ["Batch/reporting programs"],
+        "rationale": "Copybook for position/transaction records, used in reporting and validation."
+      },
+      {
+        "programName": "BCHCTL00",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["FILE-CONTROL", "0000-MAIN", "1000-PROCESS-INITIALIZE"],
+        "dependencyPath": ["BCHCTL00"],
+        "rationale": "Batch control program that processes transaction files using affected copybooks."
       },
       {
         "programName": "RPTPOS00",
         "impactScore": 0.93,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2200-PROCESS-TRANSACTIONS", "2210-READ-TRANSACTIONS"],
+        "affectedParagraphs": ["FILE-CONTROL", "1100-OPEN-FILES", "2200-PROCESS-TRANSACTIONS"],
         "dependencyPath": ["RPTPOS00"],
-        "rationale": "Reads transaction history for reporting; must read and report CHANNEL-CODE."
+        "rationale": "Main reporting program for transaction data; must output CHANNEL-CODE."
       },
       {
         "programName": "UTLVAL00",
         "impactScore": 0.92,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1100-OPEN-FILES", "2420-CHECK-TRANSACTION-FORMAT"],
+        "affectedParagraphs": ["FILE-CONTROL", "1100-OPEN-FILES", "2400-CHECK-FORMAT"],
         "dependencyPath": ["UTLVAL00"],
-        "rationale": "Validates transaction files; must validate new field and adjust file handling."
-      },
-      {
-        "programName": "TSTVAL00",
-        "impactScore": 0.80,
-        "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["1100-OPEN-FILES", "2100-EXECUTE-TEST"],
-        "dependencyPath": ["TSTVAL00"],
-        "rationale": "Test validation program; indirectly affected by changes to transaction file structure."
-      },
-      {
-        "programName": "POSREC",
-        "impactScore": 0.75,
-        "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["All"],
-        "dependencyPath": ["POSREC"],
-        "rationale": "Copybook used in programs that process transaction data; may need alignment with new field."
+        "rationale": "Utility program for validating transaction file format and content."
       },
       {
         "programName": "RPTAUD00",
-        "impactScore": 0.70,
+        "impactScore": 0.80,
         "impactLevel": "Medium",
         "impactType": "Indirect",
-        "affectedParagraphs": ["2100-PROCESS-AUDIT-TRAIL", "2200-PROCESS-ERROR-LOG"],
+        "affectedParagraphs": ["FILE-CONTROL", "1100-OPEN-FILES"],
         "dependencyPath": ["RPTAUD00"],
-        "rationale": "Audit reporting program; may include transaction details and require new field."
+        "rationale": "Audit reporting program; may reference transaction file for audit trails."
+      },
+      {
+        "programName": "TSTGEN00",
+        "impactScore": 0.78,
+        "impactLevel": "Medium",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2300-GEN-TRANSACTION", "2320-WRITE-TRAN-RECORD"],
+        "dependencyPath": ["TSTGEN00"],
+        "rationale": "Test data generator for transaction files; must generate CHANNEL-CODE values."
+      },
+      {
+        "programName": "TSTVAL00",
+        "impactScore": 0.75,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["2100-EXECUTE-TEST", "2200-RUN-FUNCTIONAL-TEST"],
+        "dependencyPath": ["TSTVAL00"],
+        "rationale": "Test validation program; must validate presence and correctness of CHANNEL-CODE."
+      },
+      {
+        "programName": "JCL (Batch/Report jobs)",
+        "impactScore": 0.70,
+        "impactLevel": "Medium",
+        "impactType": "Direct",
+        "affectedParagraphs": ["DD statements for transaction files"],
+        "dependencyPath": ["JCL"],
+        "rationale": "JCL scripts must update LRECL and FD for new field in transaction files."
       }
     ]
   }
@@ -120,18 +138,21 @@ High. This change affects core data structures (copybooks), file layouts, multip
 
 ```mermaid
 graph TD
-  TRANSACTION.CPY:::high --> TRNREC:::high
-  TRANSACTION.CPY:::high --> TSTGEN00:::high
-  TRANSACTION.CPY:::high --> RPTPOS00:::high
-  TRANSACTION.CPY:::high --> UTLVAL00:::high
-  TRANSACTION.CPY:::high --> TSTVAL00:::medium
-  TRANSACTION.CPY:::high --> POSREC:::medium
-  TRANSACTION.CPY:::high --> RPTAUD00:::medium
-  TRNREC:::high --> TSTGEN00:::high
-  TRNREC:::high --> RPTPOS00:::high
-  TRNREC:::high --> UTLVAL00:::high
-  TRNREC:::high --> TSTVAL00:::medium
-  TRNREC:::high --> RPTAUD00:::medium
+  TRANSACTION.CPY:::high --> BCHCTL00:::high
+  TRANSACTION.CPY --> RPTPOS00:::high
+  TRANSACTION.CPY --> UTLVAL00:::high
+  TRANSACTION.CPY --> TSTGEN00:::medium
+  TRANSACTION.CPY --> TSTVAL00:::medium
+  TRANSACTION.CPY --> JCL:::medium
+  TRNREC.CPY:::high --> RPTPOS00
+  TRNREC.CPY --> UTLVAL00
+  POSREC.CPY:::high --> RPTPOS00
+  BCHCTL00:::high --> RPTPOS00
+  BCHCTL00 --> UTLVAL00
+  RPTPOS00:::high --> RPTAUD00:::medium
+  TSTGEN00:::medium --> TSTVAL00
+  JCL:::medium --> BCHCTL00
+  JCL --> RPTPOS00
   classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
   classDef medium fill:#fff2cc,stroke:#b8860b,stroke-width:2px;
 ```
@@ -139,9 +160,13 @@ graph TD
 ---
 
 **Reasoning:**  
-- The `TRANSACTION.CPY` and `TRNREC` copybooks are the core data structures for transaction records and must be updated for the new field.
-- Programs that generate, read, validate, or report on transaction files (TSTGEN00, RPTPOS00, UTLVAL00) are directly impacted and must be updated to handle the new field in file I/O and logic.
-- Test and reporting programs (TSTVAL00, RPTAUD00) and related copybooks (POSREC) are indirectly impacted due to their use of transaction data structures or files.
-- All affected programs must update file layouts, LRECL, FD sections, and potentially reporting logic to include the new `CHANNEL-CODE` field.
+- The core change is the addition of `CHANNEL-CODE` to the transaction file, which is defined in `TRANSACTION.CPY` and likely in `TRNREC.CPY`/`POSREC.CPY`.
+- All batch, reporting, and utility programs that read/write transaction data must update their file definitions, working-storage, and logic to handle the new field.
+- JCL scripts must update LRECL/FD for the new field.
+- Test data generators and validators must handle the new field for completeness.
+- Reporting and audit programs must include the new field in outputs and analytics.
+- Impact is ranked by directness, criticality, and breadth of usage.
 
 ---
+
+**End of Report**
