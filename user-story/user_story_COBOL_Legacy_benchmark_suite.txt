@@ -1,33 +1,30 @@
-User Story: Add Transaction Type Field to Batch Processing and Reporting
-Title:
-Add Transaction Type field to transaction processing and reporting in COBOL portfolio system
+Title: Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting
 
-As a
-Portfolio operations analyst
+User Story:
+As a COBOL developer,
+I want to add a `CHANNEL-CODE` field to the transaction file,
+so that the source of each transaction (e.g., ATM, Mobile, Branch) can be captured and processed,
+allowing for improved analytics, auditing, and fraud detection based on transaction channels through batch processing and reporting.
 
-I want to
-record and display the type of each transaction (e.g., BUY, SELL, DIVIDEND) in both processing and reporting programs
+Acceptance Criteria:
 
-So that
-I can track, analyze, and report on different types of portfolio transactions for compliance and business insights
+1. Definition
+   A new field `CHANNEL-CODE` (`PIC X(04)`) is defined in the relevant copybooks (e.g., `TRANSACTION.CPY`).
 
-Acceptance Criteria
-Data Structure Update
+2. File Layout
+   Transaction input and output files are updated to include the `CHANNEL-CODE` field and corresponding layout adjustments.
 
-Add a new field, TRANSACTION-TYPE (PIC X(10)), to the transaction record layout in the relevant copybook used by both the batch processing and reporting programs.
+3. Program Updates
+   All programs (batch, online, utility) that read or write transaction data are updated to handle the new field appropriately.
 
-Batch Processing Program Update
+4. Test Data
+   Sample input files and test data include valid `CHANNEL-CODE` values (e.g., `BRCH`, `ATM`, `MOBL`, `NETB`).
 
-Update the transaction processing COBOL program (e.g., TRNVAL00.cbl or similar) to:
+5. LRECL & FD Adjustments
+   The LRECL (Logical Record Length) and FD (File Description) entries in COBOL programs and JCL are adjusted to reflect the new field.
 
-Accept, store, and process the new transaction type field when reading or writing transaction records.
+6. Documentation
+   The data dictionary and all relevant documentation are updated to reflect the structure and purpose of `CHANNEL-CODE`.
 
-Reporting Program Update
-
-Update the transaction report COBOL program (e.g., RPTPOS00.cbl or similar) to:
-
-Read and display the transaction type in the generated summary report.
-
-Backward Compatibility
-
-If the transaction type is missing for older records, the programs should handle it gracefully (e.g., display as blank or "UNKNOWN" in reports).
+7. Reporting
+   Any reports or logs that output transaction details include the `CHANNEL-CODE` field where applicable.
