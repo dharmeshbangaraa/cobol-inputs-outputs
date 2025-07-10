@@ -1,98 +1,169 @@
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document details the technical changes and low-level design (LLD) for the COBOL application's transaction record structure. The changes introduce a new field, `TRN-CHANNEL-CODE`, to capture the channel through which a transaction was initiated (e.g., ATM, Mobile, Branch, Net Banking). The document outlines the existing logic, describes the modifications, and provides structured diffs and rationale for the update.
+This document details the recent enhancements made to the COBOL transaction processing suite, specifically the addition of the `CHANNEL-CODE` field for channel identification (ATM, MOBL, BRCH, NETB) across transaction records and related programs. The purpose of this document is to provide a clear understanding of the changes, their rationale, and the low-level design for implementation and maintenance.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The COBOL application processes financial transactions, storing key details such as transaction date, time, portfolio ID, investment ID, type, quantity, price, amount, currency, status, and audit information. Each transaction is represented by a structured record.
+The COBOL application suite processes financial transactions, validates input data, generates test data, and produces audit and reporting outputs. The system reads transaction records from a sequential file, processes them according to business rules, and outputs results for reporting, validation, and auditing.
 
 ### 2.2 Detailed Logic  
-- **Transaction Key:** Uniquely identifies each transaction using date, time, portfolio ID, and sequence number.
-- **Transaction Data:** Captures investment details, transaction type (Buy, Sell, Transfer, Fee), quantity, price, amount, currency, and status (Pending, Done, Failed, Reversed).
-- **Audit Information:** Records processing date and user.
-- **Filler:** Ensures the record meets required length.
+- **Transaction Record Structure:**  
+  The transaction record is defined in `TRANSACTION.CPY` and is used throughout the application for consistency.
+- **Processing Programs:**  
+  - `RPTPOS00.CBL`: Reads transactions and outputs channel information for reporting.
+  - `UTLVAL00.CBL`: Validates transaction records, including the new channel code.
+  - `TSTGEN00.CBL`: Generates test transaction records with all valid channel codes.
+  - `TSTVAL00.CBL`: Reads and displays channel codes for test validation.
+  - `RPTAUD00.CBL`: Outputs audit information, including the channel code.
+- **JCL Updates:**  
+  All relevant JCL scripts have been updated to reflect the new logical record length (LRECL) due to the addition of the `CHANNEL-CODE` field.
 
 #### Flowchart:  
 ```
 flowchart TD
     Start(["Start"])
+    OpenFiles["Open
+Transaction File"]
     ReadRecord["Read
 Transaction Record"]
-    ValidateFields["Validate
-Transaction Fields"]
-    ProcessTransaction["Process
-Transaction Logic"]
-    UpdateStatus["Update
-Transaction Status"]
-    WriteAudit["Write
-Audit Info"]
+    CheckEOF{"End of File?"}
+    ProcessRecord["Process
+Record (Capture/Validate/Display
+CHANNEL-CODE)"]
+    WriteOutput["Write/Display
+Output"]
+    CloseFiles["Close
+Transaction File"]
     End(["End"])
 
-    Start --> ReadRecord
-    ReadRecord --> ValidateFields
-    ValidateFields --> ProcessTransaction
-    ProcessTransaction --> UpdateStatus
-    UpdateStatus --> WriteAudit
-    WriteAudit --> End
+    Start --> OpenFiles
+    OpenFiles --> ReadRecord
+    ReadRecord --> CheckEOF
+    CheckEOF -- No --> ProcessRecord
+    ProcessRecord --> WriteOutput
+    WriteOutput --> ReadRecord
+    CheckEOF -- Yes --> CloseFiles
+    CloseFiles --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-A new requirement mandates tracking the channel through which each transaction is initiated. This enables reporting and analytics on transaction origination (e.g., ATM, Mobile, Branch, Net Banking).
+Enhance transaction processing and reporting by introducing a `CHANNEL-CODE` field to identify the source channel (ATM, MOBL, BRCH, NETB) for each transaction. Update all related copybooks, programs, and JCL to support this new field for improved reporting, validation, and auditing.
 
 ### 3.2 Impacted Code Changes Summary:
 #### 3.2.1 Impacted Sections and Files:
-- **Section:** Transaction Record Structure Definition
-- **File:** Likely the copybook or data structure definition file (e.g., `TRANSACTION-RECORD.CPY` or equivalent)
+- **Copybooks:**
+  - `/copybooks/TRANSACTION.CPY`
+  - `/copybooks/POSREC.CPY`
+- **Programs:**
+  - `/programs/RPTPOS00.CBL`
+  - `/programs/UTLVAL00.CBL`
+  - `/programs/TSTGEN00.CBL`
+  - `/programs/TSTVAL00.CBL`
+  - `/programs/RPTAUD00.CBL`
+- **JCL:**
+  - `/jcl/RPTPOS00.JCL`
+  - `/jcl/UTLVAL00.JCL`
+  - `/jcl/TSTGEN00.JCL`
+  - `/jcl/TSTVAL00.JCL`
 
-  - **Purpose of Changes:**  
-    To add a new field, `TRN-CHANNEL-CODE`, for capturing the transaction channel, and to adjust the filler size to maintain the record's total length.
+- **Purpose of Changes:**  
+  To enable the identification and processing of transactions by their originating channel, supporting enhanced reporting, validation, and audit capabilities.
 
-  - **Impact:**  
-    - Enables downstream systems and reports to identify transaction origination channels.
-    - Requires updates to any logic that reads, writes, or interprets the transaction record.
-    - Slight reduction in filler size to accommodate the new field.
+- **Impact:**  
+  - All transaction records now include a 4-character `CHANNEL-CODE`.
+  - Programs have been updated to read, write, validate, and display the new field.
+  - JCL scripts have been updated to accommodate the increased record length.
+  - Downstream processes and reports can now segment data by channel, improving analytics and compliance.
 
 ### 3.3 Insertion Points  
-- **Insertion Point 1:**  
-  After the `TRN-STATUS` field in the `TRN-DATA` group, insert the new field:
-  ```
-  10  TRN-CHANNEL-CODE   PIC X(04).  *> Added field for channel identification (ATM, MOBL, BRCH, NETB)
-  ```
-- **Insertion Point 2:**  
-  Adjust the `TRN-FILLER` field to reduce its size by 4 bytes (from X(50) to X(46)), ensuring the overall record length remains unchanged:
-  ```
-  05  TRN-FILLER           PIC X(46).  *> Reduced filler by 4 to accommodate CHANNEL-CODE
-  ```
+- **Copybooks:**  
+  - `TRANSACTION.CPY` and `POSREC.CPY`:  
+    - Inserted `05  CHANNEL-CODE PIC X(04).` after `TRANSACTION-STATUS`/`POS-STATUS`.
+- **Programs:**  
+  - All programs using the transaction record now reference the new `CHANNEL-CODE` field.
+  - New working-storage variables for channel code handling (e.g., `WS-CHANNEL-CODE`).
+  - Logic added to move, validate, and display the channel code in processing sections.
+- **JCL:**  
+  - All JCL scripts referencing `TRANSACT.DAT` updated to `LRECL=68` to match the new record length.
+
+**References to specific code sections:**
+- Copybook field addition: After the status field in both copybooks.
+- Working-storage additions: After EOF flags in each program.
+- Processing logic: In main processing PERFORM loops, after reading a record.
 
 ### 3.4 Structured Diffs  
-**Before:**  
+**TRANSACTION.CPY / POSREC.CPY**  
+_Before:_
 ```cobol
-     10  TRN-STATUS        PIC X(01).
-         88  TRN-STATUS-PEND   VALUE 'P'.
-         88  TRN-STATUS-DONE   VALUE 'D'.
-         88  TRN-STATUS-FAIL   VALUE 'F'.
-         88  TRN-STATUS-REV    VALUE 'R'.
-     05  TRN-AUDIT.
-         10  TRN-PROCESS-DATE  PIC X(26).
-         10  TRN-PROCESS-USER  PIC X(08).
-     05  TRN-FILLER           PIC X(50).
+       01  TRANSACTION-RECORD.
+           05  TRANSACTION-ID         PIC 9(10).
+           05  TRANSACTION-DATE       PIC 9(08).
+           05  TRANSACTION-TIME       PIC 9(06).
+           05  ACCOUNT-NUMBER         PIC X(12).
+           05  TRANSACTION-AMOUNT     PIC S9(9)V99 COMP-3.
+           05  TRANSACTION-TYPE       PIC X(02).
+           05  TRANSACTION-STATUS     PIC X(01).
+           05  FILLER                 PIC X(19).
+```
+_After:_
+```cobol
+       01  TRANSACTION-RECORD.
+           05  TRANSACTION-ID         PIC 9(10).
+           05  TRANSACTION-DATE       PIC 9(08).
+           05  TRANSACTION-TIME       PIC 9(06).
+           05  ACCOUNT-NUMBER         PIC X(12).
+           05  TRANSACTION-AMOUNT     PIC S9(9)V99 COMP-3.
+           05  TRANSACTION-TYPE       PIC X(02).
+           05  TRANSACTION-STATUS     PIC X(01).
+           05  CHANNEL-CODE           PIC X(04).   * Added for channel identification (ATM, MOBL, BRCH, NETB)
+           05  FILLER                 PIC X(15).
 ```
 
-**After:**  
+**Program Example (RPTPOS00.CBL, similar in others):**  
+_Before:_
 ```cobol
-     10  TRN-STATUS        PIC X(01).
-         88  TRN-STATUS-PEND   VALUE 'P'.
-         88  TRN-STATUS-DONE   VALUE 'D'.
-         88  TRN-STATUS-FAIL   VALUE 'F'.
-         88  TRN-STATUS-REV    VALUE 'R'.
-     10  TRN-CHANNEL-CODE   PIC X(04).  *> Added field for channel identification (ATM, MOBL, BRCH, NETB)
-     05  TRN-AUDIT.
-         10  TRN-PROCESS-DATE  PIC X(26).
-         10  TRN-PROCESS-USER  PIC X(08).
-     05  TRN-FILLER           PIC X(46).  *> Reduced filler by 4 to accommodate CHANNEL-CODE
+       77  WS-EOF                PIC X VALUE 'N'.
+
+       PROCEDURE DIVISION.
+       2200-PROCESS-TRANSACTIONS.
+           PERFORM UNTIL WS-EOF = 'Y'
+               READ TRANSACTION-FILE
+                   AT END
+                       MOVE 'Y' TO WS-EOF
+                   NOT AT END
+                       DISPLAY 'TRANSACTION: ' TRANSACTION-ID
+               END-READ
+           END-PERFORM.
+```
+_After:_
+```cobol
+       77  WS-EOF                PIC X VALUE 'N'.
+       77  WS-CHANNEL-CODE       PIC X(04).  * Added for channel reporting
+
+       PROCEDURE DIVISION.
+       2200-PROCESS-TRANSACTIONS.
+           PERFORM UNTIL WS-EOF = 'Y'
+               READ TRANSACTION-FILE
+                   AT END
+                       MOVE 'Y' TO WS-EOF
+                   NOT AT END
+                       MOVE CHANNEL-CODE TO WS-CHANNEL-CODE  * Capture channel code
+                       DISPLAY 'TRANSACTION: ' TRANSACTION-ID ' CHANNEL: ' CHANNEL-CODE  * Output channel code
+               END-READ
+           END-PERFORM.
+```
+
+**JCL Example (RPTPOS00.JCL, similar in others):**  
+_Before:_
+```jcl
+//INFILE   DD DSN=TRANSACT.DAT,DISP=SHR,LRECL=64,RECFM=FB
+```
+_After:_
+```jcl
+//INFILE   DD DSN=TRANSACT.DAT,DISP=SHR,LRECL=68,RECFM=FB  // Updated LRECL for CHANNEL-CODE
 ```
 
 ## 4. Conclusion  
-The addition of the `TRN-CHANNEL-CODE` field enhances the transaction record by enabling the identification of transaction origination channels. This change supports improved analytics and reporting, with minimal impact on existing logic due to careful adjustment of the filler field to maintain record length. All systems interacting with the transaction record must be updated to recognize and process the new field.
+The addition of the `CHANNEL-CODE` field across transaction processing components enables the system to identify and process transactions by their originating channel. This enhancement supports improved reporting, validation, and auditing, and positions the application for future channel-based analytics and compliance requirements. All impacted copybooks, programs, and JCL have been updated to ensure consistency and correctness throughout the transaction lifecycle.
