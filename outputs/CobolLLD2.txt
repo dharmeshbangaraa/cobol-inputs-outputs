@@ -1,131 +1,180 @@
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document details the technical changes and low-level design updates made to the COBOL applications `PORTTRAN` (Portfolio Transaction Processing) and `RPTPOS00` (Daily Position Report Generator) to support enhanced transaction categorization using a new `TRANSACTION-TYPE` field. The document explains the rationale, impacted logic, insertion points, and provides structured diffs and flow diagrams.
+This document provides a detailed explanation of the recent enhancements made to the COBOL modules responsible for portfolio transaction processing (`PORTTRAN`) and daily position report generation (`RPTPOS00`). The primary focus of these changes is the introduction and integration of the `TRANSACTION-TYPE` field for enhanced transaction categorization, ensuring backward compatibility, and improving reporting capabilities.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-- **PORTTRAN** processes portfolio transactions by reading transaction records, validating them, updating portfolio positions, and logging audit information.
-- **RPTPOS00** generates daily position reports by summarizing portfolio positions, transaction activity, and exceptions.
+The application consists of two main modules:
+- **PORTTRAN**: Handles the processing of portfolio transactions, including validation, updating portfolio positions, and audit logging.
+- **RPTPOS00**: Generates daily position reports, summarizing portfolio positions, transaction activity, and exceptions.
 
 ### 2.2 Detailed Logic  
-#### PORTTRAN
-- **Initialization:** Opens transaction and portfolio files, initializes counters and flags (Lines: 1000-INITIALIZE).
-- **Transaction Processing:** Reads each transaction, defaults missing `TRANSACTION-TYPE`, validates, and updates positions (Lines: 2000-PROCESS-TRANSACTIONS).
-- **Validation:** Checks portfolio ID, transaction type, and amounts (Lines: 2100-2130).
-- **Audit Trail:** Records transaction details, including the new `TRANSACTION-TYPE` (Lines: 2300-UPDATE-AUDIT-TRAIL).
-- **Termination:** Closes files and displays summary statistics (Lines: 3000-TERMINATE).
+#### PORTTRAN Module
+- **Initialization (Lines 1000-INITIALIZE):** Opens transaction and portfolio files, initializes counters and status flags.
+- **Transaction Processing (2000-PROCESS-TRANSACTIONS):** Reads each transaction, defaults the new `TRANSACTION-TYPE` if missing, and validates transaction data.
+- **Validation (2100-VALIDATE-TRANSACTION):** Checks portfolio existence, transaction type, and transaction amounts.
+- **Portfolio Update (2200-UPDATE-POSITIONS):** Updates portfolio records based on transaction type (Buy, Sell, Transfer, Fee).
+- **Audit Trail (2300-UPDATE-AUDIT-TRAIL):** Logs transaction details, including the new `TRANSACTION-TYPE`, for auditing.
 
-#### RPTPOS00
-- **Initialization:** Opens required files and writes report headers (Lines: 1000-1200).
-- **Report Generation:** Reads positions and transactions, formats and writes details, including the new `TRANSACTION-TYPE` (Lines: 2000-2210).
-- **Summary:** Writes totals, exceptions, and metrics (Lines: 2300-2330).
-- **Cleanup:** Closes files and handles errors (Lines: 3000, 9999).
+#### RPTPOS00 Module
+- **Initialization (1000-INITIALIZE):** Opens necessary files and writes report headers.
+- **Report Generation (2000-PROCESS-REPORT):** Reads positions and transactions, formats and writes report details, including the new `TRANSACTION-TYPE`.
+- **Summary and Exception Reporting:** Displays totals and exceptions, including transactions with missing `TRANSACTION-TYPE`.
 
 #### Flowchart:  
 ```
 flowchart TD
     Start(["Start"])
-    Init["Initialize\n(Open files, set counters)"]
-    ReadTrans["Read Transaction"]
-    DefaultType["Default TRANSACTION-TYPE\nif missing"]
-    Validate["Validate Transaction"]
-    Valid?{"Valid?"}
-    UpdatePos["Update Portfolio Positions"]
-    AuditTrail["Update Audit Trail"]
-    ErrorRoutine["Error Routine"]
-    NextTrans["Next Transaction"]
-    Terminate["Terminate\n(Close files, display stats)"]
+    Init["Initialize
+Files & Counters"]
+    ReadTrans["Read
+Transaction"]
+    DefaultTransType["Default
+TRANSACTION-TYPE
+if Missing"]
+    ValidateTrans["Validate
+Transaction"]
+    UpdatePortfolio["Update
+Portfolio"]
+    AuditTrail["Update
+Audit Trail"]
+    NextTrans["Next
+Transaction?"]
+    Terminate(["Terminate"])
+    ReportGen["Generate
+Report"]
+    ReadPositions["Read
+Positions"]
+    ReadTransHist["Read
+Transaction
+History"]
+    FormatReport["Format
+Report Details"]
+    WriteSummary["Write
+Summary &
+Exceptions"]
     End(["End"])
 
     Start --> Init
     Init --> ReadTrans
-    ReadTrans --> DefaultType
-    DefaultType --> Validate
-    Validate --> Valid?
-    Valid? -- Yes --> UpdatePos
-    Valid? -- No --> ErrorRoutine
-    UpdatePos --> AuditTrail
+    ReadTrans --> DefaultTransType
+    DefaultTransType --> ValidateTrans
+    ValidateTrans --> UpdatePortfolio
+    UpdatePortfolio --> AuditTrail
     AuditTrail --> NextTrans
-    ErrorRoutine --> NextTrans
-    NextTrans -->|More records| ReadTrans
-    NextTrans -->|End of file| Terminate
-    Terminate --> End
+    NextTrans -- "Yes" --> ReadTrans
+    NextTrans -- "No" --> Terminate
+    Terminate --> ReportGen
+    ReportGen --> ReadPositions
+    ReadPositions --> FormatReport
+    FormatReport --> ReadTransHist
+    ReadTransHist --> FormatReport
+    FormatReport --> WriteSummary
+    WriteSummary --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-Enhance transaction processing and reporting by introducing a new `TRANSACTION-TYPE` field to:
-- Allow extended categorization of transactions.
-- Ensure backward compatibility by defaulting missing values.
-- Display the new field in reports and audit logs.
+**Enhancement:**  
+Introduce a new `TRANSACTION-TYPE` field to the transaction record structure for extended transaction classification. Ensure backward compatibility by defaulting this field when missing, and update reporting to display this new field.
 
 ### 3.2 Impacted Code Changes Summary:
 #### 3.2.1 Impacted Sections and Files:
-- **Files:**  
+- **Files:**
   - `TRNREC` copybook (transaction record structure)
   - `PORTTRAN` (Portfolio Transaction Processing)
   - `RPTPOS00` (Daily Position Report Generator)
+- **Sections:**
+  - Data Division: Transaction record definition, working-storage variables
+  - Procedure Division: Transaction processing, validation, audit logging, report formatting
+
 - **Purpose of Changes:**  
-  - Add `TRANSACTION-TYPE` field to transaction records for enhanced classification.
-  - Ensure backward compatibility by defaulting missing values.
-  - Include the new field in audit logs and reports.
+  To support enhanced transaction categorization by adding a new `TRANSACTION-TYPE` field, ensure all transactions have a value for this field (default if missing), and display this information in reports.
+
 - **Impact:**  
-  - Enables more granular transaction reporting and processing.
-  - Maintains compatibility with legacy data.
-  - Improves auditability and transparency of transaction processing.
+  - Enables more granular classification and reporting of transactions.
+  - Maintains backward compatibility with legacy data.
+  - Improves audit trail detail and reporting accuracy.
 
 ### 3.3 Insertion Points  
 - **TRNREC Copybook:**  
-  - Added `TRN-TRANSACTION-TYPE` (PIC X(10)) after `TRN-TYPE` in the transaction record structure.
-  - Reduced filler by 10 bytes to accommodate the new field.
+  - Added `TRN-TRANSACTION-TYPE` (PIC X(10)) after `TRN-TYPE` in the transaction record.
+  - Reduced filler size to accommodate the new field.
+
 - **PORTTRAN:**
-  - **WORKING-STORAGE:**  
-    - Added `WS-DEFAULT-TRAN-TYPE` for defaulting.
+  - **Working-Storage Section:**  
+    - Added `WS-DEFAULT-TRAN-TYPE` (PIC X(10) VALUE 'UNSPECIFIED').
   - **2000-PROCESS-TRANSACTIONS:**  
-    - After reading each transaction, if `TRANSACTION-TYPE` is missing, set it to default.
+    - After reading each transaction, check if `TRN-TRANSACTION-TYPE` is missing (spaces or low-values); if so, default to `WS-DEFAULT-TRAN-TYPE`.
+  - **2120-CHECK-TRANSACTION-TYPE:**  
+    - Added logic to optionally validate the presence of `TRN-TRANSACTION-TYPE`.
   - **2300-UPDATE-AUDIT-TRAIL:**  
-    - Added `TRANSACTION-TYPE` to audit message.
+    - Included `TRN-TRANSACTION-TYPE` in the audit message.
+
 - **RPTPOS00:**
-  - **WORKING-STORAGE:**  
-    - Added fields to handle and display `TRANSACTION-TYPE`.
+  - **Working-Storage Section:**  
+    - Added `WS-TRAN-TRAN-TYPE`, `WS-REPORT-TRAN-TYPE-DISPLAY`, and `WS-REPORT-TRAN-TYPE-DEFAULT`.
+  - **1200-WRITE-HEADERS:**  
+    - Added column header for `TRANSACTION-TYPE`.
   - **2210-READ-TRANSACTIONS:**  
-    - If `TRANSACTION-TYPE` is missing, default and track missing count.
-    - Display `TRANSACTION-TYPE` in the transaction detail section of the report.
+    - When reading each transaction, default `TRANSACTION-TYPE` if missing, and increment missing type counter.
+    - Added `TRANSACTION-TYPE` to the transaction detail line in the report.
 
 ### 3.4 Structured Diffs  
-#### TRNREC Copybook  
-**Before:**  
+**TRNREC Copybook (Transaction Record Structure):**  
+_Before:_
 ```cobol
-     10  TRN-TYPE           PIC X(02).
-         88  TRN-TYPE-BUY     VALUE 'BU'.
-         88  TRN-TYPE-SELL    VALUE 'SL'.
-         88  TRN-TYPE-TRANS   VALUE 'TR'.
-         88  TRN-TYPE-FEE     VALUE 'FE'.
-     10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
-     10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
-     10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
-     10  TRN-CURRENCY      PIC X(03).
-     10  TRN-STATUS        PIC X(01).
+     05  TRN-DATA.
+         10  TRN-INVESTMENT-ID  PIC X(10).
+         10  TRN-TYPE           PIC X(02).
+             88  TRN-TYPE-BUY     VALUE 'BU'.
+             88  TRN-TYPE-SELL    VALUE 'SL'.
+             88  TRN-TYPE-TRANS   VALUE 'TR'.
+             88  TRN-TYPE-FEE     VALUE 'FE'.
+         10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+         10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+         10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+         10  TRN-CURRENCY      PIC X(03).
+         10  TRN-STATUS        PIC X(01).
+             88  TRN-STATUS-PEND   VALUE 'P'.
+             88  TRN-STATUS-DONE   VALUE 'D'.
+             88  TRN-STATUS-FAIL   VALUE 'F'.
+             88  TRN-STATUS-REV    VALUE 'R'.
+     05  TRN-AUDIT.
+         10  TRN-PROCESS-DATE  PIC X(26).
+         10  TRN-PROCESS-USER  PIC X(08).
+     05  TRN-FILLER           PIC X(50).
 ```
-**After:**  
+_After:_
 ```cobol
-     10  TRN-TYPE           PIC X(02).
-         88  TRN-TYPE-BUY     VALUE 'BU'.
-         88  TRN-TYPE-SELL    VALUE 'SL'.
-         88  TRN-TYPE-TRANS   VALUE 'TR'.
-         88  TRN-TYPE-FEE     VALUE 'FE'.
-     10  TRN-TRANSACTION-TYPE PIC X(10).
+     05  TRN-DATA.
+         10  TRN-INVESTMENT-ID  PIC X(10).
+         10  TRN-TYPE           PIC X(02).
+             88  TRN-TYPE-BUY     VALUE 'BU'.
+             88  TRN-TYPE-SELL    VALUE 'SL'.
+             88  TRN-TYPE-TRANS   VALUE 'TR'.
+             88  TRN-TYPE-FEE     VALUE 'FE'.
+         10  TRN-TRANSACTION-TYPE PIC X(10).
 *        ^^^ Added: TRANSACTION-TYPE field for enhanced transaction categorization
-     10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
-     10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
-     10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
-     10  TRN-CURRENCY      PIC X(03).
-     10  TRN-STATUS        PIC X(01).
+         10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+         10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+         10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+         10  TRN-CURRENCY      PIC X(03).
+         10  TRN-STATUS        PIC X(01).
+             88  TRN-STATUS-PEND   VALUE 'P'.
+             88  TRN-STATUS-DONE   VALUE 'D'.
+             88  TRN-STATUS-FAIL   VALUE 'F'.
+             88  TRN-STATUS-REV    VALUE 'R'.
+     05  TRN-AUDIT.
+         10  TRN-PROCESS-DATE  PIC X(26).
+         10  TRN-PROCESS-USER  PIC X(08).
+     05  TRN-FILLER           PIC X(40).
+*        ^^^ Reduced filler by 10 bytes to accommodate TRANSACTION-TYPE
 ```
 
-#### PORTTRAN (2000-PROCESS-TRANSACTIONS)
-**Before:**  
+**PORTTRAN (2000-PROCESS-TRANSACTIONS):**  
+_Before:_
 ```cobol
      READ TRANSACTION-FILE
          AT END
@@ -136,7 +185,7 @@ Enhance transaction processing and reporting by introducing a new `TRANSACTION-T
      END-READ
      .
 ```
-**After:**  
+_After:_
 ```cobol
      READ TRANSACTION-FILE
          AT END
@@ -155,8 +204,8 @@ Enhance transaction processing and reporting by introducing a new `TRANSACTION-T
      .
 ```
 
-#### PORTTRAN (2300-UPDATE-AUDIT-TRAIL)
-**Before:**  
+**PORTTRAN (2300-UPDATE-AUDIT-TRAIL):**  
+_Before:_
 ```cobol
      STRING 'Transaction: ' DELIMITED BY SIZE
             TRN-TYPE       DELIMITED BY SIZE
@@ -166,7 +215,7 @@ Enhance transaction processing and reporting by introducing a new `TRANSACTION-T
             TRN-QUANTITY   DELIMITED BY SIZE
        INTO AUD-MESSAGE
 ```
-**After:**  
+_After:_
 ```cobol
      STRING 'Transaction: ' DELIMITED BY SIZE
             TRN-TYPE       DELIMITED BY SIZE
@@ -180,42 +229,21 @@ Enhance transaction processing and reporting by introducing a new `TRANSACTION-T
        INTO AUD-MESSAGE
 ```
 
-#### RPTPOS00 (WORKING-STORAGE and 2210-READ-TRANSACTIONS)
-**Before:**  
+**RPTPOS00 (2210-READ-TRANSACTIONS):**  
+_Before:_
 ```cobol
- 01  WS-TRANSACTION-DETAIL.
-     05  WS-TRAN-DATE         PIC X(8).
-     05  FILLER               PIC X(1) VALUE ' '.
-     05  WS-TRAN-TIME         PIC X(6).
-     05  FILLER               PIC X(1) VALUE ' '.
-     05  WS-TRAN-PORTFOLIO    PIC X(8).
-     05  FILLER               PIC X(1) VALUE ' '.
-     05  WS-TRAN-TYPE         PIC X(2).
-     05  FILLER               PIC X(1) VALUE ' '.
-     05  WS-TRAN-AMOUNT       PIC -ZZZZZZZZ9.99.
-     05  FILLER               PIC X(1) VALUE ' '.
-     05  WS-TRAN-STATUS       PIC X(1).
-     05  FILLER               PIC X(97) VALUE SPACES.
+         MOVE TRN-DATE           TO WS-TRAN-DATE
+         MOVE TRN-TIME           TO WS-TRAN-TIME
+         MOVE TRN-PORTFOLIO-ID   TO WS-TRAN-PORTFOLIO
+         MOVE TRN-TYPE           TO WS-TRAN-TYPE
+         MOVE TRN-AMOUNT         TO WS-TRAN-AMOUNT
+         MOVE TRN-STATUS         TO WS-TRAN-STATUS
+
+         WRITE REPORT-RECORD FROM WS-TRANSACTION-DETAIL
+
+         ADD 1 TO WS-REPORT-TRAN-COUNT
 ```
-**After:**  
-```cobol
- 01  WS-TRANSACTION-DETAIL.
-     05  WS-TRAN-DATE         PIC X(8).
-     05  FILLER               PIC X(1) VALUE ' '.
-     05  WS-TRAN-TIME         PIC X(6).
-     05  FILLER               PIC X(1) VALUE ' '.
-     05  WS-TRAN-PORTFOLIO    PIC X(8).
-     05  FILLER               PIC X(1) VALUE ' '.
-     05  WS-TRAN-TYPE         PIC X(2).
-     05  FILLER               PIC X(1) VALUE ' '.
-     05  WS-TRAN-TRAN-TYPE    PIC X(10).
-     05  FILLER               PIC X(1) VALUE ' '.
-     05  WS-TRAN-AMOUNT       PIC -ZZZZZZZZ9.99.
-     05  FILLER               PIC X(1) VALUE ' '.
-     05  WS-TRAN-STATUS       PIC X(1).
-     05  FILLER               PIC X(97) VALUE SPACES.
-```
-**Insertion in 2210-READ-TRANSACTIONS:**
+_After:_
 ```cobol
  *-- Backward compatibility: Default TRANSACTION-TYPE if missing
          IF TRN-TRANSACTION-TYPE = SPACES OR TRN-TRANSACTION-TYPE = LOW-VALUES
@@ -235,7 +263,10 @@ Enhance transaction processing and reporting by introducing a new `TRANSACTION-T
          MOVE TRN-STATUS         TO WS-TRAN-STATUS
 
          WRITE REPORT-RECORD FROM WS-TRANSACTION-DETAIL
+
+         ADD 1 TO WS-REPORT-TRAN-COUNT
 ```
 
 ## 4. Conclusion  
-The introduction of the `TRANSACTION-TYPE` field in transaction records, processing, and reporting modules enhances the system’s ability to classify and report on transactions with greater granularity. The changes ensure backward compatibility, maintain data integrity, and improve audit and reporting capabilities. All impacted areas have been updated to handle the new field, default missing values, and display the information in audit logs and reports, ensuring a seamless transition and improved business insight.
+The changes introduce a new `TRANSACTION-TYPE` field to enhance transaction classification across the portfolio processing and reporting modules. All impacted code sections ensure backward compatibility by defaulting the field when missing, and reporting logic has been updated to display and track this field. These enhancements provide improved data granularity, facilitate future business rule extensions, and ensure robust audit and reporting capabilities.
+
