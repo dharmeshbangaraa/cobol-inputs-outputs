@@ -5,23 +5,22 @@ Impact Analysis Report
 **Summary**:
 User Story: Fix rounding discrepancies in portfolio P&L calculation  
 - 4 impacted components identified (**High impact only**)  
-- High complexity change affecting core calculation, DB2 storage, regression testing, and reporting chain
+- High complexity change affecting core P&L calculation, DB2 storage, regression testing, and batch reporting chain.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections         | Dependency Path                        |
-|------------------------------------------|--------|---------|--------------------------------------|----------------------------------------|
-| `src/programs/calc/PNL-CALC-PROG.cbl`   | High   | Direct  | PNL-CALC-MAIN, CALC-PNL, MOVE-OUT    | PNL-CALC-PROG                          |
-| `src/programs/db2/PORTVAL00.cbl`        | High   | Direct  | 2000-UPDATE-PNL, 2100-STORE-RESULT   | PORTVAL00                              |
-| `src/programs/batch/RPTPOS00.cbl`       | High   | Direct  | 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY | RPTPOS00                          |
-| `src/programs/batch/RPTAUD00.cbl`       | High   | Direct  | 2100-PROCESS-AUDIT-TRAIL, 2300-WRITE-SUMMARY | RPTAUD00                      |
+| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections         | Dependency Path                                  |
+|------------------------------------------|--------|---------|--------------------------------------|--------------------------------------------------|
+| `src/programs/calc/PNL-CALC-PROG.cbl`   | High   | Direct  | PNL-CALC-MAIN, PNL-CALC-ROUTINE     | [PNL-CALC-PROG]                                  |
+| `src/programs/batch/RPTPOS00.cbl`        | High   | Direct  | 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY | [RPTPOS00]                                  |
+| `src/programs/batch/RPTAUD00.cbl`        | High   | Direct  | 2100-PROCESS-AUDIT-TRAIL, 2300-WRITE-SUMMARY | [RPTAUD00]                                  |
+| `src/programs/test/TSTVAL00.cbl`         | High   | Direct  | 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS | [TSTVAL00]                                  |
 
 ---
 
 **JSON Metadata**:
-```json
 {
   "impactAnalysis": {
     "userStory": "Fix rounding discrepancies in portfolio P&L calculation",
@@ -31,63 +30,64 @@ User Story: Fix rounding discrepancies in portfolio P&L calculation
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["PNL-CALC-MAIN", "CALC-PNL", "MOVE-OUT"],
+        "affectedParagraphs": ["PNL-CALC-MAIN", "PNL-CALC-ROUTINE"],
         "dependencyPath": ["PNL-CALC-PROG"],
-        "rationale": "Core calculation logic for P&L; must update arithmetic to use ROUNDED for all P&L moves."
-      },
-      {
-        "programFilePath": "src/programs/db2/PORTVAL00.cbl",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["2000-UPDATE-PNL", "2100-STORE-RESULT"],
-        "dependencyPath": ["PORTVAL00"],
-        "rationale": "Handles DB2 storage for PORTVAL.PNL_AMT; must ensure values are stored with exact two decimals."
+        "rationale": "Core program for P&L calculation; must update arithmetic to use ROUNDED for all P&L computations."
       },
       {
         "programFilePath": "src/programs/batch/RPTPOS00.cbl",
-        "impactScore": 0.93,
+        "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": ["2110-FORMAT-POSITION", "2300-WRITE-SUMMARY"],
         "dependencyPath": ["RPTPOS00"],
-        "rationale": "Batch report displaying P&L; must ensure output is rounded correctly in TXT/CSV."
+        "rationale": "Batch report that displays P&L; must ensure output is rounded to two decimals in TXT/CSV."
       },
       {
         "programFilePath": "src/programs/batch/RPTAUD00.cbl",
-        "impactScore": 0.91,
+        "impactScore": 0.93,
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": ["2100-PROCESS-AUDIT-TRAIL", "2300-WRITE-SUMMARY"],
         "dependencyPath": ["RPTAUD00"],
-        "rationale": "Audit report displaying P&L; must ensure output is rounded correctly in TXT/CSV."
+        "rationale": "Audit report that includes P&L; must ensure rounding is consistent in all outputs."
+      },
+      {
+        "programFilePath": "src/programs/test/TSTVAL00.cbl",
+        "impactScore": 0.91,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2100-EXECUTE-TEST", "2600-VALIDATE-RESULTS"],
+        "dependencyPath": ["TSTVAL00"],
+        "rationale": "Regression test harness for P&L; must validate rounding logic with known test cases."
       }
     ]
   }
 }
-```
 
 ---
 
 **Visualization**:
-```mermaid
+
 graph TD
-    A[PNL-CALC-PROG<br>src/programs/calc/PNL-CALC-PROG.cbl]:::high
-    B[PORTVAL00<br>src/programs/db2/PORTVAL00.cbl]:::high
-    C[RPTPOS00<br>src/programs/batch/RPTPOS00.cbl]:::high
-    D[RPTAUD00<br>src/programs/batch/RPTAUD00.cbl]:::high
+    PNL-CALC-PROG["src/programs/calc/PNL-CALC-PROG.cbl (High)"]:::high
+    RPTPOS00["src/programs/batch/RPTPOS00.cbl (High)"]:::high
+    RPTAUD00["src/programs/batch/RPTAUD00.cbl (High)"]:::high
+    TSTVAL00["src/programs/test/TSTVAL00.cbl (High)"]:::high
 
-    A --> B
-    A --> C
-    A --> D
+    PNL-CALC-PROG --> RPTPOS00
+    PNL-CALC-PROG --> RPTAUD00
+    PNL-CALC-PROG --> TSTVAL00
 
-    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
-```
+    classDef high fill:#ffcccc,stroke:#d33,stroke-width:2px;
 
 ---
 
 **Reasoning**:
-- `PNL-CALC-PROG.cbl` is the primary calculation program for P&L, directly referenced in the user story for rounding logic.
-- `PORTVAL00.cbl` is responsible for storing P&L in the DB2 table with DECIMAL(15,2), requiring strict rounding enforcement.
-- `RPTPOS00.cbl` and `RPTAUD00.cbl` are the batch reporting programs that output P&L values, both in TXT and CSV, and must reflect the new rounding standard.
-- Only these four components are directly and critically involved in the calculation, storage, and reporting of P&L, and thus are ranked as high impact for this change.
+- `src/programs/calc/PNL-CALC-PROG.cbl` is the core calculation program for P&L and must be updated to use ROUNDED in all relevant arithmetic.
+- `src/programs/batch/RPTPOS00.cbl` and `src/programs/batch/RPTAUD00.cbl` are the main batch reports that display P&L values and must ensure correct rounding in all output formats.
+- `src/programs/test/TSTVAL00.cbl` is the regression test program that validates P&L calculations and must be updated to check for correct rounding.
+- All other programs and copybooks are either not directly involved in P&L calculation/reporting or have only indirect/low impact.
+- DB2 storage (PORTVAL.PNL_AMT) is referenced via the calculation and reporting programs, but the schema itself is not a COBOL component and is thus not listed here.
+
+**End of Report**
