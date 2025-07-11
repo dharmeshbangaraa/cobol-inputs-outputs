@@ -1,4 +1,4 @@
-Title: Fix rounding discrepancies in portfolio P&L calculation.
+Title: Fix rounding discrepancies in portfolio profit and loss calculation.
 
 User Story:
 As an Operations Analyst,
