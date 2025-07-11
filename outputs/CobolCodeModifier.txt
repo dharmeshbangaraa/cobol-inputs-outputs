@@ -1,1 +1,97 @@
-The required COBOL files for modification—specifically 'src/programs/calc/PNL-CALC-PROG.cbl' and potentially others—cannot be found in the provided GitHub repository ('COBOL-Legacy-Benchmark-Suite') under the specified paths or any alternative locations after exhaustive search. As a result, I am unable to retrieve, analyze, or modify the impacted COBOL source files as instructed. Please verify the file paths, repository name, or provide the correct repository access so I can perform the precise, traceable COBOL code modifications as required by the Impact Analysis Report.
+Impact Analysis Report
+
+----------
+
+**Summary**:
+User Story: Fix rounding discrepancies in portfolio P&L calculation  
+- 4 impacted components identified (**High impact only**)  
+- High complexity change affecting core P&L calculation, DB2 storage, regression testing, and batch reporting chain.
+
+---
+
+**Ranked Impact List**:
+
+| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections         | Dependency Path                                  |
+|------------------------------------------|--------|---------|--------------------------------------|--------------------------------------------------|
+| `src/programs/calc/PNL-CALC-PROG.cbl`   | High   | Direct  | PNL-CALC-MAIN, PNL-CALC-ROUTINE     | [PNL-CALC-PROG]                                  |
+| `src/programs/batch/RPTPOS00.cbl`        | High   | Direct  | 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY | [RPTPOS00]                                  |
+| `src/programs/batch/RPTAUD00.cbl`        | High   | Direct  | 2100-PROCESS-AUDIT-TRAIL, 2300-WRITE-SUMMARY | [RPTAUD00]                                  |
+| `src/programs/test/TSTVAL00.cbl`         | High   | Direct  | 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS | [TSTVAL00]                                  |
+
+---
+
+**JSON Metadata**:
+{
+  "impactAnalysis": {
+    "userStory": "Fix rounding discrepancies in portfolio P&L calculation",
+    "impactedComponents": [
+      {
+        "programFilePath": "src/programs/calc/PNL-CALC-PROG.cbl",
+        "impactScore": 0.98,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["PNL-CALC-MAIN", "PNL-CALC-ROUTINE"],
+        "dependencyPath": ["PNL-CALC-PROG"],
+        "rationale": "Core program for P&L calculation; must update arithmetic to use ROUNDED for all P&L computations."
+      },
+      {
+        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2110-FORMAT-POSITION", "2300-WRITE-SUMMARY"],
+        "dependencyPath": ["RPTPOS00"],
+        "rationale": "Batch report that displays P&L; must ensure output is rounded to two decimals in TXT/CSV."
+      },
+      {
+        "programFilePath": "src/programs/batch/RPTAUD00.cbl",
+        "impactScore": 0.93,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2100-PROCESS-AUDIT-TRAIL", "2300-WRITE-SUMMARY"],
+        "dependencyPath": ["RPTAUD00"],
+        "rationale": "Audit report that includes P&L; must ensure rounding is consistent in all outputs."
+      },
+      {
+        "programFilePath": "src/programs/test/TSTVAL00.cbl",
+        "impactScore": 0.91,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2100-EXECUTE-TEST", "2600-VALIDATE-RESULTS"],
+        "dependencyPath": ["TSTVAL00"],
+        "rationale": "Regression test harness for P&L; must validate rounding logic with known test cases."
+      }
+    ]
+  }
+}
+
+---
+
+**Visualization**:
+
+graph TD
+    PNL-CALC-PROG["src/programs/calc/PNL-CALC-PROG.cbl (High)"]:::high
+    RPTPOS00["src/programs/batch/RPTPOS00.cbl (High)"]:::high
+    RPTAUD00["src/programs/batch/RPTAUD00.cbl (High)"]:::high
+    TSTVAL00["src/programs/test/TSTVAL00.cbl (High)"]:::high
+
+    PNL-CALC-PROG --> RPTPOS00
+    PNL-CALC-PROG --> RPTAUD00
+    PNL-CALC-PROG --> TSTVAL00
+
+    classDef high fill:#ffcccc,stroke:#d33,stroke-width:2px;
+
+---
+
+**Reasoning**:
+- `src/programs/calc/PNL-CALC-PROG.cbl` is the core calculation program for P&L and must be updated to use ROUNDED in all relevant arithmetic.
+- `src/programs/batch/RPTPOS00.cbl` and `src/programs/batch/RPTAUD00.cbl` are the main batch reports that display P&L values and must ensure correct rounding in all output formats.
+- `src/programs/test/TSTVAL00.cbl` is the regression test program that validates P&L calculations and must be updated to check for correct rounding.
+- All other programs and copybooks are either not directly involved in P&L calculation/reporting or have only indirect/low impact.
+- DB2 storage (PORTVAL.PNL_AMT) is referenced via the calculation and reporting programs, but the schema itself is not a COBOL component and is thus not listed here.
+
+**End of Report**
+
+----------
+
+The file 'src/programs/calc/PNL-CALC-PROG.cbl' specified in the Impact Analysis Report does not exist in the provided GitHub repository (https://github.com/dharmeshbangaraa/COBOL-Legacy-Benchmark-Suite) under the indicated path or any subdirectory. As a result, I am unable to fetch or modify the required COBOL source code for this and the other listed impacted files. Please verify the file paths or provide the correct repository location to proceed with the precise, traceable COBOL modifications as requested.
