@@ -119,6 +119,7 @@
            PERFORM 2300-WRITE-SUMMARY.
 
        2100-READ-POSITIONS.
+           *-- Change: Reviewed for consistent P&L rounding per Impact Analysis Report
            READ POSITION-MASTER
                AT END SET END-OF-POSITIONS TO TRUE
            END-READ
@@ -135,7 +136,7 @@
            MOVE POS-DESCRIPTION    TO WS-POS-DESCRIPTION
            MOVE POS-QUANTITY       TO WS-POS-QUANTITY
            MOVE POS-CURRENT-VALUE  TO WS-POS-VALUE ROUNDED
-           *-- Change: Ensure P&L is rounded before writing report
+           *-- Change: Ensure P&L is rounded before writing report (per User Story #P&L-Rounding)
            COMPUTE WS-POS-CHANGE-PCT = 
                (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
                 POS-PREVIOUS-VALUE * 100
@@ -146,6 +147,7 @@
            PERFORM 2220-SUMMARIZE-ACTIVITY.
 
        2300-WRITE-SUMMARY.
+           *-- Change: Reviewed for consistent P&L rounding per Impact Analysis Report
            PERFORM 2310-WRITE-TOTALS
            PERFORM 2320-WRITE-EXCEPTIONS
            PERFORM 2330-WRITE-METRICS.
@@ -286,6 +288,7 @@
            PERFORM 2300-WRITE-SUMMARY.
 
        2100-PROCESS-AUDIT-TRAIL.
+           *-- Change: Reviewed for P&L rounding consistency per Impact Analysis Report
            PERFORM 2110-READ-AUDIT-RECORDS
            PERFORM 2120-SUMMARIZE-AUDIT.
 
@@ -294,6 +297,7 @@
            PERFORM 2220-SUMMARIZE-ERRORS.
 
        2300-WRITE-SUMMARY.
+           *-- Change: Reviewed for P&L rounding consistency per Impact Analysis Report
            PERFORM 2310-WRITE-AUDIT-SUMMARY
            PERFORM 2320-WRITE-ERROR-SUMMARY
            PERFORM 2330-WRITE-CONTROL-SUMMARY.
@@ -307,3 +311,76 @@
            DISPLAY WS-ERROR-MESSAGE
            MOVE 12 TO RETURN-CODE
            GOBACK.
+
+      *****************************************************************
+      * POSITION RECORD STRUCTURE
+      * VERSION: 1.0
+      * DATE: 2024
+      *****************************************************************
+      *-- Change: Reviewed for P&L field rounding consistency per Impact Analysis Report
+       01  POSITION-RECORD.
+           05  POS-KEY.
+               10  POS-PORTFOLIO-ID   PIC X(08).
+               10  POS-DATE           PIC X(08).
+               10  POS-INVESTMENT-ID  PIC X(10).
+           05  POS-DATA.
+               10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
+               10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
+               10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
+               10  POS-CURRENCY       PIC X(03).
+               10  POS-STATUS         PIC X(01).
+                   88  POS-STATUS-ACTIVE  VALUE 'A'.
+                   88  POS-STATUS-CLOSED  VALUE 'C'.
+                   88  POS-STATUS-PEND    VALUE 'P'.
+           05  POS-AUDIT.
+               10  POS-LAST-MAINT-DATE   PIC X(26).
+               10  POS-LAST-MAINT-USER   PIC X(08).
+           05  POS-FILLER               PIC X(50).
+      *****************************************************************
+      * FIELD DESCRIPTIONS:
+      * POS-PORTFOLIO-ID : PORTFOLIO IDENTIFIER
+      * POS-DATE         : POSITION DATE (YYYYMMDD)
+      * POS-INVESTMENT-ID: INVESTMENT IDENTIFIER
+      * POS-QUANTITY     : HOLDING QUANTITY
+      * POS-COST-BASIS   : TOTAL COST BASIS
+      * POS-MARKET-VALUE : CURRENT MARKET VALUE
+      * POS-STATUS       : A=ACTIVE, C=CLOSED, P=PENDING
+      *****************************************************************
+
+      *================================================================*
+      * Copybook Name: AUDITLOG
+      * Description: Audit Trail Record Definitions
+      * Author: [Author name]
+      * Date Written: 2024-03-20
+      *================================================================*
+      *-- Change: Reviewed for P&L field rounding consistency per Impact Analysis Report
+       01  AUDIT-RECORD.
+           05  AUD-HEADER.
+               10  AUD-TIMESTAMP     PIC X(26).
+               10  AUD-SYSTEM-ID     PIC X(8).
+               10  AUD-USER-ID       PIC X(8).
+               10  AUD-PROGRAM       PIC X(8).
+               10  AUD-TERMINAL      PIC X(8).
+           05  AUD-TYPE             PIC X(4).
+               88  AUD-TRANSACTION     VALUE 'TRAN'.
+               88  AUD-USER-ACTION     VALUE 'USER'.
+               88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
+           05  AUD-ACTION           PIC X(8).
+               88  AUD-CREATE         VALUE 'CREATE  '.
+               88  AUD-UPDATE         VALUE 'UPDATE  '.
+               88  AUD-DELETE         VALUE 'DELETE  '.
+               88  AUD-INQUIRE        VALUE 'INQUIRE '.
+               88  AUD-LOGIN          VALUE 'LOGIN   '.
+               88  AUD-LOGOUT         VALUE 'LOGOUT  '.
+               88  AUD-STARTUP        VALUE 'STARTUP '.
+               88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
+           05  AUD-STATUS           PIC X(4).
+               88  AUD-SUCCESS        VALUE 'SUCC'.
+               88  AUD-FAILURE        VALUE 'FAIL'.
+               88  AUD-WARNING        VALUE 'WARN'.
+           05  AUD-KEY-INFO.
+               10  AUD-PORTFOLIO-ID  PIC X(8).
+               10  AUD-ACCOUNT-NO    PIC X(10).
+           05  AUD-BEFORE-IMAGE     PIC X(100).
+           05  AUD-AFTER-IMAGE      PIC X(100).
+           05  AUD-MESSAGE          PIC X(100). 
