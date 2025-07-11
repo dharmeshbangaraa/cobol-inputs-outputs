@@ -1,193 +1,100 @@
+
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document details the recent enhancements made to the COBOL application suite for portfolio and transaction processing. The primary focus of these changes is the introduction of the `CHANNEL-CODE` field across transaction and position records, enabling channel-based identification and reporting (e.g., ATM, MOBL, BRCH). This document outlines the existing logic, the rationale for the changes, impacted modules, insertion points, structured diffs, and the expected impact on the system.
+This document details the technical changes and low-level design (LLD) for recent modifications to the COBOL application modules responsible for position reporting, audit reporting, and test validation. The primary focus is on ensuring that Profit & Loss (P&L) values are rounded to two decimals in the daily position report, as per new business requirements. This document provides an overview of the existing logic, a summary of impacted changes, insertion points, structured diffs, and the rationale behind the modifications.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The application suite manages financial portfolios and transactions, supporting batch processing, reporting, validation, and testing. Key modules include transaction and position record management, batch control, reporting, data validation, and test data generation/validation.
+The COBOL application suite consists of several modules:
+- **RPTPOS00**: Generates the daily position report, summarizing portfolio positions, transaction activity, exceptions, and performance metrics.
+- **RPTAUD00**: Produces comprehensive audit reports, including security and process audit trails, error summaries, and control verification.
+- **TSTVAL00**: Executes test validation suites, validating test results, error conditions, and performance benchmarks.
 
 ### 2.2 Detailed Logic  
-- **Transaction and Position Processing:**  
-  - Transaction and position records are read, validated, processed, and reported across various modules.
-  - Each record contains key identifiers, financial data, status, and audit information.
-- **Batch Control:**  
-  - Manages batch job lifecycle: initialization, prerequisite checking, status updates, and termination.
-- **Reporting:**  
-  - Generates daily position and audit reports, summarizing portfolio activity and audit trails.
-- **Validation:**  
-  - Ensures data integrity, format correctness, and cross-references between records.
-- **Testing:**  
-  - Generates and validates test data for system and regression testing.
+#### RPTPOS00 (Daily Position Report Generator)
+- **Initialization (Lines 50-80):** Opens required files and writes report headers.
+- **Processing (Lines 81-200):** 
+  - Reads position records.
+  - Formats and writes position details, including P&L calculations.
+  - Processes transaction history and summarizes activity.
+  - Writes summary, exceptions, and performance metrics.
+- **Cleanup (Lines 201-220):** Closes all files and handles errors.
 
 #### Flowchart:  
-```mermaid
+```
 flowchart TD
     Start(["Start"])
-    ReadRecords["Read
-Transaction/Position
-Records"]
-    ValidateData["Validate
-Data"]
-    ProcessBatch["Process
-Batch Jobs"]
-    GenerateReports["Generate
-Reports"]
-    PerformValidation["Perform
-Data Validation"]
-    GenerateTestData["Generate
-Test Data"]
-    ValidateTestResults["Validate
-Test Results"]
+    OpenFiles["Open
+Input/Output Files"]
+    WriteHeaders["Write
+Report Headers"]
+    ProcessPositions["Read and Format
+Position Records"]
+    ProcessTransactions["Process
+Transaction History"]
+    WriteSummary["Write
+Summary/Exceptions/Metrics"]
+    Cleanup["Close Files
+and Cleanup"]
     End(["End"])
 
-    Start --> ReadRecords
-    ReadRecords --> ValidateData
-    ValidateData --> ProcessBatch
-    ProcessBatch --> GenerateReports
-    GenerateReports --> PerformValidation
-    PerformValidation --> GenerateTestData
-    GenerateTestData --> ValidateTestResults
-    ValidateTestResults --> End
+    Start --> OpenFiles
+    OpenFiles --> WriteHeaders
+    WriteHeaders --> ProcessPositions
+    ProcessPositions --> ProcessTransactions
+    ProcessTransactions --> WriteSummary
+    WriteSummary --> Cleanup
+    Cleanup --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-**User Story:**  
-As a system administrator, I want to track the channel (e.g., ATM, MOBL, BRCH) through which each transaction and position is processed, so that I can generate channel-specific reports, validate data integrity, and support channel-based analytics.
+**Business Requirement:**  
+Ensure that all P&L values reported in the daily position report are rounded to two decimal places to comply with financial reporting standards and improve report accuracy.
 
 ### 3.2 Impacted Code Changes Summary:
-
 #### 3.2.1 Impacted Sections and Files:
-- **Copybooks:**
-  - `TRNREC.CPY` (src/copybook/common/TRNREC.cpy)
-  - `POSREC.CPY` (src/copybook/common/POSREC.cpy)
-- **Batch Programs:**
-  - `BCHCTL00` (src/programs/batch/BCHCTL00.cbl)
-  - `RPTPOS00` (src/programs/batch/RPTPOS00.cbl)
-  - `RPTAUD00` (src/programs/batch/RPTAUD00.cbl)
-- **Utility Programs:**
-  - `UTLVAL00` (src/programs/utility/UTLVAL00.cbl)
-- **Test Programs:**
-  - `TSTGEN00` (src/programs/test/TSTGEN00.cbl)
-  - `TSTVAL00` (src/programs/test/TSTVAL00.cbl)
-- **JCL:**
-  - `RPTPOS.jcl` (src/jcl/batch/RPTPOS.jcl)
-  - `UTLVAL.jcl` (src/jcl/utility/UTLVAL.jcl)
-  - `TSTGEN.jcl` (src/jcl/test/TSTGEN.jcl)
-  - `TSTVAL.jcl` (src/jcl/test/TSTVAL.jcl)
-
-- **Purpose of Changes:**  
-  To introduce and propagate the `CHANNEL-CODE` field throughout transaction and position records, enabling channel-based identification, reporting, and validation.
-
-- **Impact:**  
-  - All modules now support reading, writing, and validating the `CHANNEL-CODE` field.
-  - Reports and validation routines include channel information.
-  - Test data generation and validation routines ensure the presence and correctness of `CHANNEL-CODE`.
-  - JCL record lengths (LRECL) increased by 4 bytes to accommodate the new field.
+- **File:** `src/programs/batch/RPTPOS00.cbl`
+  - **Section:** `2110-FORMAT-POSITION`
+  - **Purpose of Changes:** To guarantee that P&L values (specifically, current position values) are rounded to two decimals when written to the report.
+  - **Impact:** This change ensures consistency and accuracy in financial reporting, aligning with business and audit requirements. No other modules required code changes, but recommendations were made for future logic involving P&L values.
 
 ### 3.3 Insertion Points  
-- **Copybooks (`TRNREC.CPY`, `POSREC.CPY`):**
-  - Added `CHANNEL-CODE` field to the record structures.
-  - Adjusted filler fields to maintain record length.
-- **Batch and Utility Programs:**
-  - Included updated copybooks to ensure `CHANNEL-CODE` is available in all relevant data structures.
-  - In `RPTPOS00`, `UTLVAL00`, and `TSTGEN00`, logic added to move, validate, or assign `CHANNEL-CODE` (see code snippets below).
-- **Validation and Test Programs:**
-  - In `UTLVAL00` and `TSTVAL00`, added checks for missing or invalid `CHANNEL-CODE`.
-  - In `TSTGEN00`, assigned a default channel code during test data generation.
-- **JCL:**
-  - Increased LRECL by 4 bytes in all relevant DD statements to accommodate the new field.
+- **File:** `src/programs/batch/RPTPOS00.cbl`
+- **Section:** `2110-FORMAT-POSITION`
+- **Insertion Point:** After computing the percentage change in position value, the logic for moving the current value to the report field is updated to use the `ROUNDED` keyword.
+- **Line Reference:** Immediately after the `COMPUTE WS-POS-CHANGE-PCT` statement.
+
+**Description:**  
+The `MOVE` statement for `POS-CURRENT-VALUE` to `WS-POS-VALUE` is modified to include the `ROUNDED` keyword, ensuring the value is rounded to two decimals before being written to the report.
+
+**Rationale:**  
+Financial reports require values to be rounded to two decimals for compliance and clarity. This change directly addresses that requirement for all position values reported.
 
 ### 3.4 Structured Diffs  
-
-#### Example 1: Adding `CHANNEL-CODE` to Transaction Record (TRNREC.CPY)
-**Before:**
+**Before:**  
 ```cobol
-05  TRN-DATA.
-    10  TRN-INVESTMENT-ID  PIC X(10).
-    10  TRN-TYPE           PIC X(02).
-        88  TRN-TYPE-BUY     VALUE 'BU'.
-        88  TRN-TYPE-SELL    VALUE 'SL'.
-        88  TRN-TYPE-TRANS   VALUE 'TR'.
-        88  TRN-TYPE-FEE     VALUE 'FE'.
-    10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
-    10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
-    10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
-    10  TRN-CURRENCY      PIC X(03).
-    10  TRN-STATUS        PIC X(01).
-        88  TRN-STATUS-PEND   VALUE 'P'.
-        88  TRN-STATUS-DONE   VALUE 'D'.
-        88  TRN-STATUS-FAIL   VALUE 'F'.
-        88  TRN-STATUS-REV    VALUE 'R'.
-```
-**After:**
-```cobol
-05  TRN-DATA.
-    10  TRN-INVESTMENT-ID  PIC X(10).
-    10  TRN-TYPE           PIC X(02).
-        88  TRN-TYPE-BUY     VALUE 'BU'.
-        88  TRN-TYPE-SELL    VALUE 'SL'.
-        88  TRN-TYPE-TRANS   VALUE 'TR'.
-        88  TRN-TYPE-FEE     VALUE 'FE'.
-    10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
-    10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
-    10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
-    10  TRN-CURRENCY      PIC X(03).
-    10  TRN-STATUS        PIC X(01).
-        88  TRN-STATUS-PEND   VALUE 'P'.
-        88  TRN-STATUS-DONE   VALUE 'D'.
-        88  TRN-STATUS-FAIL   VALUE 'F'.
-        88  TRN-STATUS-REV    VALUE 'R'.
-    10  CHANNEL-CODE      PIC X(04). *> Added for channel identification (ATM, MOBL, BRCH, etc.)
+           COMPUTE WS-POS-CHANGE-PCT = 
+               (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
+                POS-PREVIOUS-VALUE * 100
+           *-- Begin Change: Ensure P&L values are rounded to two decimals
+           MOVE POS-CURRENT-VALUE TO WS-POS-VALUE
+           *-- End Change
+           WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
 ```
 
-#### Example 2: Validation Logic for `CHANNEL-CODE` (UTLVAL00.cbl)
-**Before:**
+**After:**  
 ```cobol
-* ... rest of the code unchanged, but in 2420-CHECK-TRANSACTION-FORMAT add: ...
-2420-CHECK-TRANSACTION-FORMAT.
-    *> Existing validation logic
-```
-**After:**
-```cobol
-2420-CHECK-TRANSACTION-FORMAT.
-    IF TRAN-CHANNEL-CODE = SPACES OR TRAN-CHANNEL-CODE = LOW-VALUES
-        MOVE 'CHANNEL-CODE MISSING' TO WS-ERR-DESC
-        WRITE ERROR-RECORD FROM WS-ERROR-LINE
-    END-IF
-    *> Added validation for CHANNEL-CODE presence
-```
-
-#### Example 3: Test Data Generation for `CHANNEL-CODE` (TSTGEN00.cbl)
-**Before:**
-```cobol
-* ... rest of the code unchanged, but in 2310-GEN-TRAN-DATA add: ...
-2310-GEN-TRAN-DATA.
-    *> Other fields as before
-```
-**After:**
-```cobol
-2310-GEN-TRAN-DATA.
-    MOVE 'ATM ' TO TRAN-CHANNEL-CODE *> Assign test channel code
-    *> Other fields as before
-```
-
-#### Example 4: JCL LRECL Increase (RPTPOS.jcl, UTLVAL.jcl, TSTGEN.jcl, TSTVAL.jcl)
-**Before:**
-```jcl
-//RPTFILE  DD   DSN=PROD.DAILY.POSITION.REPORT,
-//             DISP=(NEW,CATLG,DELETE),
-//             SPACE=(CYL,(10,5),RLSE),
-//             DCB=(RECFM=FB,LRECL=132,BLKSIZE=0)
-```
-**After:**
-```jcl
-//RPTFILE  DD   DSN=PROD.DAILY.POSITION.REPORT,
-//             DISP=(NEW,CATLG,DELETE),
-//             SPACE=(CYL,(10,5),RLSE),
-//             DCB=(RECFM=FB,LRECL=136,BLKSIZE=0) //* LRECL increased by 4 for CHANNEL-CODE
+           COMPUTE WS-POS-CHANGE-PCT = 
+               (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
+                POS-PREVIOUS-VALUE * 100
+           *-- Begin Change: Ensure P&L values are rounded to two decimals
+           MOVE POS-CURRENT-VALUE TO WS-POS-VALUE ROUNDED
+           *-- End Change
+           WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
 ```
 
 ## 4. Conclusion  
-The introduction of the `CHANNEL-CODE` field across transaction and position records enhances the system's ability to track, report, and validate channel-specific activity. All impacted modules and JCL have been updated to support this new field, ensuring data integrity and enabling future channel-based analytics and reporting. These changes are backward-compatible and have minimal impact on existing business logic, while providing significant value for operational reporting and auditability.
+The implemented change in `RPTPOS00.cbl` ensures that all P&L values in the daily position report are rounded to two decimals, meeting business and audit requirements for financial reporting. No code changes were necessary in other modules, but recommendations have been documented for future enhancements involving P&L calculations. This update improves the accuracy and compliance of the reporting process, with minimal impact on existing logic and performance.
+
