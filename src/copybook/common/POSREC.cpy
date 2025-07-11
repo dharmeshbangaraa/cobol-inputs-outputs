@@ -17,11 +17,11 @@
              88  POS-STATUS-ACTIVE  VALUE 'A'.
              88  POS-STATUS-CLOSED  VALUE 'C'.
              88  POS-STATUS-PEND    VALUE 'P'.
-         10  POS-CHANNEL-CODE   PIC X(04). *> Added for channel identification
+         10  POS-CHANNEL-CODE   PIC X(04).  *> Added for channel identification (if referenced from TRNREC)
      05  POS-AUDIT.
          10  POS-LAST-MAINT-DATE   PIC X(26).
          10  POS-LAST-MAINT-USER   PIC X(08).
-     05  POS-FILLER               PIC X(46). *> Reduced by 4 to accommodate POS-CHANNEL-CODE
+     05  POS-FILLER               PIC X(46).   *> Reduced by 4 bytes for POS-CHANNEL-CODE
 *****************************************************************
 * FIELD DESCRIPTIONS:
 * POS-PORTFOLIO-ID : PORTFOLIO IDENTIFIER

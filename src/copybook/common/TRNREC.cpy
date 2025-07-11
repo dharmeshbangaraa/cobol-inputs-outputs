@@ -29,7 +29,7 @@
      05  TRN-AUDIT.
          10  TRN-PROCESS-DATE  PIC X(26).
          10  TRN-PROCESS-USER  PIC X(08).
-     05  TRN-FILLER           PIC X(46).   *> Reduced by 4 to accommodate CHANNEL-CODE
+     05  TRN-FILLER           PIC X(46).   *> Reduced by 4 bytes for CHANNEL-CODE
 *****************************************************************
 * FIELD DESCRIPTIONS:
 * TRN-DATE        : TRANSACTION DATE (YYYYMMDD)
