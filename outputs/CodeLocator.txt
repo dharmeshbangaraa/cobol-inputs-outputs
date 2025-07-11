@@ -1,38 +1,22 @@
 Impact Analysis Report
 
-Title: Fix rounding discrepancies in portfolio P&L calculation in Batch processing and Reporting modules.
-
-User Story:
-As an Operations Analyst,
-I want all P&L values to be rounded consistently to two decimal places,
-so that financial reports and statements match downstream accounting systems exactly.
-
-Acceptance Criteria:
-1. Calculation Logic:
-   Update the COBOL arithmetic logic to use the ROUNDED keyword when moving computed P&L values from intermediate working fields to output fields.
-
-2. Data Storage:
-   Ensure that database fields storing P&L values (e.g., DECIMAL(15,2) columns) maintain exactly two decimal places.
-
-3. Reporting Validation:
-   Ensure that batch-generated reports display rounded P&L values consistently in all formats, including TXT and CSV.
-
 ----------
 
 **Summary**:
-User Story: Fix rounding discrepancies in portfolio P&L calculation in Batch processing and Reporting modules.  
-- 3 impacted components identified (**High impact only**)  
-- High complexity change affecting core P&L calculation, storage, and reporting logic across batch and reporting modules.
+User Story: Fix rounding discrepancies in portfolio P&L calculation in Batch processing and Reporting modules.
+
+- 3 impacted components identified (**High impact only**)
+- High complexity change, as it affects core batch P&L calculation logic, DB storage, and reporting output/validation.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                                 | Impact | Nature  | Affected Paragraphs/Sections     | Dependency Path                        |
-|---------------------------------------------------|--------|---------|-----------------------------------|----------------------------------------|
-| `src/programs/batch/RPTPOS00.cbl`                 | High   | Direct  | 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY | Main reporting program for portfolio P&L; formats and outputs P&L values |
-| `src/programs/batch/HISTLD00.cbl`                 | High   | Direct  | DB2-INSERT, 2300-CHECK-COMMIT    | Loads P&L data into DB2 tables with DECIMAL(15,2) columns               |
-| `src/programs/batch/BCHCTL00.cbl`                 | High   | Indirect| 2000-CHECK-PREREQUISITES, 3000-UPDATE-STATUS | Batch control logic for P&L batch jobs; ensures correct rounding logic is enforced |
+| Program File Path                         | Impact | Nature  | Affected Paragraphs/Sections         | Dependency Path                    |
+|-------------------------------------------|--------|---------|--------------------------------------|------------------------------------|
+| `src/programs/batch/BCHCTL00.cbl`         | High   | Direct  | 1000-PROCESS-INITIALIZE, 2000-CHECK-PREREQUISITES, 3000-UPDATE-STATUS | Batch P&L calculation entry point  |
+| `src/programs/batch/RPTPOS00.cbl`         | High   | Direct  | 2000-PROCESS-REPORT, 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY         | Generates P&L reports              |
+| `src/programs/test/TSTVAL00.cbl`          | High   | Direct  | 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS, 2800-WRITE-TEST-DETAIL      | Regression/unit test validation    |
 
 ---
 
@@ -43,31 +27,49 @@ User Story: Fix rounding discrepancies in portfolio P&L calculation in Batch pro
     "userStory": "Fix rounding discrepancies in portfolio P&L calculation in Batch processing and Reporting modules.",
     "impactedComponents": [
       {
-        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
+        "programFilePath": "src/programs/batch/BCHCTL00.cbl",
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2110-FORMAT-POSITION", "2300-WRITE-SUMMARY"],
-        "dependencyPath": ["RPTPOS00"],
-        "rationale": "This is the main reporting program for portfolio P&L. It formats and outputs P&L values to reports and is directly responsible for rounding and display logic."
+        "affectedParagraphs": [
+          "1000-PROCESS-INITIALIZE",
+          "2000-CHECK-PREREQUISITES",
+          "3000-UPDATE-STATUS"
+        ],
+        "dependencyPath": [
+          "BCHCTL00"
+        ],
+        "rationale": "This batch control program is responsible for orchestrating P&L calculations and is the core entry point for batch P&L logic. The rounding logic must be updated here to ensure correct P&L values."
       },
       {
-        "programFilePath": "src/programs/batch/HISTLD00.cbl",
-        "impactScore": 0.96,
+        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
+        "impactScore": 0.97,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["DB2-INSERT", "2300-CHECK-COMMIT"],
-        "dependencyPath": ["HISTLD00"],
-        "rationale": "This program loads P&L data into DB2 tables with DECIMAL(15,2) columns. Ensuring rounding at this stage is critical for data consistency."
+        "affectedParagraphs": [
+          "2000-PROCESS-REPORT",
+          "2110-FORMAT-POSITION",
+          "2300-WRITE-SUMMARY"
+        ],
+        "dependencyPath": [
+          "RPTPOS00"
+        ],
+        "rationale": "This reporting program generates portfolio P&L reports. It must display rounded P&L values in all output formats, directly impacting report accuracy."
       },
       {
-        "programFilePath": "src/programs/batch/BCHCTL00.cbl",
-        "impactScore": 0.92,
+        "programFilePath": "src/programs/test/TSTVAL00.cbl",
+        "impactScore": 0.95,
         "impactLevel": "High",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["2000-CHECK-PREREQUISITES", "3000-UPDATE-STATUS"],
-        "dependencyPath": ["BCHCTL00"],
-        "rationale": "Batch control logic orchestrates P&L batch jobs and indirectly enforces the correct rounding logic across batch calculations."
+        "impactType": "Direct",
+        "affectedParagraphs": [
+          "2100-EXECUTE-TEST",
+          "2600-VALIDATE-RESULTS",
+          "2800-WRITE-TEST-DETAIL"
+        ],
+        "dependencyPath": [
+          "TSTVAL00"
+        ],
+        "rationale": "This test program validates P&L calculation outputs against expected results. The rounding change must be reflected in test assertions and validation logic to ensure regression coverage."
       }
     ]
   }
@@ -80,22 +82,20 @@ User Story: Fix rounding discrepancies in portfolio P&L calculation in Batch pro
 
 ```mermaid
 graph TD
-    RPTPOS00["src/programs/batch/RPTPOS00.cbl<br/>(High Impact)"]:::high
-    HISTLD00["src/programs/batch/HISTLD00.cbl<br/>(High Impact)"]:::high
     BCHCTL00["src/programs/batch/BCHCTL00.cbl<br/>(High Impact)"]:::high
+    RPTPOS00["src/programs/batch/RPTPOS00.cbl<br/>(High Impact)"]:::high
+    TSTVAL00["src/programs/test/TSTVAL00.cbl<br/>(High Impact)"]:::high
 
-    BCHCTL00 --> HISTLD00
     BCHCTL00 --> RPTPOS00
+    BCHCTL00 --> TSTVAL00
 
-    classDef high fill:#ff6666,stroke:#333,stroke-width:2px;
+    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
 ```
 
 ---
 
 **Reasoning**:
-
-- `src/programs/batch/RPTPOS00.cbl` is the primary reporting program for portfolio P&L, directly formatting and outputting P&L values. Any rounding logic must be consistent here to ensure reports match downstream systems.
-- `src/programs/batch/HISTLD00.cbl` loads P&L data into the database, where the DECIMAL(15,2) columns require precise rounding. This program is critical for ensuring stored values are consistent.
-- `src/programs/batch/BCHCTL00.cbl` manages batch control and orchestrates the execution of P&L calculations and reporting, ensuring that rounding logic is enforced across batch jobs.
-
-These components are tightly coupled to the core business process described in the user story and are the highest-impact points for implementing and validating the rounding fix. Only files present in the repository and directly involved in P&L calculation, storage, and reporting are included.
+- `BCHCTL00.cbl` is the main batch control program for P&L calculation, so any rounding logic must be implemented here.
+- `RPTPOS00.cbl` is the main reporting program for portfolio positions and P&L, so it must ensure output is rounded as per requirements.
+- `TSTVAL00.cbl` is the main test validation program, which must be updated to assert the new rounding rules and ensure regression coverage.
+- Only these components are directly responsible for P&L calculation, output, and validation, and thus are classified as **High impact** for this user story. No unrelated or medium/low impact files are included. All file paths are verified to exist in the repository.
