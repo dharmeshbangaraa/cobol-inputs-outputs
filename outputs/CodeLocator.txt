@@ -1,21 +1,24 @@
-Impact Analysis Report
-
----
-
 **Summary**:
-User Story: Fix rounding discrepancies in portfolio P&L calculation in Batch Processing and Reporting modules only.  
-- 3 impacted components identified (**High impact only**)  
-- High complexity change affecting core P&L calculation and all downstream batch reporting outputs
+Title: Fix rounding discrepancies in portfolio P&L calculation  
+User Story:  
+As an Operations Analyst  
+I want all P&L values to be rounded consistently to two decimal places  
+so that financial reports and statements match downstream accounting systems exactly.
+
+- 4 impacted components identified (**High impact only**)
+- High complexity change affecting core P&L calculation, DB2 storage, regression testing, and reporting chain
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                        |
-|------------------------------------------|--------|---------|---------------------------------------------|----------------------------------------|
-| `src/programs/batch/PNL-CALC-PROG.cbl`   | High   | Direct  | PNL-CALC-MAIN, CALC-PNL, MOVE-TO-OUTPUT    | PNL-CALC-PROG                          |
-| `src/programs/batch/RPTPOS00.cbl`        | High   | Direct  | 2000-PROCESS-REPORT, 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY | RPTPOS00                               |
-| `src/programs/batch/RPTAUD00.cbl`        | High   | Direct  | 2000-PROCESS-REPORT, 2100-PROCESS-AUDIT-TRAIL, 2300-WRITE-SUMMARY | RPTAUD00                               |
+| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections         | Dependency Path                        |
+|------------------------------------------|--------|---------|--------------------------------------|----------------------------------------|
+| `src/programs/calc/PNL-CALC-PROG.cbl`   | High   | Direct  | CALC-PNL, MOVE-TO-OUTPUT, FINALIZE   | Entry point for P&L calculation logic  |
+| `src/copybook/db2/PORTVAL.cpy`          | High   | Direct  | PNL-AMT field definition             | Used by DB2 programs for P&L storage   |
+| `src/programs/test/TSTVAL00.cbl`         | High   | Direct  | 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS | Regression test for P&L calculation    |
+| `src/programs/batch/RPTPOS00.cbl`        | High   | Direct  | 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY | Batch report for P&L display           |
+| `src/programs/batch/RPTAUD00.cbl`        | High   | Direct  | 2100-PROCESS-AUDIT-TRAIL, 2300-WRITE-SUMMARY | Audit report for P&L display           |
 
 ---
 
@@ -23,34 +26,52 @@ User Story: Fix rounding discrepancies in portfolio P&L calculation in Batch Pro
 ```json
 {
   "impactAnalysis": {
-    "userStory": "Fix rounding discrepancies in portfolio P&L calculation in Batch Processing and Reporting modules only.",
+    "userStory": "Fix rounding discrepancies in portfolio P&L calculation",
     "impactedComponents": [
       {
-        "programFilePath": "src/programs/batch/PNL-CALC-PROG.cbl",
-        "impactScore": 0.98,
+        "programFilePath": "src/programs/calc/PNL-CALC-PROG.cbl",
+        "impactScore": 0.99,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["PNL-CALC-MAIN", "CALC-PNL", "MOVE-TO-OUTPUT"],
+        "affectedParagraphs": ["CALC-PNL", "MOVE-TO-OUTPUT", "FINALIZE"],
         "dependencyPath": ["PNL-CALC-PROG"],
-        "rationale": "This is the core program responsible for P&L calculation logic. All rounding logic must be updated here to ensure consistency."
+        "rationale": "Core calculation logic for P&L; must update arithmetic to use ROUNDED for all P&L computations and moves."
       },
       {
-        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
+        "programFilePath": "src/copybook/db2/PORTVAL.cpy",
+        "impactScore": 0.97,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["PNL-AMT field definition"],
+        "dependencyPath": ["PORTVAL.cpy"],
+        "rationale": "Defines DB2 storage for PNL_AMT (DECIMAL(15,2)); must ensure all writes are properly rounded to two decimals."
+      },
+      {
+        "programFilePath": "src/programs/test/TSTVAL00.cbl",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS-REPORT", "2110-FORMAT-POSITION", "2300-WRITE-SUMMARY"],
-        "dependencyPath": ["RPTPOS00"],
-        "rationale": "Batch report program that outputs P&L values in TXT and CSV. Must ensure displayed values are rounded as per new logic."
+        "affectedParagraphs": ["2100-EXECUTE-TEST", "2600-VALIDATE-RESULTS"],
+        "dependencyPath": ["TSTVAL00"],
+        "rationale": "Regression test program; must validate that rounding logic produces expected results for edge cases."
       },
       {
-        "programFilePath": "src/programs/batch/RPTAUD00.cbl",
+        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
         "impactScore": 0.93,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS-REPORT", "2100-PROCESS-AUDIT-TRAIL", "2300-WRITE-SUMMARY"],
+        "affectedParagraphs": ["2110-FORMAT-POSITION", "2300-WRITE-SUMMARY"],
+        "dependencyPath": ["RPTPOS00"],
+        "rationale": "Batch report program; displays P&L values in TXT/CSV outputs, must reflect new rounding logic."
+      },
+      {
+        "programFilePath": "src/programs/batch/RPTAUD00.cbl",
+        "impactScore": 0.92,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2100-PROCESS-AUDIT-TRAIL", "2300-WRITE-SUMMARY"],
         "dependencyPath": ["RPTAUD00"],
-        "rationale": "Audit report program that displays P&L values. Needs update to ensure all reported values are rounded consistently."
+        "rationale": "Audit report program; displays P&L values, must reflect new rounding logic."
       }
     ]
   }
@@ -63,25 +84,27 @@ User Story: Fix rounding discrepancies in portfolio P&L calculation in Batch Pro
 
 ```mermaid
 graph TD
-    subgraph Batch Processing & Reporting
-        PNL[PNL-CALC-PROG.cbl]:::high
-        POS[RPTPOS00.cbl]:::high
-        AUD[RPTAUD00.cbl]:::high
-    end
+    PNL-CALC-PROG["src/programs/calc/PNL-CALC-PROG.cbl (High)"]:::high
+    PORTVAL["src/copybook/db2/PORTVAL.cpy (High)"]:::high
+    TSTVAL00["src/programs/test/TSTVAL00.cbl (High)"]:::high
+    RPTPOS00["src/programs/batch/RPTPOS00.cbl (High)"]:::high
+    RPTAUD00["src/programs/batch/RPTAUD00.cbl (High)"]:::high
 
-    PNL --> POS
-    PNL --> AUD
+    PNL-CALC-PROG --> PORTVAL
+    TSTVAL00 --> PNL-CALC-PROG
+    RPTPOS00 --> PNL-CALC-PROG
+    RPTAUD00 --> PNL-CALC-PROG
 
-    classDef high fill:#ff6666,stroke:#b22222,stroke-width:2px;
-    class PNL,POS,AUD high;
+    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
 ```
 
 ---
 
 **Reasoning**:
-- `PNL-CALC-PROG.cbl` is the central calculation engine for P&L and is directly responsible for the arithmetic and rounding logic. Any change to rounding must be implemented here.
-- `RPTPOS00.cbl` and `RPTAUD00.cbl` are the main batch reporting programs that output P&L values to TXT and CSV. They must be updated to ensure that all displayed values use the new rounding logic, and to verify that no additional formatting or post-processing introduces discrepancies.
-- No indirect dependencies or copybooks were found to have a high impact for this specific rounding change, as the calculation and reporting are tightly coupled to these three programs.
+- `src/programs/calc/PNL-CALC-PROG.cbl` is the central program for P&L calculation and is explicitly mentioned in the user story.
+- `src/copybook/db2/PORTVAL.cpy` defines the DB2 table/column for PNL_AMT, which must store values rounded to two decimals.
+- `src/programs/test/TSTVAL00.cbl` is the regression test harness for P&L logic, directly validating rounding behavior.
+- `src/programs/batch/RPTPOS00.cbl` and `src/programs/batch/RPTAUD00.cbl` are the batch reporting programs that output P&L values and must reflect the new rounding logic.
+- All other programs are either not directly involved in P&L calculation/storage/reporting or have only indirect/low impact.
 
-**Total High Impact Components**: 3  
-**Change Complexity**: High (core arithmetic logic and all downstream reporting outputs must be updated and tested for consistency)
+**End of Impact Analysis Report**
