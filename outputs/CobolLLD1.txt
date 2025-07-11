@@ -1,225 +1,371 @@
+## Summary
+
+**User Story:**  
+Title: Fix rounding discrepancies in portfolio P&L calculation  
+As an Operations Analyst, I want all P&L values to be rounded consistently to two decimal places so that financial reports and statements match downstream accounting systems exactly.
+
+**Acceptance Criteria:**
+1. Update COBOL arithmetic in PNL-CALC-PROG (or relevant copybook routines) to use ROUNDED when moving computed P&L from WORK-DIVIDE fields to output fields.
+2. Ensure the DB2 PORTVAL.PNL_AMT column (DECIMAL(15,2)) stores values exactly with two decimal places.
+3. Add unit tests in TSTVAL.jcl that feed known inputs and expect correct rounding.
+4. Verify that batch reports (RPTPOS00 and RPTAUD00) display P&L amounts correctly rounded in both TXT and CSV outputs.
+
+**Total impacted components:** 6  
+**High-level assessment:**  
+This is a medium-to-high complexity change. It directly affects core calculation logic, database storage, and reporting, with ripple effects into testing and validation. The change impacts both batch and reporting programs, as well as copybooks and JCL for regression testing.
+
+---
+
+## Ranked Impact List
+
+| Program/Component         | Impact   | Nature   | Affected Paragraphs/Sections         | Dependency Path                                  |
+|--------------------------|----------|----------|--------------------------------------|--------------------------------------------------|
+| PNL-CALC-PROG            | High     | Direct   | PNL-CALC, MOVE-TO-OUTPUT, WORK-DIVIDE | [PNL-CALC-PROG]                                  |
+| PORTVAL (DB2 Table)      | High     | Direct   | PNL_AMT column, DB2 I/O routines     | [PNL-CALC-PROG, DB2 PORTVAL]                     |
+| RPTPOS00                 | High     | Direct   | 2000-PROCESS-REPORT, 2110-FORMAT-POSITION | [RPTPOS00]                                   |
+| RPTAUD00                 | High     | Direct   | 2000-PROCESS-REPORT, 2100-PROCESS-AUDIT-TRAIL | [RPTAUD00]                                |
+| TSTVAL00 (TSTVAL.jcl)    | Medium   | Direct   | 2000-PROCESS, 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS | [TSTVAL00]                       |
+| POSREC (Copybook)        | Medium   | Indirect | P&L field definitions, record layouts | [PNL-CALC-PROG, POSREC], [RPTPOS00, POSREC]      |
+
+---
+
+## JSON Metadata
+
+```json
+{
+  "impactAnalysis": {
+    "userStory": "Fix rounding discrepancies in portfolio P&L calculation",
+    "impactedComponents": [
+      {
+        "programName": "PNL-CALC-PROG",
+        "impactScore": 0.98,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["PNL-CALC", "MOVE-TO-OUTPUT", "WORK-DIVIDE"],
+        "dependencyPath": ["PNL-CALC-PROG"],
+        "rationale": "Core calculation logic for P&L; must implement ROUNDED in arithmetic and ensure output fields are set to two decimals."
+      },
+      {
+        "programName": "PORTVAL (DB2 Table)",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["PNL_AMT column", "DB2 I/O routines"],
+        "dependencyPath": ["PNL-CALC-PROG", "DB2 PORTVAL"],
+        "rationale": "Database storage for P&L; must ensure values stored are exactly two decimals as per schema and business rule."
+      },
+      {
+        "programName": "RPTPOS00",
+        "impactScore": 0.92,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2000-PROCESS-REPORT", "2110-FORMAT-POSITION"],
+        "dependencyPath": ["RPTPOS00"],
+        "rationale": "Batch report program that displays P&L; must show rounded values in TXT and CSV outputs."
+      },
+      {
+        "programName": "RPTAUD00",
+        "impactScore": 0.90,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2000-PROCESS-REPORT", "2100-PROCESS-AUDIT-TRAIL"],
+        "dependencyPath": ["RPTAUD00"],
+        "rationale": "Audit report program that displays P&L; must show rounded values in TXT and CSV outputs."
+      },
+      {
+        "programName": "TSTVAL00 (TSTVAL.jcl)",
+        "impactScore": 0.80,
+        "impactLevel": "Medium",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2000-PROCESS", "2100-EXECUTE-TEST", "2600-VALIDATE-RESULTS"],
+        "dependencyPath": ["TSTVAL00"],
+        "rationale": "Regression/unit test driver; must validate rounding logic with known test cases."
+      },
+      {
+        "programName": "POSREC (Copybook)",
+        "impactScore": 0.75,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["P&L field definitions", "record layouts"],
+        "dependencyPath": ["PNL-CALC-PROG", "POSREC"],
+        "rationale": "Defines P&L fields used in calculations and reports; changes may be needed to ensure correct picture/rounding."
+      }
+    ]
+  }
+}
+```
+
+---
+
+## Visualization
+
+```mermaid
+graph TD
+    PNL-CALC-PROG["PNL-CALC-PROG<br/>(High)"]:::high
+    PORTVAL["PORTVAL (DB2 Table)<br/>(High)"]:::high
+    RPTPOS00["RPTPOS00<br/>(High)"]:::high
+    RPTAUD00["RPTAUD00<br/>(High)"]:::high
+    TSTVAL00["TSTVAL00 (TSTVAL.jcl)<br/>(Medium)"]:::medium
+    POSREC["POSREC (Copybook)<br/>(Medium)"]:::medium
+
+    PNL-CALC-PROG --> PORTVAL
+    PNL-CALC-PROG --> POSREC
+    RPTPOS00 --> POSREC
+    RPTAUD00 --> POSREC
+    TSTVAL00 -.-> PNL-CALC-PROG
+    TSTVAL00 -.-> RPTPOS00
+    TSTVAL00 -.-> RPTAUD00
+
+    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
+    classDef medium fill:#fff2cc,stroke:#b8860b,stroke-width:2px;
+```
+
+---
+
+**Reasoning:**  
+- **PNL-CALC-PROG** is the core calculation engine for P&L and must be updated for rounding logic.
+- **PORTVAL (DB2 Table)** is where P&L is stored; must ensure values are stored with correct precision.
+- **RPTPOS00** and **RPTAUD00** are batch reporting programs that output P&L; must display rounded values.
+- **TSTVAL00** (unit test JCL) is used to validate the rounding logic.
+- **POSREC** (copybook) defines the P&L field structure and is included in both calculation and reporting programs.
+
+**Note:**  
+Other programs and copybooks were reviewed but excluded due to lack of direct or indirect logical connection to the P&L calculation or reporting chain for this user story. Only components that process, store, or display P&L values, or validate their correctness, are included.
+
+----------
+
+# Technical Document and Low-Level Design (LLD)
+
 ## 1. Introduction  
-This document provides a comprehensive technical overview and Low-Level Design (LLD) for the enhancement of the COBOL legacy application suite, specifically to add a `CHANNEL-CODE` field to the transaction file. The change enables the identification of transaction sources (e.g., ATM, Mobile, Branch) for improved analytics, auditing, and fraud detection. The document details the existing logic, impacted modules, insertion points, and structured code diffs to guide seamless integration of the new field.
+This document provides a comprehensive technical overview and Low-Level Design (LLD) for the COBOL legacy application modules responsible for portfolio Profit & Loss (P&L) calculation, storage, reporting, and validation. The focus is on addressing the user story: **"Fix rounding discrepancies in portfolio P&L calculation"**. The document details the existing logic, identifies insertion points for the required changes, and provides structured diffs and guidance for seamless integration.
 
 ---
 
 ## 2. Existing Logic and Flow  
 
 ### 2.1 Overview  
-The COBOL application suite processes business-critical financial transactions in batch mode. It consists of modular programs for transaction processing, reporting, validation, and test data management. The core data structure for transactions is defined in the `TRANSACTION.CPY` (TRNREC) copybook, which is included in all programs that read or write transaction data. The application follows a structured flow: initialization, main processing (including file I/O and business logic), and termination.
+The application processes portfolio position records, calculates P&L as the difference between market value and cost basis, stores results in a DB2 table, and generates batch reports. Unit tests validate the correctness of calculations and outputs. The system is modular, with clear separation between data definition (copybooks), batch processing, reporting, and testing.
 
 ### 2.2 Detailed Logic  
 
-#### 2.2.1 Transaction Record Structure (`TRANSACTION.CPY`)
-
+#### Key Data Structures (from `src/copybook/common/POSREC.cpy`)
 ```cobol
-01  TRANSACTION-RECORD.
-    05  TRN-KEY.
-        10  TRN-DATE           PIC X(08).
-        10  TRN-TIME           PIC X(06).
-        10  TRN-PORTFOLIO-ID   PIC X(08).
-        10  TRN-SEQUENCE-NO    PIC X(06).
-    05  TRN-DATA.
-        10  TRN-INVESTMENT-ID  PIC X(10).
-        10  TRN-TYPE           PIC X(02).
-            88  TRN-TYPE-BUY     VALUE 'BU'.
-            88  TRN-TYPE-SELL    VALUE 'SL'.
-            88  TRN-TYPE-TRANS   VALUE 'TR'.
-            88  TRN-TYPE-FEE     VALUE 'FE'.
-        10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
-        10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
-        10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
-        10  TRN-CURRENCY      PIC X(03).
-        10  TRN-STATUS        PIC X(01).
-            88  TRN-STATUS-PEND   VALUE 'P'.
-            88  TRN-STATUS-DONE   VALUE 'D'.
-            88  TRN-STATUS-FAIL   VALUE 'F'.
-            88  TRN-STATUS-REV    VALUE 'R'.
-    05  TRN-AUDIT.
-        10  TRN-PROCESS-DATE  PIC X(26).
-        10  TRN-PROCESS-USER  PIC X(08).
-    05  TRN-FILLER           PIC X(50).
+01  POSITION-RECORD.
+    05  POS-KEY.
+        10  POS-PORTFOLIO-ID   PIC X(08).
+        10  POS-DATE           PIC X(08).
+        10  POS-INVESTMENT-ID  PIC X(10).
+    05  POS-DATA.
+        10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
+        10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
+        10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
+        10  POS-CURRENCY       PIC X(03).
+        10  POS-STATUS         PIC X(01).
+    05  POS-AUDIT.
+        10  POS-LAST-MAINT-DATE   PIC X(26).
+        10  POS-LAST-MAINT-USER   PIC X(08).
+    05  POS-FILLER               PIC X(50).
 ```
+- **P&L is computed as:** `POS-MARKET-VALUE - POS-COST-BASIS`
 
-#### 2.2.2 Program Structure and Transaction Flow
+#### Batch Processing and Reporting (`src/programs/batch/RPTPOS00.cbl`)
+- **Initialization:**  
+  Handles file opening and header writing.
+  ```cobol
+  1000-INITIALIZE.
+      PERFORM 1100-OPEN-FILES
+      PERFORM 1200-WRITE-HEADERS.
+  ```
+- **Main Processing:**  
+  Reads position records, computes values, formats, and writes reports.
+  ```cobol
+  2000-PROCESS-REPORT.
+      PERFORM 2100-READ-POSITIONS
+      PERFORM 2200-PROCESS-TRANSACTIONS
+      PERFORM 2300-WRITE-SUMMARY.
+  ```
+  - **P&L Calculation and Output:**
+    ```cobol
+    2110-FORMAT-POSITION.
+        MOVE POS-PORTFOLIO-ID   TO WS-POS-PORTFOLIO
+        MOVE POS-QUANTITY       TO WS-POS-QUANTITY
+        COMPUTE WS-POS-PNL = POS-MARKET-VALUE - POS-COST-BASIS
+        WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
+    ```
+- **Termination:**  
+  Closes files and performs cleanup.
+  ```cobol
+  3000-CLEANUP.
+      CLOSE POSITION-MASTER
+           TRANSACTION-HISTORY
+           REPORT-FILE.
+  ```
 
-- **Initialization:** Open files, read configuration, set up working storage.
-- **Processing:** Read transaction records, apply business rules, update positions, generate reports.
-- **Termination:** Write output files, close files, log results.
+#### Audit Reporting (`src/programs/batch/RPTAUD00.cbl`)
+- Similar structure to RPTPOS00, focusing on audit trails and including P&L-related actions in the audit log.
 
-#### 2.2.3 Flowchart
+#### Test Validation (`src/programs/test/TSTVAL00.cbl`)
+- **Test Case Structure:**
+  ```cobol
+  01  TEST-CASE-RECORD.
+      05  TEST-ID              PIC X(10).
+      05  TEST-TYPE            PIC X(10).
+      05  TEST-DESCRIPTION     PIC X(50).
+      05  TEST-PARAMETERS      PIC X(100).
+  ```
+- **Validation Logic:**
+  ```cobol
+  2000-PROCESS.
+      PERFORM UNTIL END-OF-TESTS
+          READ TEST-CASES
+              AT END
+                  SET END-OF-TESTS TO TRUE
+              NOT AT END
+                  PERFORM 2100-EXECUTE-TEST
+          END-READ
+      END-PERFORM
+      PERFORM 2900-WRITE-SUMMARY.
+  ```
+  - Executes tests and validates results, writing status to the report.
 
+#### DB2 I/O Routines (`src/copybook/db2/DBPROC.cpy`)
+- Handles DB2 inserts/updates for P&L fields, all using packed decimal with two decimal places.
+
+#### Flowchart (Mermaid Syntax)
 ```
 flowchart TD
     Start(["Start"])
     Init["Initialization:
-Open files,
-Read config"]
-    ReadTrans["Read
-Transaction
-Record"]
-    Validate["Validate
-Transaction"]
-    Process["Process
-Business Logic"]
-    Update["Update
-Positions/Reports"]
-    WriteOut["Write
-Output/Report"]
+Open Files,
+Write Headers"]
+    ReadPos["Read
+Position Records"]
+    CalcPNL["Calculate
+P&L:
+POS-MARKET-VALUE
+-
+POS-COST-BASIS"]
+    RoundPNL["(Implicit)
+Decimal Handling"]
+    MoveOut["Move to
+Output Fields"]
+    WriteRep["Write to
+Report/DB2"]
     End(["End"])
 
     Start --> Init
-    Init --> ReadTrans
-    ReadTrans --> Validate
-    Validate --> Process
-    Process --> Update
-    Update --> WriteOut
-    WriteOut --> End
+    Init --> ReadPos
+    ReadPos --> CalcPNL
+    CalcPNL --> RoundPNL
+    RoundPNL --> MoveOut
+    MoveOut --> WriteRep
+    WriteRep --> End
 ```
-
-#### 2.2.4 File Handling and Copybook Usage
-
-- All transaction-processing programs include `COPY TRNREC.` in their FILE SECTION.
-- File-control and FD sections define transaction file access (indexed/sequential).
-- JCL specifies dataset names and LRECL for transaction files.
 
 ---
 
 ## 3. Proposed Changes  
 
 ### 3.1 User Story or Analysis Report Summary  
-**User Story:**  
-Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting.  
-This enables capturing the source of each transaction (ATM, Mobile, Branch, etc.) for analytics, auditing, and fraud detection.
+**Title:** Fix rounding discrepancies in portfolio P&L calculation  
+**Goal:** Ensure all P&L values are rounded consistently to two decimal places for accurate reporting and DB2 storage.
 
----
+**Acceptance Criteria:**
+- Use `ROUNDED` in all arithmetic moving computed P&L to output fields.
+- DB2 column `PORTVAL.PNL_AMT` (DECIMAL(15,2)) must store values with exactly two decimals.
+- Add/adjust unit tests to verify correct rounding.
+- Batch reports (RPTPOS00, RPTAUD00) must display P&L rounded to two decimals in TXT and CSV outputs.
 
 ### 3.2 Proposed Code Changes Summary
 
-#### 3.2.1 Impacted Sections and Files
-
-- **TRANSACTION.CPY / TRNREC**: Add `CHANNEL-CODE` field to transaction record.
-- **POSREC.CPY**: No direct change, but review for mapping or reporting.
-- **BCHCTL00**: Update FD and logic if it reads/writes transaction file.
-- **RPTPOS00**: Update FD, processing, and reporting logic to include/display `CHANNEL-CODE`.
-- **UTLVAL00**: Update FD and validation logic for new field.
-- **TSTGEN00**: Update test data generation to populate `CHANNEL-CODE`.
-- **TSTVAL00**: Update validation logic for test data.
-- **RPTAUD00**: Update reporting logic if audit includes transaction channel.
-- **JCL**: Update LRECL and DD statements for new field length.
+#### 3.2.1 Impacted Sections and Files:
+- **src/programs/batch/RPTPOS00.cbl:**  
+  - *Sections:* `2110-FORMAT-POSITION`, `2000-PROCESS-REPORT`
+- **src/programs/batch/RPTAUD00.cbl:**  
+  - *Sections:* `2100-PROCESS-AUDIT-TRAIL`, `2000-PROCESS-REPORT`
+- **src/copybook/common/POSREC.cpy:**  
+  - *Fields:* `POS-COST-BASIS`, `POS-MARKET-VALUE`
+- **src/programs/test/TSTVAL00.cbl:**  
+  - *Sections:* `2100-EXECUTE-TEST`, `2600-VALIDATE-RESULTS`
+- **src/copybook/db2/DBPROC.cpy` and DB2 I/O routines:**  
+  - *Ensure DB2 insert/update logic uses rounded values for `PNL_AMT`.*
 
 - **Purpose of Changes:**  
-  To enable the system to record and process the channel/source of each transaction, supporting downstream analytics and compliance.
+  To enforce consistent rounding of P&L values to two decimal places at all calculation, storage, and reporting points, eliminating discrepancies between reports and downstream systems.
 
 - **Impact:**  
-  - All programs that read/write transaction records must be updated for the new field.
-  - File layouts and LRECL must be increased.
-  - Test data and validation logic must be enhanced.
-  - Reporting and analytics can now segment by channel.
-
----
+  - Ensures financial data integrity and consistency.
+  - Affects calculation, storage, reporting, and validation logic.
+  - Requires regression testing to confirm no unintended side effects.
 
 ### 3.3 Insertion Points  
 
-- **TRANSACTION.CPY**:  
-  - Insert `CHANNEL-CODE` field after `TRN-STATUS` or before `TRN-AUDIT` for logical grouping.
-  - Update field descriptions.
+- **RPTPOS00.cbl:**  
+  - In `2110-FORMAT-POSITION`, update the P&L calculation to use `ROUNDED`:
+    - **Before:**  
+      ```cobol
+      COMPUTE WS-POS-PNL = POS-MARKET-VALUE - POS-COST-BASIS
+      ```
+    - **After:**  
+      ```cobol
+      COMPUTE WS-POS-PNL ROUNDED = POS-MARKET-VALUE - POS-COST-BASIS
+      ```
+  - Ensure all moves to output fields (e.g., report records, DB2 fields) use rounded values.
 
-- **All Programs Including TRNREC**:  
-  - FD section: No change if using `COPY TRNREC.`, but ensure recompile.
-  - Processing: Update logic to read/write/populate `CHANNEL-CODE`.
-  - Reporting: Display or filter by `CHANNEL-CODE` as needed.
+- **RPTAUD00.cbl:**  
+  - In `2100-PROCESS-AUDIT-TRAIL`, ensure any P&L calculation or movement uses `ROUNDED`.
 
-- **TSTGEN00**:  
-  - In `2300-GEN-TRANSACTION`, generate valid `CHANNEL-CODE` values (e.g., 'ATM', 'MOB', 'BRN').
+- **DB2 I/O routines:**  
+  - When moving P&L to `PNL_AMT` for DB2 storage, use `ROUNDED` in the `COMPUTE` or `MOVE` statement.
 
-- **UTLVAL00/TSTVAL00**:  
-  - In validation routines, check for valid `CHANNEL-CODE` values.
-
-- **JCL**:  
-  - Update LRECL for transaction files to reflect increased record length.
-
----
+- **TSTVAL00.cbl:**  
+  - Add/modify test cases in `TEST-CASE-RECORD` to include scenarios with rounding edge cases (e.g., 0.005, 0.004, etc.).
+  - In `2600-VALIDATE-RESULTS`, ensure validation compares to expected rounded values.
 
 ### 3.4 Structured Diffs  
 
-#### TRANSACTION.CPY
-
+#### Example 1: Calculation and Movement (RPTPOS00.cbl)
 **Before:**
 ```cobol
-    05  TRN-DATA.
-        10  TRN-INVESTMENT-ID  PIC X(10).
-        ...
-        10  TRN-STATUS        PIC X(01).
-            88  TRN-STATUS-PEND   VALUE 'P'.
-            88  TRN-STATUS-DONE   VALUE 'D'.
-            88  TRN-STATUS-FAIL   VALUE 'F'.
-            88  TRN-STATUS-REV    VALUE 'R'.
-    05  TRN-AUDIT.
-        10  TRN-PROCESS-DATE  PIC X(26).
-        10  TRN-PROCESS-USER  PIC X(08).
-```
-
-**After:**
-```cobol
-    05  TRN-DATA.
-        10  TRN-INVESTMENT-ID  PIC X(10).
-        ...
-        10  TRN-STATUS        PIC X(01).
-            88  TRN-STATUS-PEND   VALUE 'P'.
-            88  TRN-STATUS-DONE   VALUE 'D'.
-            88  TRN-STATUS-FAIL   VALUE 'F'.
-            88  TRN-STATUS-REV    VALUE 'R'.
-        10  TRN-CHANNEL-CODE   PIC X(03).
-            88  TRN-CHANNEL-ATM    VALUE 'ATM'.
-            88  TRN-CHANNEL-MOB    VALUE 'MOB'.
-            88  TRN-CHANNEL-BRN    VALUE 'BRN'.
-    05  TRN-AUDIT.
-        10  TRN-PROCESS-DATE  PIC X(26).
-        10  TRN-PROCESS-USER  PIC X(08).
-```
-
-#### RPTPOS00, UTLVAL00, TSTGEN00, TSTVAL00 (FD/Processing)
-
-**Before:**
-```cobol
-    COPY TRNREC.
+COMPUTE WS-POS-PNL = POS-MARKET-VALUE - POS-COST-BASIS
+MOVE WS-POS-PNL TO REPORT-RECORD-PNL
 ```
 **After:**
 ```cobol
-    COPY TRNREC.  *> Now includes TRN-CHANNEL-CODE
+COMPUTE WS-POS-PNL ROUNDED = POS-MARKET-VALUE - POS-COST-BASIS
+MOVE WS-POS-PNL TO REPORT-RECORD-PNL
 ```
 
-**Processing Example (TSTGEN00):**
-
+#### Example 2: DB2 Insert (DBPROC.cpy or relevant program)
 **Before:**
 ```cobol
-    MOVE 'BU' TO TRN-TYPE.
-    MOVE 'P'  TO TRN-STATUS.
+MOVE WS-POS-PNL TO DB2-PNL-AMT
+EXEC SQL
+    INSERT INTO PORTVAL (PNL_AMT, ...) VALUES (:DB2-PNL-AMT, ...)
+END-EXEC
 ```
 **After:**
 ```cobol
-    MOVE 'BU' TO TRN-TYPE.
-    MOVE 'P'  TO TRN-STATUS.
-    MOVE 'ATM' TO TRN-CHANNEL-CODE.  *> Or 'MOB', 'BRN', etc.
+MOVE WS-POS-PNL ROUNDED TO DB2-PNL-AMT
+EXEC SQL
+    INSERT INTO PORTVAL (PNL_AMT, ...) VALUES (:DB2-PNL-AMT, ...)
+END-EXEC
 ```
 
-#### JCL (LRECL)
-
+#### Example 3: Test Case (TSTVAL00.cbl)
 **Before:**
-```jcl
-//TRANHIST DD   DSN=PROD.TRANSACTION.HISTORY,DISP=SHR
-//             DCB=(RECFM=FB,LRECL=150,BLKSIZE=0)
+```cobol
+* Test expects P&L = 123.456
 ```
 **After:**
-```jcl
-//TRANHIST DD   DSN=PROD.TRANSACTION.HISTORY,DISP=SHR
-//             DCB=(RECFM=FB,LRECL=153,BLKSIZE=0)  //* Increased by 3 for CHANNEL-CODE
+```cobol
+* Test expects P&L = 123.46
 ```
+- Update test validation logic to compare against rounded expected values.
 
 ---
 
 ## 4. Conclusion  
-The addition of the `CHANNEL-CODE` field to the transaction file and associated programs enhances the system's ability to track transaction sources, supporting improved analytics, auditing, and fraud detection. All impacted programs and JCL must be updated to accommodate the new field, with careful attention to file layouts and validation logic. The structured diffs and insertion points provided in this document will guide developers and testers in implementing and verifying the changes efficiently and accurately.
+The proposed changes ensure that all portfolio P&L values are consistently rounded to two decimal places at every stage: calculation, storage, reporting, and validation. This eliminates discrepancies between internal reports and downstream accounting systems, improving data integrity and auditability. The changes are localized to calculation, output, and validation logic, and are fully regression-testable via the existing test suite.
 
 ---
