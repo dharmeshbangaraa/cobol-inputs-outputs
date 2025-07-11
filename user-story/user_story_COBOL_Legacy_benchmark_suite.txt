@@ -14,3 +14,5 @@ Acceptance Criteria:
 
 3. Reporting Validation:
    Ensure that batch-generated reports display rounded P&L values consistently in all formats, including TXT and CSV.
+
+4. Regression Test: Add unit tests in TSTVAL.jcl that feed known inputs (e.g., buy at 10.3333, sell at 10.6666) and expect P&L     of “0.33” rather than “0.34” (or vice versa per defined rule).
