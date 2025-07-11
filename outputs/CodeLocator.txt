@@ -3,20 +3,19 @@ Impact Analysis Report
 ----------
 
 **Summary**:
-User Story: Fix rounding discrepancies in portfolio P&L calculation in Batch processing and Reporting modules.
-
-- 3 impacted components identified (**High impact only**)
-- High complexity change, as it affects core batch P&L calculation logic, DB storage, and reporting output/validation.
+User Story: Fix rounding discrepancies in portfolio P&L calculation  
+- 3 impacted components identified (**High impact only**)  
+- High complexity change affecting core P&L calculation, storage, and reporting chain, with direct impact on financial accuracy and compliance.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                         | Impact | Nature  | Affected Paragraphs/Sections         | Dependency Path                    |
-|-------------------------------------------|--------|---------|--------------------------------------|------------------------------------|
-| `src/programs/batch/BCHCTL00.cbl`         | High   | Direct  | 1000-PROCESS-INITIALIZE, 2000-CHECK-PREREQUISITES, 3000-UPDATE-STATUS | Batch P&L calculation entry point  |
-| `src/programs/batch/RPTPOS00.cbl`         | High   | Direct  | 2000-PROCESS-REPORT, 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY         | Generates P&L reports              |
-| `src/programs/test/TSTVAL00.cbl`          | High   | Direct  | 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS, 2800-WRITE-TEST-DETAIL      | Regression/unit test validation    |
+| Program File Path                          | Impact | Nature  | Affected Paragraphs/Sections             | Dependency Path                           |
+|--------------------------------------------|--------|---------|------------------------------------------|-------------------------------------------|
+| `src/programs/batch/RPTPOS00.cbl`          | High   | Direct  | 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY | Main reporting program for P&L            |
+| `src/copybook/common/POSREC.cpy`           | High   | Direct  | P&L field definitions                    | Used by RPTPOS00 and other P&L programs   |
+| `src/programs/test/TSTVAL00.cbl`           | High   | Direct  | 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS | Regression test for P&L rounding          |
 
 ---
 
@@ -24,52 +23,34 @@ User Story: Fix rounding discrepancies in portfolio P&L calculation in Batch pro
 ```json
 {
   "impactAnalysis": {
-    "userStory": "Fix rounding discrepancies in portfolio P&L calculation in Batch processing and Reporting modules.",
+    "userStory": "Fix rounding discrepancies in portfolio P&L calculation",
     "impactedComponents": [
       {
-        "programFilePath": "src/programs/batch/BCHCTL00.cbl",
+        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [
-          "1000-PROCESS-INITIALIZE",
-          "2000-CHECK-PREREQUISITES",
-          "3000-UPDATE-STATUS"
-        ],
-        "dependencyPath": [
-          "BCHCTL00"
-        ],
-        "rationale": "This batch control program is responsible for orchestrating P&L calculations and is the core entry point for batch P&L logic. The rounding logic must be updated here to ensure correct P&L values."
+        "affectedParagraphs": ["2110-FORMAT-POSITION", "2300-WRITE-SUMMARY"],
+        "dependencyPath": ["RPTPOS00"],
+        "rationale": "Main batch reporting program for portfolio P&L; directly formats and outputs P&L values, requiring rounding logic update."
       },
       {
-        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
+        "programFilePath": "src/copybook/common/POSREC.cpy",
         "impactScore": 0.97,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [
-          "2000-PROCESS-REPORT",
-          "2110-FORMAT-POSITION",
-          "2300-WRITE-SUMMARY"
-        ],
-        "dependencyPath": [
-          "RPTPOS00"
-        ],
-        "rationale": "This reporting program generates portfolio P&L reports. It must display rounded P&L values in all output formats, directly impacting report accuracy."
+        "affectedParagraphs": ["P&L field definitions"],
+        "dependencyPath": ["POSREC.cpy (used in RPTPOS00, others)"],
+        "rationale": "Defines P&L data fields (e.g., PIC S9(13)V99) used for calculation and storage; must enforce two decimal places and rounding."
       },
       {
         "programFilePath": "src/programs/test/TSTVAL00.cbl",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [
-          "2100-EXECUTE-TEST",
-          "2600-VALIDATE-RESULTS",
-          "2800-WRITE-TEST-DETAIL"
-        ],
-        "dependencyPath": [
-          "TSTVAL00"
-        ],
-        "rationale": "This test program validates P&L calculation outputs against expected results. The rounding change must be reflected in test assertions and validation logic to ensure regression coverage."
+        "affectedParagraphs": ["2100-EXECUTE-TEST", "2600-VALIDATE-RESULTS"],
+        "dependencyPath": ["TSTVAL00"],
+        "rationale": "Regression test program that validates P&L calculation and rounding; must be updated to test new rounding logic."
       }
     ]
   }
@@ -82,20 +63,22 @@ User Story: Fix rounding discrepancies in portfolio P&L calculation in Batch pro
 
 ```mermaid
 graph TD
-    BCHCTL00["src/programs/batch/BCHCTL00.cbl<br/>(High Impact)"]:::high
-    RPTPOS00["src/programs/batch/RPTPOS00.cbl<br/>(High Impact)"]:::high
-    TSTVAL00["src/programs/test/TSTVAL00.cbl<br/>(High Impact)"]:::high
+  subgraph High Impact
+    RPTPOS00["src/programs/batch/RPTPOS00.cbl"]
+    POSREC["src/copybook/common/POSREC.cpy"]
+    TSTVAL00["src/programs/test/TSTVAL00.cbl"]
+  end
 
-    BCHCTL00 --> RPTPOS00
-    BCHCTL00 --> TSTVAL00
-
-    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
+  RPTPOS00 -- uses --> POSREC
+  TSTVAL00 -- validates --> RPTPOS00
 ```
 
 ---
 
 **Reasoning**:
-- `BCHCTL00.cbl` is the main batch control program for P&L calculation, so any rounding logic must be implemented here.
-- `RPTPOS00.cbl` is the main reporting program for portfolio positions and P&L, so it must ensure output is rounded as per requirements.
-- `TSTVAL00.cbl` is the main test validation program, which must be updated to assert the new rounding rules and ensure regression coverage.
-- Only these components are directly responsible for P&L calculation, output, and validation, and thus are classified as **High impact** for this user story. No unrelated or medium/low impact files are included. All file paths are verified to exist in the repository.
+
+- **RPTPOS00.cbl** is the main batch reporting program that calculates and outputs portfolio P&L, directly affected by the rounding requirement.
+- **POSREC.cpy** is the core copybook defining P&L fields, ensuring correct data type and decimal enforcement for all programs using it.
+- **TSTVAL00.cbl** is the regression test program that must validate the new rounding logic per acceptance criteria.
+
+No other components in the repository have a direct or critical impact on P&L rounding as per the dependency map and user story scope. All identified files are present in the repository and are essential for the change.
