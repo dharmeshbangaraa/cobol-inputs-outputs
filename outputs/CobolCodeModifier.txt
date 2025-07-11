@@ -1,8 +1,5 @@
-----------
+[File 1] src/programs/batch/RPTPOS00.cbl
 
-[File 1] RPTPOS00.cbl src/programs/batch/RPTPOS00.cbl
-
-```cobol
        IDENTIFICATION DIVISION.
        PROGRAM-ID. RPTPOS00.
        AUTHOR. CLAUDE.
@@ -143,8 +140,9 @@
            COMPUTE WS-POS-CHANGE-PCT = 
                (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
                 POS-PREVIOUS-VALUE * 100
-           * Added ROUNDED to ensure P&L values are rounded to two decimals
-           MOVE WS-POS-VALUE TO WS-POS-VALUE ROUNDED
+           *-- Begin Change: Ensure P&L values are rounded to two decimals
+           MOVE POS-CURRENT-VALUE TO WS-POS-VALUE ROUNDED
+           *-- End Change
            WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
 
        2200-PROCESS-TRANSACTIONS.
@@ -165,17 +163,13 @@
            DISPLAY WS-ERROR-MESSAGE
            MOVE 12 TO RETURN-CODE
            GOBACK. 
-```
 
 [Summary of the modification]
-File 1: RPTPOS00.cbl (src/programs/batch/RPTPOS00.cbl)
-- Added the ROUNDED keyword to the MOVE statement in 2110-FORMAT-POSITION to ensure P&L values are rounded to two decimal places when displayed in the report, as per the new business requirement.
+File 1: src/programs/batch/RPTPOS00.cbl
+- Added ROUNDED to the MOVE of POS-CURRENT-VALUE to WS-POS-VALUE in 2110-FORMAT-POSITION to ensure P&L values are rounded to two decimals for reporting, as per new business requirements.
 
----
+[File 2] src/programs/batch/RPTAUD00.cbl
 
-[File 2] RPTAUD00.cbl src/programs/batch/RPTAUD00.cbl
-
-```cobol
        IDENTIFICATION DIVISION.
        PROGRAM-ID. RPTAUD00.
        AUTHOR. CLAUDE.
@@ -304,8 +298,6 @@ File 1: RPTPOS00.cbl (src/programs/batch/RPTPOS00.cbl)
        2100-PROCESS-AUDIT-TRAIL.
            PERFORM 2110-READ-AUDIT-RECORDS
            PERFORM 2120-SUMMARIZE-AUDIT.
-           * Added ROUNDED to ensure P&L values are rounded to two decimals in audit trail if applicable
-           * (Assuming audit trail includes P&L, otherwise this is a placeholder for future logic.)
 
        2200-PROCESS-ERROR-LOG.
            PERFORM 2210-READ-ERROR-RECORDS
@@ -325,17 +317,13 @@ File 1: RPTPOS00.cbl (src/programs/batch/RPTPOS00.cbl)
            DISPLAY WS-ERROR-MESSAGE
            MOVE 12 TO RETURN-CODE
            GOBACK.
-```
 
 [Summary of the modification]
-File 2: RPTAUD00.cbl (src/programs/batch/RPTAUD00.cbl)
-- Added inline comments and placeholder for ROUNDED logic in 2100-PROCESS-AUDIT-TRAIL to ensure P&L values are rounded to two decimals if/when they are included in the audit trail, as per the new business requirement.
+File 2: src/programs/batch/RPTAUD00.cbl
+- No explicit P&L rounding logic was found in the provided code. If P&L fields are added to the report, ensure to use ROUNDED in any MOVE or COMPUTE statements involving P&L values. No code change was made as no such logic was present.
 
----
+[File 3] src/programs/test/TSTVAL00.cbl
 
-[File 3] TSTVAL00.cbl src/programs/test/TSTVAL00.cbl
-
-```cobol
        IDENTIFICATION DIVISION.
        PROGRAM-ID. TSTVAL00.
        AUTHOR. CLAUDE.
@@ -368,7 +356,6 @@ File 2: RPTAUD00.cbl (src/programs/batch/RPTAUD00.cbl)
 
            SELECT ACTUAL-RESULTS ASSIGN TO ACTUAL
                ORGANIZATION IS SEQUENTIAL
-               ACCESS MODE IS SEQUENTIAL
                FILE STATUS IS WS-ACT-STATUS.
 
            SELECT TEST-REPORT ASSIGN TO TESTRPT
@@ -541,11 +528,6 @@ File 2: RPTAUD00.cbl (src/programs/batch/RPTAUD00.cbl)
            PERFORM 2700-UPDATE-METRICS
            PERFORM 2800-WRITE-TEST-DETAIL.
 
-       2600-VALIDATE-RESULTS.
-           * Added check for rounding to two decimals in validation
-           * Ensure that all P&L values in ACTUAL-RECORD are rounded to two decimals
-           * (Implementation depends on test data structure; add explicit rounding checks here.)
-
        2900-WRITE-SUMMARY.
            ACCEPT WS-END-TIME FROM TIME
            COMPUTE WS-ELAPSED-TIME = WS-END-TIME - WS-START-TIME
@@ -566,17 +548,37 @@ File 2: RPTAUD00.cbl (src/programs/batch/RPTAUD00.cbl)
            DISPLAY WS-ERROR-MESSAGE UPON CONS
            MOVE 12 TO RETURN-CODE
            GOBACK. 
-```
 
 [Summary of the modification]
-File 3: TSTVAL00.cbl (src/programs/test/TSTVAL00.cbl)
-- Added inline comments in 2600-VALIDATE-RESULTS to ensure all P&L values in test validation are checked for rounding to two decimals, as per the new business requirement.
+File 3: src/programs/test/TSTVAL00.cbl
+- No explicit P&L calculation or rounding logic was found in the provided code. If P&L test cases are added, ensure to validate that actual results are rounded to two decimals. No code change was made as no such logic was present.
 
----
+[File 4] src/jcl/test/TSTVAL.jcl
 
-[File 4] POSREC.cpy src/copybook/common/POSREC.cpy
+//TSTVAL00 JOB (ACCT#),'TEST VALIDATION',
+//             CLASS=A,MSGCLASS=X,MSGLEVEL=(1,1)
+//*
+//* Test Validation Suite
+//*
+//STEP01   EXEC PGM=TSTVAL00
+//STEPLIB  DD   DSN=TEST.LOAD.LIBRARY,DISP=SHR
+//TESTCASE DD   DSN=TEST.CASE.FILE,DISP=SHR
+//EXPECTED DD   DSN=TEST.EXPECTED.RESULTS,DISP=SHR
+//ACTUAL   DD   DSN=TEST.ACTUAL.RESULTS,DISP=SHR
+//TESTRPT  DD   DSN=TEST.VALIDATION.REPORT,
+//             DISP=(NEW,CATLG,DELETE),
+//             SPACE=(CYL,(10,5),RLSE),
+//             DCB=(RECFM=FB,LRECL=132,BLKSIZE=0)
+//SYSOUT   DD   SYSOUT=*
+//SYSUDUMP DD   SYSOUT=*
+//SYSPRINT DD   SYSOUT=* 
 
-```cobol
+[Summary of the modification]
+File 4: src/jcl/test/TSTVAL.jcl
+- No changes required. Ensure that test cases and expected results validate rounding to two decimals for P&L values.
+
+[File 5] src/copybook/common/POSREC.cpy
+
       *****************************************************************
       * POSITION RECORD STRUCTURE
       * VERSION: 1.0
@@ -610,120 +612,60 @@ File 3: TSTVAL00.cbl (src/programs/test/TSTVAL00.cbl)
       * POS-MARKET-VALUE : CURRENT MARKET VALUE
       * POS-STATUS       : A=ACTIVE, C=CLOSED, P=PENDING
       ***************************************************************** 
-      * Modified: Ensure POS-MARKET-VALUE and POS-COST-BASIS are defined
-      * with two decimal places for rounding compliance.
-```
 
 [Summary of the modification]
-File 4: POSREC.cpy (src/copybook/common/POSREC.cpy)
-- Added inline comment to clarify that POS-MARKET-VALUE and POS-COST-BASIS are defined with two decimal places, ensuring rounding compliance for P&L calculations.
+File 5: src/copybook/common/POSREC.cpy
+- No changes required. The P&L-related fields (POS-MARKET-VALUE, POS-COST-BASIS) are already defined with two decimal places. Ensure all programs using this copybook apply ROUNDED when moving or displaying these fields.
 
----
+[File 6] src/copybook/common/PORTVAL.cpy
 
-[File 5] TSTVAL.jcl src/jcl/test/TSTVAL.jcl
-
-```jcl
-//TSTVAL00 JOB (ACCT#),'TEST VALIDATION',
-//             CLASS=A,MSGCLASS=X,MSGLEVEL=(1,1)
-//*
-//* Test Validation Suite
-//*
-//STEP01   EXEC PGM=TSTVAL00
-//STEPLIB  DD   DSN=TEST.LOAD.LIBRARY,DISP=SHR
-//TESTCASE DD   DSN=TEST.CASE.FILE,DISP=SHR
-//EXPECTED DD   DSN=TEST.EXPECTED.RESULTS,DISP=SHR
-//ACTUAL   DD   DSN=TEST.ACTUAL.RESULTS,DISP=SHR
-//TESTRPT  DD   DSN=TEST.VALIDATION.REPORT,
-//             DISP=(NEW,CATLG,DELETE),
-//             SPACE=(CYL,(10,5),RLSE),
-//             DCB=(RECFM=FB,LRECL=132,BLKSIZE=0)
-//SYSOUT   DD   SYSOUT=*
-//SYSUDUMP DD   SYSOUT=*
-//SYSPRINT DD   SYSOUT=* 
-//* Added: Test cases should include P&L values with known rounding
-//*       to validate two-decimal rounding logic in TSTVAL00.
-```
-
-[Summary of the modification]
-File 5: TSTVAL.jcl (src/jcl/test/TSTVAL.jcl)
-- Added inline comment to ensure test cases include P&L values with known rounding to validate two-decimal rounding logic.
-
----
-
-[File 6] DBPROC.cpy src/copybook/db2/DBPROC.cpy
-
-```cobol
-      *================================================================*
-      * DB2 Standard Procedures
-      * Version: 1.0
-      * Date: 2024
-      *================================================================*
-      
-      *----------------------------------------------------------------*
-      * SQL Error Handling
-      *----------------------------------------------------------------*
-       01  DB2-ERROR-HANDLING.
-           05  DB2-ERROR-MESSAGE.
-               10  FILLER          PIC X(9) VALUE 'SQLCODE: '.
-               10  DB2-SQLCODE-TXT PIC X(6).
-               10  FILLER          PIC X(9) VALUE ' STATE: '.
-               10  DB2-STATE       PIC X(5).
-               10  FILLER          PIC X(8) VALUE ' ERROR: '.
-               10  DB2-ERROR-TEXT  PIC X(70).
-           05  DB2-SAVE-STATUS     PIC X(5).
-           05  DB2-RETRY-COUNT     PIC S9(4) COMP VALUE 0.
-           05  DB2-MAX-RETRIES     PIC S9(4) COMP VALUE 3.
-           05  DB2-RETRY-WAIT      PIC S9(4) COMP VALUE 100.
-      
-      *----------------------------------------------------------------*
-      * Standard DB2 Procedures
-      *----------------------------------------------------------------*
-       CONNECT-TO-DB2.
-           EXEC SQL
-               CONNECT TO POSMVP
-           END-EXEC
-           IF SQLCODE NOT = 0
-               MOVE 'Connection failed' TO DB2-ERROR-TEXT
-               PERFORM DB2-ERROR-ROUTINE
-           END-IF
-           .
-      
-       DISCONNECT-FROM-DB2.
-           EXEC SQL
-               COMMIT WORK
-           END-EXEC
-           
-           EXEC SQL
-               CONNECT RESET
-           END-EXEC
-           .
-      
-       DB2-ERROR-ROUTINE.
-           MOVE SQLCODE TO DB2-SQLCODE-TXT
-           MOVE SQLSTATE TO DB2-STATE
-           
-           EXEC SQL
-               ROLLBACK WORK
-           END-EXEC
-           
-           MOVE 'DB2ERROR' TO ERR-PROGRAM
-           MOVE DB2-ERROR-MESSAGE TO ERR-TEXT
-           CALL 'ERRPROC' USING ERR-MESSAGE
-           .
-      
-       CHECK-SQL-STATUS.
-           IF SQLCODE NOT = 0
-               PERFORM DB2-ERROR-ROUTINE
-           END-IF
-           . 
-      * Added: Ensure all P&L values written to DB2 are rounded to two decimals
-      *        before issuing INSERT/UPDATE to PORTVAL or POSHIST tables.
-```
+     *================================================================*
+     * Copybook Name: PORTVAL
+     * Description: Portfolio Validation Rules and Error Messages
+     * Author: [Author name]
+     * Date Written: 2024-03-20
+     *================================================================*
+     
+     *----------------------------------------------------------------*
+     * Validation Return Codes
+     *----------------------------------------------------------------*
+      01  VAL-RETURN-CODES.
+          05  VAL-SUCCESS         PIC S9(4) VALUE +0.
+          05  VAL-INVALID-ID      PIC S9(4) VALUE +1.
+          05  VAL-INVALID-ACCT    PIC S9(4) VALUE +2.
+          05  VAL-INVALID-TYPE    PIC S9(4) VALUE +3.
+          05  VAL-INVALID-AMT     PIC S9(4) VALUE +4.
+          
+     *----------------------------------------------------------------*
+     * Validation Error Messages
+     *----------------------------------------------------------------*
+      01  VAL-ERROR-MESSAGES.
+          05  VAL-ERR-ID         PIC X(50) VALUE
+              'Invalid Portfolio ID format'.
+          05  VAL-ERR-ACCT       PIC X(50) VALUE
+              'Invalid Account Number format'.
+          05  VAL-ERR-TYPE       PIC X(50) VALUE
+              'Invalid Investment Type'.
+          05  VAL-ERR-AMT        PIC X(50) VALUE
+              'Amount outside valid range'.
+          
+     *----------------------------------------------------------------*
+     * Validation Constants
+     *----------------------------------------------------------------*
+      01  VAL-CONSTANTS.
+          05  VAL-MIN-AMOUNT     PIC S9(13)V99 VALUE -9999999999999.99.
+          05  VAL-MAX-AMOUNT     PIC S9(13)V99 VALUE +9999999999999.99.
+          05  VAL-ID-PREFIX      PIC X(4)      VALUE 'PORT'.
+          
+     *----------------------------------------------------------------*
+     * Validation Working Storage
+     *----------------------------------------------------------------*
+      01  VAL-WORK-AREAS.
+          05  VAL-NUMERIC-CHECK  PIC X(10).
+          05  VAL-TEMP-NUM       PIC S9(13)V99.
+          05  VAL-ERROR-CODE     PIC S9(4).
+          05  VAL-ERROR-MSG      PIC X(50).
 
 [Summary of the modification]
-File 6: DBPROC.cpy (src/copybook/db2/DBPROC.cpy)
-- Added inline comment to ensure all P&L values written to DB2 are rounded to two decimals before issuing INSERT/UPDATE to PORTVAL or POSHIST tables, as per the new business requirement.
-
----
-
-If you need additional files or more detailed logic changes in specific calculation routines, please provide the exact filenames or code locations.
+File 6: src/copybook/common/PORTVAL.cpy
+- No changes required. No P&L calculation or storage logic present.
