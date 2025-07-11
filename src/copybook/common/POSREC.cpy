@@ -21,7 +21,7 @@
      05  POS-AUDIT.
          10  POS-LAST-MAINT-DATE   PIC X(26).
          10  POS-LAST-MAINT-USER   PIC X(08).
-     05  POS-FILLER               PIC X(46).   *> Reduced by 4 bytes for POS-CHANNEL-CODE
+     05  POS-FILLER               PIC X(46).    *> Reduced by 4 to accommodate CHANNEL-CODE
 *****************************************************************
 * FIELD DESCRIPTIONS:
 * POS-PORTFOLIO-ID : PORTFOLIO IDENTIFIER
@@ -31,5 +31,5 @@
 * POS-COST-BASIS   : TOTAL COST BASIS
 * POS-MARKET-VALUE : CURRENT MARKET VALUE
 * POS-STATUS       : A=ACTIVE, C=CLOSED, P=PENDING
-* POS-CHANNEL-CODE : CHANNEL IDENTIFICATION (NEW FIELD)
+* POS-CHANNEL-CODE : CHANNEL IDENTIFICATION (NEW)
 *****************************************************************

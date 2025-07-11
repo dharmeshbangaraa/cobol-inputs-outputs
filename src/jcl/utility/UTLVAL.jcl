@@ -11,7 +11,7 @@
 //ERRRPT   DD   DSN=PROD.VALIDATION.REPORT,
 //             DISP=(NEW,CATLG,DELETE),
 //             SPACE=(CYL,(10,5),RLSE),
-//             DCB=(RECFM=FB,LRECL=136,BLKSIZE=0)  //* LRECL increased by 4 for CHANNEL-CODE
+//             DCB=(RECFM=FB,LRECL=136,BLKSIZE=0)  //* Increased LRECL by 4 for CHANNEL-CODE
 //SYSOUT   DD   SYSOUT=*
 //SYSUDUMP DD   SYSOUT=*
 //SYSPRINT DD   SYSOUT=*
