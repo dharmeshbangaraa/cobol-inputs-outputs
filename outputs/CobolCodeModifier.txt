@@ -1,41 +1,7 @@
-[File 1] RPTPOS00.cbl src/programs/batch/RPTPOS00.cbl
+[Complete COBOL source code after modification as above]
 
-<full code above>
+[Complete COBOL source code after modification as above]
 
-[Summary of the modification]
-- File 1: RPTPOS00.cbl (src/programs/batch/RPTPOS00.cbl)
-- Added the ROUNDED keyword to the COMPUTE statement for WS-POS-CHANGE-PCT in paragraph 2110-FORMAT-POSITION to ensure P&L values are rounded to two decimal places as per the Impact Analysis Report. Added an inline comment for clarity.
+[Complete COBOL copybook source code after modification as above]
 
----
-
-[File 2] RPTAUD00.cbl src/programs/batch/RPTAUD00.cbl
-
-<full code above>
-
-[Summary of the modification]
-- File 2: RPTAUD00.cbl (src/programs/batch/RPTAUD00.cbl)
-- No direct P&L calculation or output logic was found in the provided code. If P&L fields are added to the report, ensure ROUNDED is used in any COMPUTE or MOVE statements for P&L values. No code change was made as per the current structure.
-
----
-
-[File 3] POSREC.cpy src/copybook/common/POSREC.cpy
-
-<full code above>
-
-[Summary of the modification]
-- File 3: POSREC.cpy (src/copybook/common/POSREC.cpy)
-- No changes required. Field definitions for P&L-related fields are already at two decimal places. No rounding logic is present in the copybook.
-
----
-
-[File 4] AUDITLOG.cpy src/copybook/common/AUDITLOG.cpy
-
-<full code above>
-
-[Summary of the modification]
-- File 4: AUDITLOG.cpy (src/copybook/common/AUDITLOG.cpy)
-- No changes required. No P&L field definitions or rounding logic present in this copybook.
-
----
-
-Note: The PNL-CALC-PROG source file could not be located in the repository and thus could not be updated. If you can provide the file or clarify its location, I will update it accordingly.
+[Complete COBOL copybook source code after modification as above]
