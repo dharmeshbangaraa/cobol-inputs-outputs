@@ -4,44 +4,53 @@ Impact Analysis Report
 
 **Summary**:
 User Story: Fix rounding discrepancies in portfolio P&L calculation  
-- 3 impacted components identified (**High impact only**)  
-- High complexity change affecting core P&L calculation, storage, and reporting chain, with direct impact on financial accuracy and compliance.
+- 4 impacted components identified (**High impact only**)  
+- High complexity change: affects core P&L calculation logic, data storage, reporting, and regression validation. All changes are critical for financial accuracy and regulatory compliance.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                          | Impact | Nature  | Affected Paragraphs/Sections             | Dependency Path                           |
-|--------------------------------------------|--------|---------|------------------------------------------|-------------------------------------------|
-| `src/programs/batch/RPTPOS00.cbl`          | High   | Direct  | 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY | Main reporting program for P&L            |
-| `src/copybook/common/POSREC.cpy`           | High   | Direct  | P&L field definitions                    | Used by RPTPOS00 and other P&L programs   |
-| `src/programs/test/TSTVAL00.cbl`           | High   | Direct  | 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS | Regression test for P&L rounding          |
+| Program File Path                              | Impact | Nature   | Affected Paragraphs/Sections                 | Dependency Path                                   |
+|------------------------------------------------|--------|----------|----------------------------------------------|---------------------------------------------------|
+| `src/programs/batch/BCHCTL00.cbl`              | High   | Direct   | 2000-CHECK-PREREQUISITES, 3000-UPDATE-STATUS | Core batch control for portfolio P&L calculations  |
+| `src/copybook/batch/BCHCTL.cpy`                | High   | Direct   | P&L-related data fields, MOVE/COMPUTE logic   | Included in BCHCTL00, stores P&L fields           |
+| `src/programs/batch/RPTPOS00.cbl`              | High   | Direct   | 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY      | Generates P&L reports, outputs rounded values      |
+| `src/programs/test/TSTVAL00.cbl`               | High   | Direct   | 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS      | Regression test validation for P&L rounding        |
 
 ---
 
 **JSON Metadata**:
-```json
 {
   "impactAnalysis": {
     "userStory": "Fix rounding discrepancies in portfolio P&L calculation",
     "impactedComponents": [
       {
-        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
+        "programFilePath": "src/programs/batch/BCHCTL00.cbl",
         "impactScore": 0.98,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2000-CHECK-PREREQUISITES", "3000-UPDATE-STATUS"],
+        "dependencyPath": ["BCHCTL00"],
+        "rationale": "Core batch control program for portfolio calculations; directly handles P&L computation and status updates. Rounding logic must be updated to ensure consistent results."
+      },
+      {
+        "programFilePath": "src/copybook/batch/BCHCTL.cpy",
+        "impactScore": 0.97,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["P&L-related data fields", "MOVE/COMPUTE logic"],
+        "dependencyPath": ["BCHCTL00", "BCHCTL.cpy"],
+        "rationale": "Copybook defines P&L data structures and is included in all batch programs performing P&L calculations. Must ensure all MOVE/COMPUTE statements use ROUNDED."
+      },
+      {
+        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
+        "impactScore": 0.96,
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": ["2110-FORMAT-POSITION", "2300-WRITE-SUMMARY"],
         "dependencyPath": ["RPTPOS00"],
-        "rationale": "Main batch reporting program for portfolio P&L; directly formats and outputs P&L values, requiring rounding logic update."
-      },
-      {
-        "programFilePath": "src/copybook/common/POSREC.cpy",
-        "impactScore": 0.97,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["P&L field definitions"],
-        "dependencyPath": ["POSREC.cpy (used in RPTPOS00, others)"],
-        "rationale": "Defines P&L data fields (e.g., PIC S9(13)V99) used for calculation and storage; must enforce two decimal places and rounding."
+        "rationale": "Main reporting program for portfolio P&L. Ensures output to TXT/CSV is rounded to two decimals as required by downstream systems."
       },
       {
         "programFilePath": "src/programs/test/TSTVAL00.cbl",
@@ -50,35 +59,40 @@ User Story: Fix rounding discrepancies in portfolio P&L calculation
         "impactType": "Direct",
         "affectedParagraphs": ["2100-EXECUTE-TEST", "2600-VALIDATE-RESULTS"],
         "dependencyPath": ["TSTVAL00"],
-        "rationale": "Regression test program that validates P&L calculation and rounding; must be updated to test new rounding logic."
+        "rationale": "Regression test program for validating P&L calculations. Must be updated to test new rounding logic and ensure compliance with acceptance criteria."
       }
     ]
   }
 }
-```
 
 ---
 
 **Visualization**:
 
-```mermaid
 graph TD
-  subgraph High Impact
-    RPTPOS00["src/programs/batch/RPTPOS00.cbl"]
-    POSREC["src/copybook/common/POSREC.cpy"]
-    TSTVAL00["src/programs/test/TSTVAL00.cbl"]
-  end
+  A[src/programs/batch/BCHCTL00.cbl]:::high
+  B[src/copybook/batch/BCHCTL.cpy]:::high
+  C[src/programs/batch/RPTPOS00.cbl]:::high
+  D[src/programs/test/TSTVAL00.cbl]:::high
 
-  RPTPOS00 -- uses --> POSREC
-  TSTVAL00 -- validates --> RPTPOS00
-```
+  A --> B
+  A --> C
+  C --> B
+  D --> A
+
+  classDef high fill:#ffcccc,stroke:#b30000,stroke-width:2px;
 
 ---
 
 **Reasoning**:
 
-- **RPTPOS00.cbl** is the main batch reporting program that calculates and outputs portfolio P&L, directly affected by the rounding requirement.
-- **POSREC.cpy** is the core copybook defining P&L fields, ensuring correct data type and decimal enforcement for all programs using it.
-- **TSTVAL00.cbl** is the regression test program that must validate the new rounding logic per acceptance criteria.
+- `src/programs/batch/BCHCTL00.cbl`: Central to P&L calculation and batch processing. Any rounding logic update must be reflected here to ensure all downstream calculations are correct.
+- `src/copybook/batch/BCHCTL.cpy`: Defines the data fields and MOVE/COMPUTE logic for P&L. Ensuring ROUNDED is used in all relevant statements is critical for data consistency.
+- `src/programs/batch/RPTPOS00.cbl`: Responsible for generating P&L reports. Output formatting must use the new rounding logic to match accounting system requirements.
+- `src/programs/test/TSTVAL00.cbl`: Regression test program. Needs to validate that rounding is applied as per the new rules, ensuring no discrepancies remain.
 
-No other components in the repository have a direct or critical impact on P&L rounding as per the dependency map and user story scope. All identified files are present in the repository and are essential for the change.
+All other programs, copybooks, and JCLs were reviewed and excluded as they do not directly participate in P&L calculation, storage, reporting, or validation for this user story.
+
+---
+
+**End of Report**
