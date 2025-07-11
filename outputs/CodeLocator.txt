@@ -1,34 +1,35 @@
-Impact Analysis Report
+
 
 ---
 
 ## Summary
 
 **User Story:**  
-Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting
+Title: Fix rounding discrepancies in portfolio P&L calculation  
+As an Operations Analyst, I want all P&L values to be rounded consistently to two decimal places so that financial reports and statements match downstream accounting systems exactly.
 
-- **Overview:**  
-  Introduce a new field `CHANNEL-CODE` (PIC X(04)) to the transaction file, update all relevant copybooks, batch/online/utility programs, file layouts, LRECL/FD, test data, and reporting logic to support channel identification for analytics, auditing, and fraud detection.
+**Acceptance Criteria:**
+1. Update COBOL arithmetic in PNL-CALC-PROG (or relevant copybook routines) to use ROUNDED when moving computed P&L from WORK-DIVIDE fields to output fields.
+2. Ensure the DB2 PORTVAL.PNL_AMT column (DECIMAL(15,2)) stores values exactly with two decimal places.
+3. Add unit tests in TSTVAL.jcl that feed known inputs and expect correct rounding.
+4. Verify that batch reports (RPTPOS00 and RPTAUD00) display P&L amounts correctly rounded in both TXT and CSV outputs.
 
-- **Total Impacted Components:** 9 (6 COBOL programs, 2 copybooks, 1 JCL set)
-- **Complexity Assessment:**  
-  High. This change affects core data structures, file layouts, and multiple programs across batch, reporting, and utility domains. It requires coordinated updates to copybooks, file definitions, and all programs that read/write transaction data, as well as downstream reporting and validation logic.
+**Total impacted components:** 6  
+**High-level assessment:**  
+This is a medium-to-high complexity change. It directly affects core calculation logic, database storage, and reporting, with ripple effects into testing and validation. The change impacts both batch and reporting programs, as well as copybooks and JCL for regression testing.
 
 ---
 
 ## Ranked Impact List
 
-| Program/Copybook         | Impact   | Nature   | Affected Paragraphs/Sections                | Dependency Path                                   |
-|------------------------- |----------|----------|---------------------------------------------|---------------------------------------------------|
-| `src/copybook/common/TRNREC.cpy` | High     | Direct   | All (copybook structure)                    | Used by all transaction-processing programs       |
-| `src/programs/batch/RPTPOS00.cbl`| High     | Direct   | FILE-CONTROL, 1100-OPEN-FILES, 2200-PROCESS-TRANSACTIONS | Uses TRNREC, reads/writes transaction file        |
-| `src/programs/utility/UTLVAL00.cbl`| High   | Direct   | FILE-CONTROL, 1100-OPEN-FILES, 2220-CHECK-TRANSACTION-INTEGRITY, 2320-CHECK-TRANSACTION-XREF, 2420-CHECK-TRANSACTION-FORMAT | Uses TRNREC, validates transaction file           |
-| `src/programs/test/TSTGEN00.cbl`  | High     | Direct   | 2300-GEN-TRANSACTION, 2320-WRITE-TRAN-RECORD | Generates transaction test data                   |
-| `src/programs/batch/HISTLD00.cbl` | Medium   | Indirect | FILE-CONTROL, 2000-PROCESS, 2100-LOAD-HISTORY | Loads transaction history, may use TRNREC         |
-| `src/programs/batch/BCHCTL00.cbl` | Medium   | Indirect | FILE-CONTROL, 1000-PROCESS-INITIALIZE       | Batch control, may reference transaction layout   |
-| `src/copybook/common/POSREC.cpy`  | Medium   | Indirect | All (copybook structure)                    | Used in reporting, may reference transaction info |
-| `src/programs/batch/RPTAUD00.cbl` | Low      | Indirect | 2100-PROCESS-AUDIT-TRAIL, 2200-PROCESS-ERROR-LOG | Reports/audits, may include transaction details   |
-| JCL for affected programs         | Medium   | Direct   | DD statements for transaction files          | LRECL/FD changes for transaction file             |
+| Program/Component         | Impact   | Nature   | Affected Paragraphs/Sections         | Dependency Path                                  |
+|--------------------------|----------|----------|--------------------------------------|--------------------------------------------------|
+| PNL-CALC-PROG            | High     | Direct   | PNL-CALC, MOVE-TO-OUTPUT, WORK-DIVIDE | [PNL-CALC-PROG]                                  |
+| PORTVAL (DB2 Table)      | High     | Direct   | PNL_AMT column, DB2 I/O routines     | [PNL-CALC-PROG, DB2 PORTVAL]                     |
+| RPTPOS00                 | High     | Direct   | 2000-PROCESS-REPORT, 2110-FORMAT-POSITION | [RPTPOS00]                                   |
+| RPTAUD00                 | High     | Direct   | 2000-PROCESS-REPORT, 2100-PROCESS-AUDIT-TRAIL | [RPTAUD00]                                |
+| TSTVAL00 (TSTVAL.jcl)    | Medium   | Direct   | 2000-PROCESS, 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS | [TSTVAL00]                       |
+| POSREC (Copybook)        | Medium   | Indirect | P&L field definitions, record layouts | [PNL-CALC-PROG, POSREC], [RPTPOS00, POSREC]      |
 
 ---
 
@@ -37,88 +38,61 @@ Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch
 ```json
 {
   "impactAnalysis": {
-    "userStory": "Add CHANNEL-CODE Field to Transaction File for Channel Identification in Batch Processing and Reporting",
+    "userStory": "Fix rounding discrepancies in portfolio P&L calculation",
     "impactedComponents": [
       {
-        "programName": "src/copybook/common/TRNREC.cpy",
-        "impactScore": 1.0,
+        "programName": "PNL-CALC-PROG",
+        "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["All (copybook structure)"],
-        "dependencyPath": ["TRNREC.cpy"],
-        "rationale": "Primary transaction record copybook; all programs using transaction data must be updated to include CHANNEL-CODE."
+        "affectedParagraphs": ["PNL-CALC", "MOVE-TO-OUTPUT", "WORK-DIVIDE"],
+        "dependencyPath": ["PNL-CALC-PROG"],
+        "rationale": "Core calculation logic for P&L; must implement ROUNDED in arithmetic and ensure output fields are set to two decimals."
       },
       {
-        "programName": "src/programs/batch/RPTPOS00.cbl",
+        "programName": "PORTVAL (DB2 Table)",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["FILE-CONTROL", "1100-OPEN-FILES", "2200-PROCESS-TRANSACTIONS"],
-        "dependencyPath": ["RPTPOS00.cbl", "TRNREC.cpy"],
-        "rationale": "Batch report program that reads transaction file using TRNREC; must process and output CHANNEL-CODE."
+        "affectedParagraphs": ["PNL_AMT column", "DB2 I/O routines"],
+        "dependencyPath": ["PNL-CALC-PROG", "DB2 PORTVAL"],
+        "rationale": "Database storage for P&L; must ensure values stored are exactly two decimals as per schema and business rule."
       },
       {
-        "programName": "src/programs/utility/UTLVAL00.cbl",
-        "impactScore": 0.95,
+        "programName": "RPTPOS00",
+        "impactScore": 0.92,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["FILE-CONTROL", "1100-OPEN-FILES", "2220-CHECK-TRANSACTION-INTEGRITY", "2320-CHECK-TRANSACTION-XREF", "2420-CHECK-TRANSACTION-FORMAT"],
-        "dependencyPath": ["UTLVAL00.cbl", "TRNREC.cpy"],
-        "rationale": "Validation utility that reads transaction file via TRNREC; must validate and handle CHANNEL-CODE."
+        "affectedParagraphs": ["2000-PROCESS-REPORT", "2110-FORMAT-POSITION"],
+        "dependencyPath": ["RPTPOS00"],
+        "rationale": "Batch report program that displays P&L; must show rounded values in TXT and CSV outputs."
       },
       {
-        "programName": "src/programs/test/TSTGEN00.cbl",
+        "programName": "RPTAUD00",
         "impactScore": 0.90,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2300-GEN-TRANSACTION", "2320-WRITE-TRAN-RECORD"],
-        "dependencyPath": ["TSTGEN00.cbl", "TRNREC.cpy"],
-        "rationale": "Test data generator for transaction files; must generate and write CHANNEL-CODE."
+        "affectedParagraphs": ["2000-PROCESS-REPORT", "2100-PROCESS-AUDIT-TRAIL"],
+        "dependencyPath": ["RPTAUD00"],
+        "rationale": "Audit report program that displays P&L; must show rounded values in TXT and CSV outputs."
       },
       {
-        "programName": "src/programs/batch/HISTLD00.cbl",
-        "impactScore": 0.75,
-        "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["FILE-CONTROL", "2000-PROCESS", "2100-LOAD-HISTORY"],
-        "dependencyPath": ["HISTLD00.cbl", "TRNREC.cpy"],
-        "rationale": "Loads transaction history; may require updates if transaction layout changes."
-      },
-      {
-        "programName": "src/programs/batch/BCHCTL00.cbl",
-        "impactScore": 0.70,
-        "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["FILE-CONTROL", "1000-PROCESS-INITIALIZE"],
-        "dependencyPath": ["BCHCTL00.cbl", "TRNREC.cpy"],
-        "rationale": "Batch control program; may reference transaction file layout for control/validation."
-      },
-      {
-        "programName": "src/copybook/common/POSREC.cpy",
-        "impactScore": 0.65,
-        "impactLevel": "Medium",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["All (copybook structure)"],
-        "dependencyPath": ["POSREC.cpy", "TRNREC.cpy"],
-        "rationale": "Position record copybook; may reference transaction details for reporting."
-      },
-      {
-        "programName": "src/programs/batch/RPTAUD00.cbl",
-        "impactScore": 0.60,
-        "impactLevel": "Low",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["2100-PROCESS-AUDIT-TRAIL", "2200-PROCESS-ERROR-LOG"],
-        "dependencyPath": ["RPTAUD00.cbl", "TRNREC.cpy"],
-        "rationale": "Audit report program; may include transaction details in output."
-      },
-      {
-        "programName": "JCL for affected programs",
+        "programName": "TSTVAL00 (TSTVAL.jcl)",
         "impactScore": 0.80,
         "impactLevel": "Medium",
         "impactType": "Direct",
-        "affectedParagraphs": ["DD statements for transaction files"],
-        "dependencyPath": ["JCL", "RPTPOS00", "UTLVAL00", "TSTGEN00", "HISTLD00"],
-        "rationale": "JCL must be updated for LRECL/FD changes due to new field in transaction file."
+        "affectedParagraphs": ["2000-PROCESS", "2100-EXECUTE-TEST", "2600-VALIDATE-RESULTS"],
+        "dependencyPath": ["TSTVAL00"],
+        "rationale": "Regression/unit test driver; must validate rounding logic with known test cases."
+      },
+      {
+        "programName": "POSREC (Copybook)",
+        "impactScore": 0.75,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["P&L field definitions", "record layouts"],
+        "dependencyPath": ["PNL-CALC-PROG", "POSREC"],
+        "rationale": "Defines P&L fields used in calculations and reports; changes may be needed to ensure correct picture/rounding."
       }
     ]
   }
@@ -131,50 +105,33 @@ Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch
 
 ```mermaid
 graph TD
-    subgraph Copybooks
-        TRNREC["TRNREC.cpy (High)"]:::high
-        POSREC["POSREC.cpy (Medium)"]:::medium
-    end
-    subgraph Batch
-        RPTPOS00["RPTPOS00.cbl (High)"]:::high
-        HISTLD00["HISTLD00.cbl (Medium)"]:::medium
-        BCHCTL00["BCHCTL00.cbl (Medium)"]:::medium
-        RPTAUD00["RPTAUD00.cbl (Low)"]:::low
-    end
-    subgraph Utility
-        UTLVAL00["UTLVAL00.cbl (High)"]:::high
-    end
-    subgraph Test
-        TSTGEN00["TSTGEN00.cbl (High)"]:::high
-    end
-    subgraph JCL
-        JCL["JCL (Medium)"]:::medium
-    end
+    PNL-CALC-PROG["PNL-CALC-PROG<br/>(High)"]:::high
+    PORTVAL["PORTVAL (DB2 Table)<br/>(High)"]:::high
+    RPTPOS00["RPTPOS00<br/>(High)"]:::high
+    RPTAUD00["RPTAUD00<br/>(High)"]:::high
+    TSTVAL00["TSTVAL00 (TSTVAL.jcl)<br/>(Medium)"]:::medium
+    POSREC["POSREC (Copybook)<br/>(Medium)"]:::medium
 
-    TRNREC --> RPTPOS00
-    TRNREC --> UTLVAL00
-    TRNREC --> TSTGEN00
-    TRNREC --> HISTLD00
-    TRNREC --> BCHCTL00
-    TRNREC --> RPTAUD00
-    POSREC --> RPTPOS00
-    POSREC --> UTLVAL00
-    JCL --> RPTPOS00
-    JCL --> UTLVAL00
-    JCL --> TSTGEN00
-    JCL --> HISTLD00
+    PNL-CALC-PROG --> PORTVAL
+    PNL-CALC-PROG --> POSREC
+    RPTPOS00 --> POSREC
+    RPTAUD00 --> POSREC
+    TSTVAL00 -.-> PNL-CALC-PROG
+    TSTVAL00 -.-> RPTPOS00
+    TSTVAL00 -.-> RPTAUD00
 
     classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
     classDef medium fill:#fff2cc,stroke:#b8860b,stroke-width:2px;
-    classDef low fill:#e0e0e0,stroke:#888,stroke-width:1px;
 ```
 
 ---
 
 **Reasoning:**  
-- All programs and copybooks that read, write, or validate the transaction file (via `TRNREC.cpy`) are directly impacted and must be updated to handle the new `CHANNEL-CODE` field.
-- Reporting and audit programs that output transaction details must include the new field.
-- JCL must be updated for LRECL/FD changes.
-- Indirect impacts include programs/copybooks referencing transaction data for reporting or control purposes.
+- **PNL-CALC-PROG** is the core calculation engine for P&L and must be updated for rounding logic.
+- **PORTVAL (DB2 Table)** is where P&L is stored; must ensure values are stored with correct precision.
+- **RPTPOS00** and **RPTAUD00** are batch reporting programs that output P&L; must display rounded values.
+- **TSTVAL00** (unit test JCL) is used to validate the rounding logic.
+- **POSREC** (copybook) defines the P&L field structure and is included in both calculation and reporting programs.
 
-**End of Report**
+**Note:**  
+Other programs and copybooks were reviewed but excluded due to lack of direct or indirect logical connection to the P&L calculation or reporting chain for this user story. Only components that process, store, or display P&L values, or validate their correctness, are included.
