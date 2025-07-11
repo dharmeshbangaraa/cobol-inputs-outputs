@@ -3,96 +3,145 @@ Impact Analysis Report
 ----------
 
 **Summary**:
-User Story: Fix rounding discrepancies in portfolio P&L calculation  
-- 4 impacted components identified (**High impact only**)  
-- High complexity change: affects core P&L calculation logic, data storage, reporting, and regression validation. All changes are critical for financial accuracy and regulatory compliance.
+User Story: Integrate real-time market price feed for dynamic portfolio valuation  
+- 7 impacted components identified (**High impact only**)  
+- High complexity change involving real-time data ingestion, DB2 and VSAM updates, batch recalculation, CICS display refresh, and audit/error handling.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                              | Impact | Nature   | Affected Paragraphs/Sections                 | Dependency Path                                   |
-|------------------------------------------------|--------|----------|----------------------------------------------|---------------------------------------------------|
-| `src/programs/batch/BCHCTL00.cbl`              | High   | Direct   | 2000-CHECK-PREREQUISITES, 3000-UPDATE-STATUS | Core batch control for portfolio P&L calculations  |
-| `src/copybook/batch/BCHCTL.cpy`                | High   | Direct   | P&L-related data fields, MOVE/COMPUTE logic   | Included in BCHCTL00, stores P&L fields           |
-| `src/programs/batch/RPTPOS00.cbl`              | High   | Direct   | 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY      | Generates P&L reports, outputs rounded values      |
-| `src/programs/test/TSTVAL00.cbl`               | High   | Direct   | 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS      | Regression test validation for P&L rounding        |
+| Program File Path                              | Impact | Nature   | Affected Paragraphs/Sections                    | Dependency Path                                       |
+|------------------------------------------------|--------|----------|--------------------------------------------------|-------------------------------------------------------|
+| src/programs/batch/PRCSEQ00.cbl                | High   | Direct   | 0000-MAIN, 1000-INITIALIZE-SEQUENCE, 2000-GET-NEXT-PROCESS, 2300-UPDATE-PROCESS-STATUS | Core batch recalculation for position values and P&L   |
+| src/programs/batch/POSUPDT.cbl                 | High   | Direct   | (entire copybook, used for position updates)     | Updated by PRCSEQ00 during each price update          |
+| src/copybook/db2/PRICEDATA.cpy                 | High   | Direct   | (entire copybook, DB2 table mapping)             | Receives real-time price ticks from market feed       |
+| src/copybook/common/AUDITLOG.cpy               | High   | Direct   | (entire copybook, audit log structure)           | Used for error/audit logging if feed fails or is stale|
+| src/programs/common/AUDPROC.cbl                | High   | Indirect | 0000-MAIN, 2000-PROCESS-AUDIT                   | Called for audit logging on error/stale data          |
+| src/programs/batch/HISTLD00.cbl                | High   | Direct   | 0000-MAIN, 2000-PROCESS-HISTORICAL              | Loads historical price data into PRICEHIST (VSAM KSDS)|
+| src/screens/PORTDFN.csd                        | High   | Direct   | (entire CICS screen definition)                  | “View Portfolio” screen auto-refreshes with new values|
 
 ---
 
 **JSON Metadata**:
+```json
 {
   "impactAnalysis": {
-    "userStory": "Fix rounding discrepancies in portfolio P&L calculation",
+    "userStory": "Integrate real-time market price feed for dynamic portfolio valuation",
     "impactedComponents": [
       {
-        "programFilePath": "src/programs/batch/BCHCTL00.cbl",
+        "programFilePath": "src/programs/batch/PRCSEQ00.cbl",
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-CHECK-PREREQUISITES", "3000-UPDATE-STATUS"],
-        "dependencyPath": ["BCHCTL00"],
-        "rationale": "Core batch control program for portfolio calculations; directly handles P&L computation and status updates. Rounding logic must be updated to ensure consistent results."
+        "affectedParagraphs": [
+          "0000-MAIN",
+          "1000-INITIALIZE-SEQUENCE",
+          "2000-GET-NEXT-PROCESS",
+          "2300-UPDATE-PROCESS-STATUS"
+        ],
+        "dependencyPath": ["PRCSEQ00"],
+        "rationale": "Batch job responsible for recalculating portfolio position values and P&L on each price update."
       },
       {
-        "programFilePath": "src/copybook/batch/BCHCTL.cpy",
-        "impactScore": 0.97,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["P&L-related data fields", "MOVE/COMPUTE logic"],
-        "dependencyPath": ["BCHCTL00", "BCHCTL.cpy"],
-        "rationale": "Copybook defines P&L data structures and is included in all batch programs performing P&L calculations. Must ensure all MOVE/COMPUTE statements use ROUNDED."
-      },
-      {
-        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
-        "impactScore": 0.96,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["2110-FORMAT-POSITION", "2300-WRITE-SUMMARY"],
-        "dependencyPath": ["RPTPOS00"],
-        "rationale": "Main reporting program for portfolio P&L. Ensures output to TXT/CSV is rounded to two decimals as required by downstream systems."
-      },
-      {
-        "programFilePath": "src/programs/test/TSTVAL00.cbl",
+        "programFilePath": "src/programs/batch/POSUPDT.cbl",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2100-EXECUTE-TEST", "2600-VALIDATE-RESULTS"],
-        "dependencyPath": ["TSTVAL00"],
-        "rationale": "Regression test program for validating P&L calculations. Must be updated to test new rounding logic and ensure compliance with acceptance criteria."
+        "affectedParagraphs": [],
+        "dependencyPath": ["PRCSEQ00", "POSUPDT"],
+        "rationale": "Copybook or program used for updating position records with new valuations and P&L."
+      },
+      {
+        "programFilePath": "src/copybook/db2/PRICEDATA.cpy",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [],
+        "dependencyPath": ["MarketFeed", "PRICEDATA"],
+        "rationale": "DB2 table mapping for incoming real-time price ticks; core to new data ingestion."
+      },
+      {
+        "programFilePath": "src/copybook/common/AUDITLOG.cpy",
+        "impactScore": 0.93,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [],
+        "dependencyPath": ["PRCSEQ00", "AUDITLOG"],
+        "rationale": "Audit log structure used for error and stale data event logging as per requirements."
+      },
+      {
+        "programFilePath": "src/programs/common/AUDPROC.cbl",
+        "impactScore": 0.92,
+        "impactLevel": "High",
+        "impactType": "Indirect",
+        "affectedParagraphs": [
+          "0000-MAIN",
+          "2000-PROCESS-AUDIT"
+        ],
+        "dependencyPath": ["PRCSEQ00", "AUDITLOG", "AUDPROC"],
+        "rationale": "Audit processing program invoked on error/stale feed events."
+      },
+      {
+        "programFilePath": "src/programs/batch/HISTLD00.cbl",
+        "impactScore": 0.91,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [
+          "0000-MAIN",
+          "2000-PROCESS-HISTORICAL"
+        ],
+        "dependencyPath": ["PRCSEQ00", "HISTLD00"],
+        "rationale": "Loads historical price data into new VSAM KSDS PRICEHIST for backtesting."
+      },
+      {
+        "programFilePath": "src/screens/PORTDFN.csd",
+        "impactScore": 0.90,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [],
+        "dependencyPath": ["PORTDFN"],
+        "rationale": "CICS screen for 'View Portfolio' must refresh to display current valuations in near real-time."
       }
     ]
   }
 }
+```
 
 ---
 
 **Visualization**:
-
+```mermaid
 graph TD
-  A[src/programs/batch/BCHCTL00.cbl]:::high
-  B[src/copybook/batch/BCHCTL.cpy]:::high
-  C[src/programs/batch/RPTPOS00.cbl]:::high
-  D[src/programs/test/TSTVAL00.cbl]:::high
+    MarketFeed((Market Feed API))
+    PRICEDATA["src/copybook/db2/PRICEDATA.cpy"]
+    PRCSEQ00["src/programs/batch/PRCSEQ00.cbl"]
+    POSUPDT["src/programs/batch/POSUPDT.cbl"]
+    AUDITLOG["src/copybook/common/AUDITLOG.cpy"]
+    AUDPROC["src/programs/common/AUDPROC.cbl"]
+    HISTLD00["src/programs/batch/HISTLD00.cbl"]
+    PORTDFN["src/screens/PORTDFN.csd"]
 
-  A --> B
-  A --> C
-  C --> B
-  D --> A
+    MarketFeed-->|"tick update"|PRICEDATA
+    PRICEDATA-->|"triggers"|PRCSEQ00
+    PRCSEQ00-->|"updates"|POSUPDT
+    PRCSEQ00-->|"logs errors"|AUDITLOG
+    AUDITLOG-->|"processed by"|AUDPROC
+    PRCSEQ00-->|"calls"|HISTLD00
+    PRCSEQ00-->|"refreshes"|PORTDFN
 
-  classDef high fill:#ffcccc,stroke:#b30000,stroke-width:2px;
+    classDef highImpact fill:#f99,stroke:#900,stroke-width:2px;
+    PRCSEQ00,POSUPDT,PRICEDATA,AUDITLOG,AUDPROC,HISTLD00,PORTDFN class highImpact
+```
 
 ---
 
 **Reasoning**:
+- **PRCSEQ00.cbl** is the batch recalculation engine directly impacted by the new real-time price feed and must process updates every few seconds.
+- **POSUPDT.cbl** is used by PRCSEQ00 to update position values and P&L, thus directly impacted.
+- **PRICEDATA.cpy** is the DB2 table mapping for the incoming price ticks, central to the new integration.
+- **AUDITLOG.cpy** and **AUDPROC.cbl** are required for error and stale data handling, as per the user story's audit requirements.
+- **HISTLD00.cbl** loads historical price data into the new VSAM KSDS (PRICEHIST) for backtesting, as specified.
+- **PORTDFN.csd** is the CICS screen that must be updated to reflect real-time portfolio valuations.
 
-- `src/programs/batch/BCHCTL00.cbl`: Central to P&L calculation and batch processing. Any rounding logic update must be reflected here to ensure all downstream calculations are correct.
-- `src/copybook/batch/BCHCTL.cpy`: Defines the data fields and MOVE/COMPUTE logic for P&L. Ensuring ROUNDED is used in all relevant statements is critical for data consistency.
-- `src/programs/batch/RPTPOS00.cbl`: Responsible for generating P&L reports. Output formatting must use the new rounding logic to match accounting system requirements.
-- `src/programs/test/TSTVAL00.cbl`: Regression test program. Needs to validate that rounding is applied as per the new rules, ensuring no discrepancies remain.
-
-All other programs, copybooks, and JCLs were reviewed and excluded as they do not directly participate in P&L calculation, storage, reporting, or validation for this user story.
-
----
-
-**End of Report**
+All components listed are **High impact** and directly or indirectly critical to the implementation of the user story. No medium or low impact components are included. Paths are precise and correspond to the repository structure.
