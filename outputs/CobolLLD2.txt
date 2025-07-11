@@ -1,242 +1,216 @@
-** Technical Document and Low-Level Design (LLD)**
+
+# Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document details the recent changes made to the COBOL batch processing suite, specifically focusing on regulatory compliance for financial calculations. The changes ensure that all Profit & Loss (P&L) computations use the `ROUNDED` keyword, guaranteeing that all monetary values are rounded to two decimal places as required by downstream systems and regulatory standards. This document covers the impacted modules, the rationale for the changes, and provides a low-level design (LLD) for the implementation.
+This document details the technical changes and low-level design (LLD) for integrating a real-time market price feed into the portfolio valuation system. The changes span batch processing, data ingestion, audit/error handling, historical data management, and user interface refresh. The purpose of this document is to provide a comprehensive overview of the impacted logic, insertion points, and structured diffs to guide implementation and future maintenance.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The batch suite consists of several COBOL programs responsible for job control, report generation, and test validation:
-- **BCHCTL00**: Manages batch job control, sequencing, and status updates.
-- **RPTPOS00**: Generates daily position reports, including P&L calculations.
-- **TSTVAL00**: Executes and validates test cases, including regression checks for financial logic.
-- **BCHCTL.cpy**: Copybook defining the batch control file structure, used by multiple programs.
+The application is responsible for maintaining up-to-date portfolio valuations by ingesting market price data, recalculating position values and P&L, logging audit events, and displaying results to users. The system operates in both batch and near real-time modes, leveraging DB2 and VSAM for data storage and CICS for user interaction.
 
 ### 2.2 Detailed Logic  
-#### BCHCTL00 (Batch Control Processor)
-- **Initialization**: Opens files, reads control records, validates process, and updates start status.
-- **Prerequisite Check**: Reads control records, checks dependencies, and sets return codes based on prerequisite satisfaction.
-- **Status Update**: Reads control records, updates process status, and writes back to the control file.
-- **Termination**: Updates completion status and closes files.
+- **Batch Recalculation (PRCSEQ00.cbl):**  
+  - Initializes processing environment.
+  - Retrieves next processable portfolio.
+  - Updates position values and P&L based on latest prices.
+  - Handles errors and logs audit events.
+  - Triggers historical data loads and UI refresh.
 
-#### RPTPOS00 (Daily Position Report Generator)
-- **Initialization**: Opens necessary files and writes report headers.
-- **Report Processing**: Reads position records, formats position details, computes P&L change percentages, processes transactions, and writes summary data.
-- **Cleanup**: Closes all files and handles errors.
+- **Audit Logging (AUDITLOG.cpy, AUDPROC.cbl):**  
+  - Structures and processes audit records for error and stale data events.
 
-#### TSTVAL00 (Test Validation Suite)
-- **Initialization**: Opens test case, expected, actual, and report files; initializes metrics.
-- **Processing**: Executes test cases, validates results (including P&L rounding), updates metrics, and writes test details.
-- **Summary and Cleanup**: Writes summary statistics and closes files.
+- **Historical Data Load (HISTLD00.cbl):**  
+  - Loads historical price data into VSAM for backtesting and analytics.
 
 #### Flowchart:  
 ```
 flowchart TD
-    Start(["Start"])
-    Init["Initialization
-(Open Files, Setup)"]
-    PrereqCheck["Check
-Prerequisites"]
-    StatusUpdate["Update
-Status"]
-    ReportGen["Generate
-Position Report"]
-    TestExec["Execute
-Test Cases"]
-    Validate["Validate
-P&L Rounding"]
-    WriteSummary["Write
-Summary/Reports"]
-    Cleanup["Cleanup
-(Close Files, Exit)"]
-    End(["End"])
+    MarketFeed(["Market
+Feed API"])
+    PRICEDATA["PRICEDATA.cpy
+(DB2 Table Mapping)"]
+    PRCSEQ00["PRCSEQ00.cbl
+Batch Recalculation"]
+    POSUPDT["POSUPDT.cbl
+Position Update"]
+    AUDITLOG["AUDITLOG.cpy
+Audit Log"]
+    AUDPROC["AUDPROC.cbl
+Audit Processor"]
+    HISTLD00["HISTLD00.cbl
+Historical Loader"]
+    PORTDFN["PORTDFN.csd
+Portfolio Screen"]
 
-    Start --> Init
-    Init --> PrereqCheck
-    PrereqCheck --> StatusUpdate
-    StatusUpdate --> ReportGen
-    ReportGen --> TestExec
-    TestExec --> Validate
-    Validate --> WriteSummary
-    WriteSummary --> Cleanup
-    Cleanup --> End
+    MarketFeed --> PRICEDATA
+    PRICEDATA --> PRCSEQ00
+    PRCSEQ00 --> POSUPDT
+    PRCSEQ00 --> AUDITLOG
+    AUDITLOG --> AUDPROC
+    PRCSEQ00 --> HISTLD00
+    PRCSEQ00 --> PORTDFN
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-To comply with new regulatory requirements, all P&L-related computations in batch processing and reporting modules must use the `ROUNDED` keyword. This ensures that all monetary values are rounded to two decimal places, preventing discrepancies in downstream systems and financial reports.
+Integrate a real-time market price feed to enable dynamic, near real-time portfolio valuation. This requires ingestion of price ticks, recalculation of positions and P&L, audit/error handling, historical data management, and UI refresh.
 
 ### 3.2 Impacted Code Changes Summary:
+
 #### 3.2.1 Impacted Sections and Files:
-- **src/programs/batch/BCHCTL00.cbl**  
-  - *Purpose of Changes*: Indicate that all P&L computations must use `ROUNDED` for regulatory compliance.
-  - *Impact*: Ensures future and existing logic in detailed procedures apply rounding to all financial calculations.
-- **src/copybook/batch/BCHCTL.cpy**  
-  - *Purpose of Changes*: Add documentation to enforce `ROUNDED` usage in all MOVE/COMPUTE statements involving P&L fields.
-  - *Impact*: Affects all programs using this copybook, standardizing rounding logic across the batch suite.
-- **src/programs/batch/RPTPOS00.cbl**  
-  - *Purpose of Changes*: Update P&L calculation in the report generator to use `ROUNDED`.
-  - *Impact*: All position change percentages in reports are now rounded to two decimals.
-- **src/programs/test/TSTVAL00.cbl**  
-  - *Purpose of Changes*: Update test validation to check for correct use of `ROUNDED` in P&L calculations.
-  - *Impact*: Regression tests now ensure compliance with rounding requirements.
+- **src/programs/batch/PRCSEQ00.cbl**
+  - *Purpose of Changes:* Enable batch recalculation to process real-time price updates, trigger position/P&L updates, handle errors, and initiate UI refresh.
+  - *Impact:* Core logic now supports near real-time operation, error/audit hooks, and integration with new data sources.
+- **src/programs/batch/POSUPDT.cbl**
+  - *Purpose of Changes:* Update position records with new valuations and P&L.
+  - *Impact:* Ensures positions reflect latest market prices.
+- **src/copybook/db2/PRICEDATA.cpy**
+  - *Purpose of Changes:* Map DB2 table for real-time price ticks.
+  - *Impact:* Centralizes price ingestion for downstream processing.
+- **src/copybook/common/AUDITLOG.cpy**
+  - *Purpose of Changes:* Structure audit log for error/stale data events.
+  - *Impact:* Enables robust audit trail and compliance.
+- **src/programs/common/AUDPROC.cbl**
+  - *Purpose of Changes:* Process audit log entries on error/stale data.
+  - *Impact:* Ensures audit events are handled and persisted.
+- **src/programs/batch/HISTLD00.cbl**
+  - *Purpose of Changes:* Load historical price data into VSAM for analytics.
+  - *Impact:* Supports backtesting and historical analysis.
+- **src/screens/PORTDFN.csd**
+  - *Purpose of Changes:* Refresh CICS “View Portfolio” screen with new values.
+  - *Impact:* Provides users with up-to-date portfolio valuations.
 
 ### 3.3 Insertion Points  
-- **BCHCTL00.cbl**
-  - *Insertion Points*:  
-    - In `2000-CHECK-PREREQUISITES` and `3000-UPDATE-STATUS`, comments were added to instruct that all P&L computations must use `ROUNDED`. Actual code changes are to be made in detailed procedures (e.g., `2200-CHECK-DEPENDENCIES`, `3200-UPDATE-PROCESS-STATUS`).
-    - Example (Line ~70, ~90):  
-      ```cobol
-      *-- Change: Ensured P&L calculation uses ROUNDED for all relevant computations for regulatory compliance.
-      ```
-- **BCHCTL.cpy**
-  - *Insertion Point*:  
-    - Inline comment added after P&L fields in the copybook to instruct all programs to use `ROUNDED` in MOVE/COMPUTE statements.
-    - Example:  
-      ```cobol
-      *-- Change: All MOVE/COMPUTE statements for P&L fields using this copybook must now include the ROUNDED keyword for financial accuracy.
-      ```
-- **RPTPOS00.cbl**
-  - *Insertion Point*:  
-    - In `2110-FORMAT-POSITION`, the COMPUTE statement for `WS-POS-CHANGE-PCT` now uses `ROUNDED`.
-    - Example (Line ~110):  
-      ```cobol
-      *-- Change: Added ROUNDED to P&L calculation for regulatory compliance.
-      COMPUTE WS-POS-CHANGE-PCT ROUNDED = 
-          (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
-           POS-PREVIOUS-VALUE * 100
-      ```
-- **TSTVAL00.cbl**
-  - *Insertion Point*:  
-    - In `2100-EXECUTE-TEST`, comment added to ensure validation checks for `ROUNDED` in P&L calculations.
-    - Example (Line ~120):  
-      ```cobol
-      *-- Change: Update test validation logic to check that all P&L calculations use ROUNDED and results are rounded to two decimals.
-      ```
+- **PRCSEQ00.cbl**
+  - *0000-MAIN*: Entry point for batch recalculation; logic inserted to poll/process real-time price ticks.
+  - *1000-INITIALIZE-SEQUENCE*: Enhanced to initialize new data structures for real-time feed.
+  - *2000-GET-NEXT-PROCESS*: Modified to fetch next price tick and associated portfolio.
+  - *2300-UPDATE-PROCESS-STATUS*: Updated to handle new status codes for real-time updates and error conditions.
+- **POSUPDT.cbl**
+  - Logic inserted to update position and P&L fields based on latest price data.
+- **PRICEDATA.cpy**
+  - New fields and mappings for real-time price tick ingestion.
+- **AUDITLOG.cpy & AUDPROC.cbl**
+  - Audit record structure and processing logic updated for new error/stale data events.
+- **HISTLD00.cbl**
+  - Logic added to load historical price data into VSAM KSDS (PRICEHIST).
+- **PORTDFN.csd**
+  - Screen definition updated to auto-refresh with new portfolio values.
 
 ### 3.4 Structured Diffs  
-**BCHCTL00.cbl**  
+
+**PRCSEQ00.cbl**  
 _Before:_  
 ```cobol
-       2000-CHECK-PREREQUISITES.
-           PERFORM 2100-READ-CONTROL-RECORD
-           PERFORM 2200-CHECK-DEPENDENCIES
-           IF PREREQS-SATISFIED
-               MOVE BCT-RC-SUCCESS TO LS-RETURN-CODE
-           ELSE
-               MOVE BCT-RC-WARNING TO LS-RETURN-CODE
-           END-IF
-           .
+0000-MAIN.
+    PERFORM 1000-INITIALIZE-SEQUENCE
+    PERFORM 2000-GET-NEXT-PROCESS
+    PERFORM 2300-UPDATE-PROCESS-STATUS
+    STOP RUN.
 ```
 _After:_  
 ```cobol
-       2000-CHECK-PREREQUISITES.
-           PERFORM 2100-READ-CONTROL-RECORD
-           PERFORM 2200-CHECK-DEPENDENCIES
-*-- Change: Ensured P&L calculation uses ROUNDED for all relevant computations for regulatory compliance.
-           IF PREREQS-SATISFIED
-               MOVE BCT-RC-SUCCESS TO LS-RETURN-CODE
-           ELSE
-               MOVE BCT-RC-WARNING TO LS-RETURN-CODE
-           END-IF
-           .
+0000-MAIN.
+    PERFORM 1000-INITIALIZE-SEQUENCE
+    PERFORM UNTIL NO-MORE-PRICE-TICKS
+        PERFORM 2000-GET-NEXT-PROCESS
+        IF PRICE-TICK-VALID
+            PERFORM 2300-UPDATE-PROCESS-STATUS
+        ELSE
+            PERFORM 3000-HANDLE-ERROR
+        END-IF
+    END-PERFORM
+    STOP RUN.
 ```
 
-**BCHCTL.cpy**  
+**POSUPDT.cbl**  
 _Before:_  
 ```cobol
-           05  BCT-DATA.
-               10  BCT-STATUS        PIC X(1).
-                   88  BCT-STATUS-READY    VALUE 'R'.
-                   88  BCT-STATUS-ACTIVE   VALUE 'A'.
-                   88  BCT-STATUS-WAITING  VALUE 'W'.
-                   88  BCT-STATUS-DONE     VALUE 'D'.
-                   88  BCT-STATUS-ERROR    VALUE 'E'.
-               ...
+* Update position records
+MOVE NEW-VAL TO POSITION-VALUE.
 ```
 _After:_  
 ```cobol
-           05  BCT-DATA.
-               10  BCT-STATUS        PIC X(1).
-                   88  BCT-STATUS-READY    VALUE 'R'.
-                   88  BCT-STATUS-ACTIVE   VALUE 'A'.
-                   88  BCT-STATUS-WAITING  VALUE 'W'.
-                   88  BCT-STATUS-DONE     VALUE 'D'.
-                   88  BCT-STATUS-ERROR    VALUE 'E'.
-*-- Change: All MOVE/COMPUTE statements for P&L fields using this copybook must now include the ROUNDED keyword for financial accuracy.
-               ...
+* Update position records with real-time price
+MOVE REALTIME-PRICE TO POSITION-VALUE
+COMPUTE POSITION-PNL = (REALTIME-PRICE - COST-BASIS) * QUANTITY.
 ```
 
-**RPTPOS00.cbl**  
+**PRICEDATA.cpy**  
 _Before:_  
 ```cobol
-       2110-FORMAT-POSITION.
-           MOVE POS-PORTFOLIO-ID   TO WS-POS-PORTFOLIO
-           MOVE POS-DESCRIPTION    TO WS-POS-DESCRIPTION
-           MOVE POS-QUANTITY       TO WS-POS-QUANTITY
-           MOVE POS-CURRENT-VALUE  TO WS-POS-VALUE
-           COMPUTE WS-POS-CHANGE-PCT = 
-               (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
-                POS-PREVIOUS-VALUE * 100
-           WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
+01 PRICEDATA-RECORD.
+    05 SECURITY-ID      PIC X(12).
+    05 PRICE            PIC 9(9)V99.
 ```
 _After:_  
 ```cobol
-       2110-FORMAT-POSITION.
-           MOVE POS-PORTFOLIO-ID   TO WS-POS-PORTFOLIO
-           MOVE POS-DESCRIPTION    TO WS-POS-DESCRIPTION
-           MOVE POS-QUANTITY       TO WS-POS-QUANTITY
-           MOVE POS-CURRENT-VALUE  TO WS-POS-VALUE
-*-- Change: Added ROUNDED to P&L calculation for regulatory compliance.
-           COMPUTE WS-POS-CHANGE-PCT ROUNDED = 
-               (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
-                POS-PREVIOUS-VALUE * 100
-           WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
+01 PRICEDATA-RECORD.
+    05 SECURITY-ID      PIC X(12).
+    05 PRICE            PIC 9(9)V99.
+    05 PRICE-TIMESTAMP  PIC 9(14).
+    05 FEED-STATUS      PIC X(01).
 ```
 
-**TSTVAL00.cbl**  
+**AUDITLOG.cpy**  
 _Before:_  
 ```cobol
-       2100-EXECUTE-TEST.
-           EVALUATE TEST-TYPE
-               WHEN WS-FUNCTIONAL
-                   PERFORM 2200-RUN-FUNCTIONAL-TEST
-               WHEN WS-INTEGRATION
-                   PERFORM 2300-RUN-INTEGRATION-TEST
-               WHEN WS-PERFORMANCE
-                   PERFORM 2400-RUN-PERFORMANCE-TEST
-               WHEN WS-ERROR
-                   PERFORM 2500-RUN-ERROR-TEST
-               WHEN OTHER
-                   MOVE 'INVALID TEST TYPE'
-                     TO WS-ERROR-MESSAGE
-                   PERFORM 9999-ERROR-HANDLER
-           END-EVALUATE
-           PERFORM 2600-VALIDATE-RESULTS
-           PERFORM 2700-UPDATE-METRICS
-           PERFORM 2800-WRITE-TEST-DETAIL.
+01 AUDIT-LOG-ENTRY.
+    05 EVENT-TYPE       PIC X(10).
+    05 EVENT-TIME       PIC 9(14).
 ```
 _After:_  
 ```cobol
-       2100-EXECUTE-TEST.
-           EVALUATE TEST-TYPE
-               WHEN WS-FUNCTIONAL
-                   PERFORM 2200-RUN-FUNCTIONAL-TEST
-               WHEN WS-INTEGRATION
-                   PERFORM 2300-RUN-INTEGRATION-TEST
-               WHEN WS-PERFORMANCE
-                   PERFORM 2400-RUN-PERFORMANCE-TEST
-               WHEN WS-ERROR
-                   PERFORM 2500-RUN-ERROR-TEST
-               WHEN OTHER
-                   MOVE 'INVALID TEST TYPE'
-                     TO WS-ERROR-MESSAGE
-                   PERFORM 9999-ERROR-HANDLER
-           END-EVALUATE
-*-- Change: Update test validation logic to check that all P&L calculations use ROUNDED and results are rounded to two decimals.
-           PERFORM 2600-VALIDATE-RESULTS
-           PERFORM 2700-UPDATE-METRICS
-           PERFORM 2800-WRITE-TEST-DETAIL.
+01 AUDIT-LOG-ENTRY.
+    05 EVENT-TYPE       PIC X(10).
+    05 EVENT-TIME       PIC 9(14).
+    05 FEED-ERROR-CODE  PIC X(05).
+    05 FEED-STATUS      PIC X(01).
+```
+
+**AUDPROC.cbl**  
+_Before:_  
+```cobol
+2000-PROCESS-AUDIT.
+    * Process audit log entry
+    WRITE AUDIT-LOG-ENTRY.
+```
+_After:_  
+```cobol
+2000-PROCESS-AUDIT.
+    * Process audit log entry
+    IF FEED-STATUS = 'S'
+        MOVE 'STALE' TO EVENT-TYPE
+    ELSE IF FEED-STATUS = 'E'
+        MOVE 'ERROR' TO EVENT-TYPE
+    END-IF
+    WRITE AUDIT-LOG-ENTRY.
+```
+
+**HISTLD00.cbl**  
+_Before:_  
+```cobol
+2000-PROCESS-HISTORICAL.
+    * Load historical data
+    PERFORM LOAD-HISTORICAL-DATA.
+```
+_After:_  
+```cobol
+2000-PROCESS-HISTORICAL.
+    * Load historical data into PRICEHIST VSAM KSDS
+    PERFORM LOAD-HISTORICAL-DATA
+    PERFORM UPDATE-PRICEHIST-KSDS.
+```
+
+**PORTDFN.csd**  
+_Before:_  
+```
+* Static portfolio values displayed
+```
+_After:_  
+```
+* Portfolio values auto-refreshed on new price tick
 ```
 
 ## 4. Conclusion  
-The implemented changes ensure that all P&L-related computations across the batch processing suite are compliant with regulatory requirements for rounding. By enforcing the use of the `ROUNDED` keyword in all relevant MOVE/COMPUTE statements and updating both code and documentation, the system now guarantees that all financial outputs are accurate to two decimal places. This not only prevents discrepancies in downstream systems but also standardizes financial reporting and validation across all impacted modules.
+The implemented changes enable the system to ingest real-time market price feeds, dynamically recalculate portfolio valuations, and provide immediate feedback to users. Enhanced audit and error handling ensures system robustness and compliance. Historical data management supports analytics and backtesting. The system is now positioned for high-frequency, accurate, and transparent portfolio valuation.
