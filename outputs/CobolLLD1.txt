@@ -1,183 +1,175 @@
-Technical Document and Low-Level Design (LLD)
+# Technical Document and Low-Level Design (LLD)
 
-1. Introduction  
-This document provides a comprehensive technical overview and Low-Level Design (LLD) for the COBOL legacy application modules involved in portfolio Profit & Loss (P&L) calculation, storage, and reporting. The purpose is to explain the existing logic and detail the required changes to ensure all P&L values are rounded consistently to two decimal places, as mandated by the user story. This will ensure alignment between financial reports and downstream accounting systems.
+## 1. Introduction  
+This document provides a comprehensive technical and low-level design overview for the COBOL legacy application modules responsible for portfolio P&L calculation, storage, reporting, and validation. The primary objective is to address the user story: **Fix rounding discrepancies in portfolio P&L calculation**. This change is critical for ensuring financial accuracy and regulatory compliance across all impacted components.
 
-2. Existing Logic and Flow  
-2.1 Overview  
-The application processes portfolio P&L through a series of modular COBOL programs:
-- Calculation: Computes P&L values based on portfolio data.
-- Storage: Persists P&L values in DB2 tables.
-- Testing: Validates calculation correctness via regression tests.
-- Reporting: Outputs P&L values in batch reports and audit trails.
+## 2. Existing Logic and Flow  
+### 2.1 Overview  
+The application suite processes portfolio P&L in a batch workflow, involving control, calculation, reporting, and validation modules. The main flow is as follows:
+- **Batch Control (`BCHCTL00.cbl`)**: Orchestrates job sequencing, prerequisite checks, and status updates.
+- **Data Structures (`BCHCTL.cpy`)**: Defines control and P&L-related fields used across modules.
+- **Reporting (`RPTPOS00.cbl`)**: Formats and outputs portfolio P&L reports.
+- **Testing (`TSTVAL00.cbl`)**: Executes regression tests to validate P&L logic and output.
 
-2.2 Detailed Logic  
+### 2.2 Detailed Logic  
 
-2.2.1 Calculation (`src/programs/calc/PNL-CALC-PROG.cbl`)
-- CALC-PNL: Core arithmetic logic for calculating P&L.
-- MOVE-TO-OUTPUT: Moves computed P&L values to output structures.
-- FINALIZE: Final adjustments and cleanup before program termination.
+#### 2.2.1 Batch Control (`BCHCTL00.cbl`)
+- **Initialization**: Opens files, reads control records, validates process, and updates start status.
+- **Prerequisite Check (`2000-CHECK-PREREQUISITES`)**: Reads control records, checks dependencies, and sets return codes based on prerequisite satisfaction.
+- **Status Update (`3000-UPDATE-STATUS`)**: Reads control records, updates process status, and writes back to the control file.
+- **Termination**: Updates completion status and closes files.
 
-2.2.2 Storage (`src/copybook/db2/PORTVAL.cpy`)
-- PNL-AMT field definition: Defines the DB2 field for storing P&L amounts, typically as `DECIMAL(15,2)`.
+#### 2.2.2 Data Structures (`BCHCTL.cpy`)
+- Defines the batch control record, including job/process keys, status, dependencies, return codes, and statistics.
+- P&L-related fields are managed within the control record and referenced by batch programs.
 
-2.2.3 Testing (`src/programs/test/TSTVAL00.cbl`)
-- 2100-EXECUTE-TEST: Runs test cases for P&L calculation.
-- 2600-VALIDATE-RESULTS: Compares actual vs. expected P&L values, checking for discrepancies.
+#### 2.2.3 Reporting (`RPTPOS00.cbl`)
+- **Initialization**: Opens input/output files and writes report headers.
+- **Processing**: Reads position records, formats each position for reporting, processes transactions, and writes summary sections.
+- **Formatting (`2110-FORMAT-POSITION`)**: Moves portfolio and value fields, computes percentage change, and writes formatted records.
+- **Summary (`2300-WRITE-SUMMARY`)**: Writes totals, exceptions, and metrics to the report.
 
-2.2.4 Reporting (`src/programs/batch/RPTPOS00.cbl` and `src/programs/batch/RPTAUD00.cbl`)
-- 2110-FORMAT-POSITION / 2100-PROCESS-AUDIT-TRAIL: Formats P&L values for output.
-- 2300-WRITE-SUMMARY: Writes summary lines with P&L values to reports.
+#### 2.2.4 Testing (`TSTVAL00.cbl`)
+- **Initialization**: Opens test input/output files.
+- **Test Execution (`2100-EXECUTE-TEST`)**: Parses test case input, computes actual P&L, and stores results.
+- **Validation (`2600-VALIDATE-RESULTS`)**: Compares actual and expected P&L, writes pass/fail results, and logs errors.
 
-Flowchart:  
+#### Flowchart:  
 ```mermaid
 flowchart TD
     Start(["Start"])
-    Init["Initialization"]
-    CalcPNL["CALC-PNL\n(Calculate P&L)"]
-    MoveToOutput["MOVE-TO-OUTPUT\n(Move to Output Structures)"]
-    Finalize["FINALIZE\n(Cleanup/End)"]
-    StoreDB2["Store in DB2\n(PORTVAL.cpy)"]
-    TestExec["2100-EXECUTE-TEST\n(Run Regression Tests)"]
-    TestValidate["2600-VALIDATE-RESULTS\n(Validate Results)"]
-    FormatReport1["2110-FORMAT-POSITION\n(Format Batch Report)"]
-    WriteSummary1["2300-WRITE-SUMMARY\n(Write Batch Summary)"]
-    FormatReport2["2100-PROCESS-AUDIT-TRAIL\n(Format Audit Report)"]
-    WriteSummary2["2300-WRITE-SUMMARY\n(Write Audit Summary)"]
+    Init["Batch Control
+Initialization"]
+    Prereq["Check
+Prerequisites"]
+    Status["Update
+Status"]
+    Report["Generate
+Report"]
+    Test["Execute
+Regression Tests"]
     End(["End"])
 
     Start --> Init
-    Init --> CalcPNL
-    CalcPNL --> MoveToOutput
-    MoveToOutput --> StoreDB2
-    StoreDB2 --> Finalize
-    Finalize --> FormatReport1
-    Finalize --> FormatReport2
-    FormatReport1 --> WriteSummary1
-    FormatReport2 --> WriteSummary2
-    WriteSummary1 --> End
-    WriteSummary2 --> End
-    CalcPNL --> TestExec
-    TestExec --> TestValidate
-    TestValidate --> End
-```
-
-3. Proposed Changes  
-3.1 User Story or Analysis Report Summary  
-User Story:  
-As an Operations Analyst, I want all P&L values to be rounded consistently to two decimal places so that financial reports and statements match downstream accounting systems exactly.
-
-Analysis Report Summary:  
-- High complexity change affecting core P&L calculation, DB2 storage, regression testing, and reporting chain.
-- All arithmetic and data movement involving P&L must use COBOL's `ROUNDED` keyword or equivalent logic.
-- All outputs and DB2 writes must ensure two-decimal precision.
-
-3.2 Proposed Code Changes Summary
-
-3.2.1 Impacted Sections and Files
-
-| File Path                                 | Sections/Paragraphs                        |
-|--------------------------------------------|--------------------------------------------|
-| `src/programs/calc/PNL-CALC-PROG.cbl`     | CALC-PNL, MOVE-TO-OUTPUT, FINALIZE         |
-| `src/copybook/db2/PORTVAL.cpy`            | PNL-AMT field definition                   |
-| `src/programs/test/TSTVAL00.cbl`          | 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS   |
-| `src/programs/batch/RPTPOS00.cbl`         | 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY   |
-| `src/programs/batch/RPTAUD00.cbl`         | 2100-PROCESS-AUDIT-TRAIL, 2300-WRITE-SUMMARY|
-
-- Purpose of Changes:  
-  To enforce consistent rounding of all P&L values to two decimal places at every stage: calculation, storage, testing, and reporting.
-
-- Impact:  
-  - Ensures data consistency across all modules and downstream systems.
-  - Prevents rounding discrepancies in financial statements.
-  - Requires regression testing to validate edge cases and rounding behavior.
-
-3.3 Insertion Points  
-- Calculation (`PNL-CALC-PROG.cbl`):  
-  - In `CALC-PNL`, update all arithmetic statements involving P&L to use `ROUNDED`.
-  - In `MOVE-TO-OUTPUT`, ensure all moves to output structures use `ROUNDED`.
-  - In `FINALIZE`, verify any final adjustments or moves use `ROUNDED`.
-
-- Storage (`PORTVAL.cpy`):  
-  - Confirm `PNL-AMT` is defined as `PIC S9(13)V99 COMP-3` or equivalent for two decimals.
-  - Ensure all writes to DB2 use rounded values.
-
-- Testing (`TSTVAL00.cbl`):  
-  - In `2100-EXECUTE-TEST`, add test cases for rounding edge cases.
-  - In `2600-VALIDATE-RESULTS`, compare results to expected rounded values.
-
-- Reporting (`RPTPOS00.cbl`, `RPTAUD00.cbl`):  
-  - In formatting and summary paragraphs, ensure all P&L values are displayed with two decimals, using explicit rounding if necessary.
-
-3.4 Structured Diffs  
-
-Example: Calculation Logic (`PNL-CALC-PROG.cbl`)
-
-Before:  
-```cobol
-ADD PNL-BASE-AMT PNL-ADJ-AMT TO PNL-TOTAL-AMT.
-MOVE PNL-TOTAL-AMT TO OUT-PNL-AMT.
-```
-
-After:  
-```cobol
-ADD PNL-BASE-AMT PNL-ADJ-AMT TO PNL-TOTAL-AMT ROUNDED.
-MOVE PNL-TOTAL-AMT TO OUT-PNL-AMT ROUNDED.
+    Init --> Prereq
+    Prereq --> Status
+    Status --> Report
+    Report --> Test
+    Test --> End
 ```
 
 ---
 
-Example: DB2 Storage (`PORTVAL.cpy`)
+## 3. Proposed Changes  
+### 3.1 User Story or Analysis Report Summary  
+**User Story:**  
+Fix rounding discrepancies in portfolio P&L calculation.  
+- Ensure all P&L calculations, storage, and reporting use consistent rounding (COBOL `ROUNDED` keyword, two decimals).
+- Update regression tests to validate new rounding logic.
 
-Before:  
+### 3.2 Proposed Code Changes Summary
+
+#### 3.2.1 Impacted Sections and Files:
+- **src/programs/batch/BCHCTL00.cbl**:  
+  - Sections: `2000-CHECK-PREREQUISITES`, `3000-UPDATE-STATUS`
+- **src/copybook/batch/BCHCTL.cpy**:  
+  - Sections: P&L-related data fields, MOVE/COMPUTE logic
+- **src/programs/batch/RPTPOS00.cbl**:  
+  - Sections: `2110-FORMAT-POSITION`, `2300-WRITE-SUMMARY`
+- **src/programs/test/TSTVAL00.cbl**:  
+  - Sections: `2100-EXECUTE-TEST`, `2600-VALIDATE-RESULTS`
+
+**Purpose of Changes:**  
+To ensure all P&L calculations and outputs are rounded consistently to two decimal places, eliminating discrepancies and ensuring compliance with financial reporting standards.
+
+**Impact:**  
+- All downstream systems and reports will receive correctly rounded P&L values.
+- Regression tests will validate the new rounding logic, ensuring no discrepancies remain.
+
+### 3.3 Insertion Points  
+- **BCHCTL00.cbl**:  
+  - Update any `COMPUTE` or `MOVE` statements involving P&L fields in `2000-CHECK-PREREQUISITES` and `3000-UPDATE-STATUS` to use the `ROUNDED` keyword.
+- **BCHCTL.cpy**:  
+  - Ensure all P&L-related fields are defined with appropriate decimal precision (e.g., `PIC S9(9)V99`).
+  - Update comments and sample usage to specify rounding.
+- **RPTPOS00.cbl**:  
+  - In `2110-FORMAT-POSITION`, update `COMPUTE` and `MOVE` statements for P&L values to use `ROUNDED`.
+  - In `2300-WRITE-SUMMARY`, ensure all summary values are rounded.
+- **TSTVAL00.cbl**:  
+  - In `2100-EXECUTE-TEST` and `2600-VALIDATE-RESULTS`, ensure test calculations and comparisons use rounded values.
+
+### 3.4 Structured Diffs  
+
+#### **A. `src/programs/batch/BCHCTL00.cbl`**
+
+**Before:**  
 ```cobol
-05 PNL-AMT         PIC S9(13)V99 COMP-3.
+* In 2000-CHECK-PREREQUISITES or 3000-UPDATE-STATUS
+COMPUTE BCT-PNL = ... .
+MOVE BCT-PNL TO LS-RETURN-CODE.
 ```
 
-After:  
+**After:**  
 ```cobol
-05 PNL-AMT         PIC S9(13)V99 COMP-3.
-* Ensure all values moved to PNL-AMT are rounded to two decimals in calling programs.
+* In 2000-CHECK-PREREQUISITES or 3000-UPDATE-STATUS
+COMPUTE BCT-PNL ROUNDED = ... .
+MOVE BCT-PNL TO LS-RETURN-CODE.
 ```
 
----
+#### **B. `src/copybook/batch/BCHCTL.cpy`**
 
-Example: Test Validation (`TSTVAL00.cbl`)
-
-Before:  
+**Before:**  
 ```cobol
-IF ACTUAL-PNL-AMT = EXPECTED-PNL-AMT
-    DISPLAY 'PASS'
+10  BCT-PNL-AMOUNT    PIC S9(9)V99.
+```
+
+**After:**  
+```cobol
+10  BCT-PNL-AMOUNT    PIC S9(9)V99.
+* All calculations and assignments to BCT-PNL-AMOUNT must use ROUNDED for two-decimal accuracy.
+```
+
+#### **C. `src/programs/batch/RPTPOS00.cbl`**
+
+**Before:**  
+```cobol
+COMPUTE WS-POS-CHANGE-PCT = 
+    (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
+     POS-PREVIOUS-VALUE * 100
+WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
+```
+
+**After:**  
+```cobol
+COMPUTE WS-POS-CHANGE-PCT ROUNDED = 
+    (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
+     POS-PREVIOUS-VALUE * 100
+WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
+```
+
+#### **D. `src/programs/test/TSTVAL00.cbl`**
+
+**Before:**  
+```cobol
+COMPUTE WS-ACTUAL-PNL = ... .
+IF WS-ACTUAL-PNL = WS-EXPECTED-PNL
+    MOVE 'PASS' TO WS-RESULT
 ELSE
-    DISPLAY 'FAIL'
-END-IF.
+    MOVE 'FAIL' TO WS-RESULT
+END-IF
 ```
 
-After:  
+**After:**  
 ```cobol
-IF FUNCTION NUMVAL(FUNCTION NUMVAL-C (ACTUAL-PNL-AMT, 2)) = 
-   FUNCTION NUMVAL(FUNCTION NUMVAL-C (EXPECTED-PNL-AMT, 2))
-    DISPLAY 'PASS'
+COMPUTE WS-ACTUAL-PNL ROUNDED = ... .
+IF WS-ACTUAL-PNL = WS-EXPECTED-PNL
+    MOVE 'PASS' TO WS-RESULT
 ELSE
-    DISPLAY 'FAIL'
-END-IF.
-* Additional test cases for .004, .005, .006, etc.
+    MOVE 'FAIL' TO WS-RESULT
+END-IF
 ```
 
 ---
 
-Example: Reporting (`RPTPOS00.cbl`, `RPTAUD00.cbl`)
-
-Before:  
-```cobol
-MOVE OUT-PNL-AMT TO REPORT-LINE-PNL-AMT.
-```
-
-After:  
-```cobol
-MOVE OUT-PNL-AMT TO REPORT-LINE-PNL-AMT ROUNDED.
-* Or use explicit formatting to ensure two decimals in output.
-```
-
-4. Conclusion  
-The proposed changes enforce consistent rounding of all P&L values to two decimal places across calculation, storage, testing, and reporting modules. This eliminates discrepancies between internal reports and downstream accounting systems, ensuring data integrity and compliance. All impacted modules must be regression tested to validate the new rounding logic, especially for edge cases.
+## 4. Conclusion  
+The proposed changes ensure that all portfolio P&L calculations, storage, reporting, and validation are performed with consistent rounding to two decimal places using the COBOL `ROUNDED` keyword. This eliminates discrepancies, aligns with regulatory and downstream requirements, and is validated by updated regression tests. The changes are isolated to high-impact modules, minimizing risk and ensuring maintainability for future enhancements.
