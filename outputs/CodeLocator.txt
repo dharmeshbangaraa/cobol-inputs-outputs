@@ -1,12 +1,11 @@
-**Summary**:
-Title: Fix rounding discrepancies in portfolio P&L calculation  
-User Story:  
-As an Operations Analyst  
-I want all P&L values to be rounded consistently to two decimal places  
-so that financial reports and statements match downstream accounting systems exactly.
+Impact Analysis Report
 
-- 4 impacted components identified (**High impact only**)
-- High complexity change affecting core P&L calculation, DB2 storage, regression testing, and reporting chain
+----------
+
+**Summary**:
+User Story: Fix rounding discrepancies in portfolio P&L calculation  
+- 4 impacted components identified (**High impact only**)  
+- High complexity change affecting core calculation, DB2 storage, regression testing, and reporting chain
 
 ---
 
@@ -14,11 +13,10 @@ so that financial reports and statements match downstream accounting systems exa
 
 | Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections         | Dependency Path                        |
 |------------------------------------------|--------|---------|--------------------------------------|----------------------------------------|
-| `src/programs/calc/PNL-CALC-PROG.cbl`   | High   | Direct  | CALC-PNL, MOVE-TO-OUTPUT, FINALIZE   | Entry point for P&L calculation logic  |
-| `src/copybook/db2/PORTVAL.cpy`          | High   | Direct  | PNL-AMT field definition             | Used by DB2 programs for P&L storage   |
-| `src/programs/test/TSTVAL00.cbl`         | High   | Direct  | 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS | Regression test for P&L calculation    |
-| `src/programs/batch/RPTPOS00.cbl`        | High   | Direct  | 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY | Batch report for P&L display           |
-| `src/programs/batch/RPTAUD00.cbl`        | High   | Direct  | 2100-PROCESS-AUDIT-TRAIL, 2300-WRITE-SUMMARY | Audit report for P&L display           |
+| `src/programs/calc/PNL-CALC-PROG.cbl`   | High   | Direct  | PNL-CALC-MAIN, CALC-PNL, MOVE-OUT    | PNL-CALC-PROG                          |
+| `src/programs/db2/PORTVAL00.cbl`        | High   | Direct  | 2000-UPDATE-PNL, 2100-STORE-RESULT   | PORTVAL00                              |
+| `src/programs/batch/RPTPOS00.cbl`       | High   | Direct  | 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY | RPTPOS00                          |
+| `src/programs/batch/RPTAUD00.cbl`       | High   | Direct  | 2100-PROCESS-AUDIT-TRAIL, 2300-WRITE-SUMMARY | RPTAUD00                      |
 
 ---
 
@@ -30,30 +28,21 @@ so that financial reports and statements match downstream accounting systems exa
     "impactedComponents": [
       {
         "programFilePath": "src/programs/calc/PNL-CALC-PROG.cbl",
-        "impactScore": 0.99,
+        "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["CALC-PNL", "MOVE-TO-OUTPUT", "FINALIZE"],
+        "affectedParagraphs": ["PNL-CALC-MAIN", "CALC-PNL", "MOVE-OUT"],
         "dependencyPath": ["PNL-CALC-PROG"],
-        "rationale": "Core calculation logic for P&L; must update arithmetic to use ROUNDED for all P&L computations and moves."
+        "rationale": "Core calculation logic for P&L; must update arithmetic to use ROUNDED for all P&L moves."
       },
       {
-        "programFilePath": "src/copybook/db2/PORTVAL.cpy",
-        "impactScore": 0.97,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["PNL-AMT field definition"],
-        "dependencyPath": ["PORTVAL.cpy"],
-        "rationale": "Defines DB2 storage for PNL_AMT (DECIMAL(15,2)); must ensure all writes are properly rounded to two decimals."
-      },
-      {
-        "programFilePath": "src/programs/test/TSTVAL00.cbl",
+        "programFilePath": "src/programs/db2/PORTVAL00.cbl",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2100-EXECUTE-TEST", "2600-VALIDATE-RESULTS"],
-        "dependencyPath": ["TSTVAL00"],
-        "rationale": "Regression test program; must validate that rounding logic produces expected results for edge cases."
+        "affectedParagraphs": ["2000-UPDATE-PNL", "2100-STORE-RESULT"],
+        "dependencyPath": ["PORTVAL00"],
+        "rationale": "Handles DB2 storage for PORTVAL.PNL_AMT; must ensure values are stored with exact two decimals."
       },
       {
         "programFilePath": "src/programs/batch/RPTPOS00.cbl",
@@ -62,16 +51,16 @@ so that financial reports and statements match downstream accounting systems exa
         "impactType": "Direct",
         "affectedParagraphs": ["2110-FORMAT-POSITION", "2300-WRITE-SUMMARY"],
         "dependencyPath": ["RPTPOS00"],
-        "rationale": "Batch report program; displays P&L values in TXT/CSV outputs, must reflect new rounding logic."
+        "rationale": "Batch report displaying P&L; must ensure output is rounded correctly in TXT/CSV."
       },
       {
         "programFilePath": "src/programs/batch/RPTAUD00.cbl",
-        "impactScore": 0.92,
+        "impactScore": 0.91,
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": ["2100-PROCESS-AUDIT-TRAIL", "2300-WRITE-SUMMARY"],
         "dependencyPath": ["RPTAUD00"],
-        "rationale": "Audit report program; displays P&L values, must reflect new rounding logic."
+        "rationale": "Audit report displaying P&L; must ensure output is rounded correctly in TXT/CSV."
       }
     ]
   }
@@ -81,19 +70,16 @@ so that financial reports and statements match downstream accounting systems exa
 ---
 
 **Visualization**:
-
 ```mermaid
 graph TD
-    PNL-CALC-PROG["src/programs/calc/PNL-CALC-PROG.cbl (High)"]:::high
-    PORTVAL["src/copybook/db2/PORTVAL.cpy (High)"]:::high
-    TSTVAL00["src/programs/test/TSTVAL00.cbl (High)"]:::high
-    RPTPOS00["src/programs/batch/RPTPOS00.cbl (High)"]:::high
-    RPTAUD00["src/programs/batch/RPTAUD00.cbl (High)"]:::high
+    A[PNL-CALC-PROG<br>src/programs/calc/PNL-CALC-PROG.cbl]:::high
+    B[PORTVAL00<br>src/programs/db2/PORTVAL00.cbl]:::high
+    C[RPTPOS00<br>src/programs/batch/RPTPOS00.cbl]:::high
+    D[RPTAUD00<br>src/programs/batch/RPTAUD00.cbl]:::high
 
-    PNL-CALC-PROG --> PORTVAL
-    TSTVAL00 --> PNL-CALC-PROG
-    RPTPOS00 --> PNL-CALC-PROG
-    RPTAUD00 --> PNL-CALC-PROG
+    A --> B
+    A --> C
+    A --> D
 
     classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
 ```
@@ -101,10 +87,7 @@ graph TD
 ---
 
 **Reasoning**:
-- `src/programs/calc/PNL-CALC-PROG.cbl` is the central program for P&L calculation and is explicitly mentioned in the user story.
-- `src/copybook/db2/PORTVAL.cpy` defines the DB2 table/column for PNL_AMT, which must store values rounded to two decimals.
-- `src/programs/test/TSTVAL00.cbl` is the regression test harness for P&L logic, directly validating rounding behavior.
-- `src/programs/batch/RPTPOS00.cbl` and `src/programs/batch/RPTAUD00.cbl` are the batch reporting programs that output P&L values and must reflect the new rounding logic.
-- All other programs are either not directly involved in P&L calculation/storage/reporting or have only indirect/low impact.
-
-**End of Impact Analysis Report**
+- `PNL-CALC-PROG.cbl` is the primary calculation program for P&L, directly referenced in the user story for rounding logic.
+- `PORTVAL00.cbl` is responsible for storing P&L in the DB2 table with DECIMAL(15,2), requiring strict rounding enforcement.
+- `RPTPOS00.cbl` and `RPTAUD00.cbl` are the batch reporting programs that output P&L values, both in TXT and CSV, and must reflect the new rounding standard.
+- Only these four components are directly and critically involved in the calculation, storage, and reporting of P&L, and thus are ranked as high impact for this change.
