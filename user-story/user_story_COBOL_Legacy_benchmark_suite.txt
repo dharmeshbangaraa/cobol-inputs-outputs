@@ -1,4 +1,4 @@
-Title: Fix rounding discrepancies in portfolio P&L calculation in Batch processing and Reporting modules.
+Title: Fix rounding discrepancies in portfolio P&L calculation.
 
 User Story:
 As an Operations Analyst,
