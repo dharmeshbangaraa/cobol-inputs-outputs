@@ -1,30 +1,12 @@
-Title: Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting
+Title: Fix rounding discrepancies in portfolio P&L calculation
 
 User Story:
-As a COBOL developer,
-I want to add a `CHANNEL-CODE` field to the transaction file,
-so that the source of each transaction (e.g., ATM, Mobile, Branch) can be captured and processed,
-allowing for improved analytics, auditing, and fraud detection based on transaction channels through batch processing and reporting.
+As an Operations Analyst
+I want all P&L values to be rounded consistently to two decimal places
+so that financial reports and statements match downstream accounting systems exactly.
 
 Acceptance Criteria:
-
-1. Definition
-   A new field `CHANNEL-CODE` (`PIC X(04)`) is defined in the relevant copybooks (e.g., `TRANSACTION.CPY`).
-
-2. File Layout
-   Transaction input and output files are updated to include the `CHANNEL-CODE` field and corresponding layout adjustments.
-
-3. Program Updates
-   All programs (batch, online, utility) that read or write transaction data are updated to handle the new field appropriately.
-
-4. Test Data
-   Sample input files and test data include valid `CHANNEL-CODE` values (e.g., `BRCH`, `ATM`, `MOBL`, `NETB`).
-
-5. LRECL & FD Adjustments
-   The LRECL (Logical Record Length) and FD (File Description) entries in COBOL programs and JCL are adjusted to reflect the new field.
-
-6. Documentation
-   The data dictionary and all relevant documentation are updated to reflect the structure and purpose of `CHANNEL-CODE`.
-
-7. Reporting
-   Any reports or logs that output transaction details include the `CHANNEL-CODE` field where applicable.
+1. Calculation Logic: Update the COBOL arithmetic in PNL-CALC-PROG (or relevant copybook routines) to use ROUNDED when moving computed P&L from WORK-DIVIDE fields to output fields.
+2. Data Storage: Ensure the DB2 PORTVAL.PNL_AMT column (DECIMAL(15,2)) stores values exactly with two decimal places.
+3. Regression Test: Add unit tests in TSTVAL.jcl that feed known inputs (e.g., buy at 10.3333, sell at 10.6666) and expect P&L of “0.33” rather than “0.34” (or vice versa per defined rule).
+4. Reporting: Verify that batch reports (RPTPOS00 and RPTAUD00) display P&L amounts correctly rounded in both TXT and CSV outputs.
