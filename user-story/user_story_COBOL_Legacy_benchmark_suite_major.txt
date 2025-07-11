@@ -1,12 +1,17 @@
-Title: Fix rounding discrepancies in portfolio P&L calculation
+Title: Integrate real-time market price feed for dynamic portfolio valuation
 
 User Story:
-As an Operations Analyst
-I want all P&L values to be rounded consistently to two decimal places
-so that financial reports and statements match downstream accounting systems exactly.
+As a Portfolio Manager
+I want the system to consume and apply real-time market price updates from an external data provider
+so that my portfolio valuations and risk metrics are always up-to-date, enabling faster and more accurate trading decisions.
 
 Acceptance Criteria:
-1. Calculation Logic: Update the COBOL arithmetic in PNL-CALC-PROG (or relevant copybook routines) to use ROUNDED when moving computed P&L from WORK-DIVIDE fields to output fields.
-2. Data Storage: Ensure the DB2 PORTVAL.PNL_AMT column (DECIMAL(15,2)) stores values exactly with two decimal places.
-3. Regression Test: Add unit tests in TSTVAL.jcl that feed known inputs (e.g., buy at 10.3333, sell at 10.6666) and expect P&L of “0.33” rather than “0.34” (or vice versa per defined rule).
-4. Reporting: Verify that batch reports (RPTPOS00 and RPTAUD00) display P&L amounts correctly rounded in both TXT and CSV outputs.
+	1. Data Ingestion: The application connects to the external market-data API via MQ or REST every 5 seconds.
+	Incoming price ticks for all securities held in a portfolio are mapped to the DB2 PRICEDATA table.
+	2. Valuation Engine: On each price update, the batch job PRCSEQ00 (or a new event-driven COBOL program) recalculates position values in PORTVAL and updates POSUPDT.
+	Position P&L is recalculated and stored with a timestamp.
+	3. Online Display: The CICS screen for “View Portfolio” (PORTDFN.csd) automatically refreshes to show current valuations within 10 seconds of the last price update.
+	4. Error Handling & Audit: If the feed fails or prices are stale for more than 30 seconds, the system raises a UDF-level alarm and writes to AUDITLOG.
+	Historical price feeds are persisted in a new VSAM KSDS PRICEHIST for backtesting.
+	5. Performance & Scalability: System sustains up to 1,000 price updates per second without impacting batch-window SLAs.
+	Capacity planning documentation is updated to reflect new throughput and storage requirements.
