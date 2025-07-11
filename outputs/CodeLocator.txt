@@ -1,35 +1,28 @@
-
-
----
-
 ## Summary
 
 **User Story:**  
-Title: Fix rounding discrepancies in portfolio P&L calculation  
+Title: Fix rounding discrepancies in portfolio P&L calculation in Batch Processing and Reporting modules only.  
 As an Operations Analyst, I want all P&L values to be rounded consistently to two decimal places so that financial reports and statements match downstream accounting systems exactly.
 
 **Acceptance Criteria:**
 1. Update COBOL arithmetic in PNL-CALC-PROG (or relevant copybook routines) to use ROUNDED when moving computed P&L from WORK-DIVIDE fields to output fields.
-2. Ensure the DB2 PORTVAL.PNL_AMT column (DECIMAL(15,2)) stores values exactly with two decimal places.
-3. Add unit tests in TSTVAL.jcl that feed known inputs and expect correct rounding.
-4. Verify that batch reports (RPTPOS00 and RPTAUD00) display P&L amounts correctly rounded in both TXT and CSV outputs.
+2. Verify that batch reports (RPTPOS00 and RPTAUD00) display P&L amounts correctly rounded in both TXT and CSV outputs.
 
-**Total impacted components:** 6  
+**Total impacted components:** 5  
 **High-level assessment:**  
-This is a medium-to-high complexity change. It directly affects core calculation logic, database storage, and reporting, with ripple effects into testing and validation. The change impacts both batch and reporting programs, as well as copybooks and JCL for regression testing.
+This is a medium-complexity change. It directly affects the core P&L calculation logic and the batch reporting modules, with indirect impact on shared copybooks and data structures. The change is isolated to batch and reporting modules, minimizing risk to online and unrelated batch processes.
 
 ---
 
 ## Ranked Impact List
 
-| Program/Component         | Impact   | Nature   | Affected Paragraphs/Sections         | Dependency Path                                  |
-|--------------------------|----------|----------|--------------------------------------|--------------------------------------------------|
-| PNL-CALC-PROG            | High     | Direct   | PNL-CALC, MOVE-TO-OUTPUT, WORK-DIVIDE | [PNL-CALC-PROG]                                  |
-| PORTVAL (DB2 Table)      | High     | Direct   | PNL_AMT column, DB2 I/O routines     | [PNL-CALC-PROG, DB2 PORTVAL]                     |
-| RPTPOS00                 | High     | Direct   | 2000-PROCESS-REPORT, 2110-FORMAT-POSITION | [RPTPOS00]                                   |
-| RPTAUD00                 | High     | Direct   | 2000-PROCESS-REPORT, 2100-PROCESS-AUDIT-TRAIL | [RPTAUD00]                                |
-| TSTVAL00 (TSTVAL.jcl)    | Medium   | Direct   | 2000-PROCESS, 2100-EXECUTE-TEST, 2600-VALIDATE-RESULTS | [TSTVAL00]                       |
-| POSREC (Copybook)        | Medium   | Indirect | P&L field definitions, record layouts | [PNL-CALC-PROG, POSREC], [RPTPOS00, POSREC]      |
+| Program/Copybook      | Impact  | Nature   | Affected Paragraphs/Sections           | Dependency Path                        |
+|-----------------------|---------|----------|----------------------------------------|----------------------------------------|
+| PNL-CALC-PROG         | High    | Direct   | PNL-CALC-LOGIC, MOVE-TO-OUTPUT         | [PNL-CALC-PROG]                        |
+| RPTPOS00              | High    | Direct   | 2100-READ-POSITIONS, 2110-FORMAT-POSITION, 2300-WRITE-SUMMARY | [RPTPOS00]                             |
+| RPTAUD00              | High    | Direct   | 2100-PROCESS-AUDIT-TRAIL, 2300-WRITE-SUMMARY | [RPTAUD00]                             |
+| POSREC (copybook)     | Medium  | Indirect | P&L fields definition                  | [RPTPOS00, POSREC]                     |
+| AUDITLOG (copybook)   | Medium  | Indirect | P&L fields definition                  | [RPTAUD00, AUDITLOG]                   |
 
 ---
 
@@ -38,61 +31,52 @@ This is a medium-to-high complexity change. It directly affects core calculation
 ```json
 {
   "impactAnalysis": {
-    "userStory": "Fix rounding discrepancies in portfolio P&L calculation",
+    "userStory": "Fix rounding discrepancies in portfolio P&L calculation in Batch Processing and Reporting modules only.",
     "impactedComponents": [
       {
         "programName": "PNL-CALC-PROG",
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["PNL-CALC", "MOVE-TO-OUTPUT", "WORK-DIVIDE"],
+        "affectedParagraphs": ["PNL-CALC-LOGIC", "MOVE-TO-OUTPUT"],
         "dependencyPath": ["PNL-CALC-PROG"],
-        "rationale": "Core calculation logic for P&L; must implement ROUNDED in arithmetic and ensure output fields are set to two decimals."
-      },
-      {
-        "programName": "PORTVAL (DB2 Table)",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["PNL_AMT column", "DB2 I/O routines"],
-        "dependencyPath": ["PNL-CALC-PROG", "DB2 PORTVAL"],
-        "rationale": "Database storage for P&L; must ensure values stored are exactly two decimals as per schema and business rule."
+        "rationale": "Core calculation logic for P&L; must ensure ROUNDED is used when moving computed values to output fields."
       },
       {
         "programName": "RPTPOS00",
-        "impactScore": 0.92,
+        "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS-REPORT", "2110-FORMAT-POSITION"],
+        "affectedParagraphs": ["2100-READ-POSITIONS", "2110-FORMAT-POSITION", "2300-WRITE-SUMMARY"],
         "dependencyPath": ["RPTPOS00"],
-        "rationale": "Batch report program that displays P&L; must show rounded values in TXT and CSV outputs."
+        "rationale": "Batch report program displaying P&L; must ensure output is rounded in TXT and CSV formats."
       },
       {
         "programName": "RPTAUD00",
-        "impactScore": 0.90,
+        "impactScore": 0.93,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS-REPORT", "2100-PROCESS-AUDIT-TRAIL"],
+        "affectedParagraphs": ["2100-PROCESS-AUDIT-TRAIL", "2300-WRITE-SUMMARY"],
         "dependencyPath": ["RPTAUD00"],
-        "rationale": "Audit report program that displays P&L; must show rounded values in TXT and CSV outputs."
+        "rationale": "Batch audit report program displaying P&L; must ensure output is rounded in TXT and CSV formats."
       },
       {
-        "programName": "TSTVAL00 (TSTVAL.jcl)",
-        "impactScore": 0.80,
-        "impactLevel": "Medium",
-        "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS", "2100-EXECUTE-TEST", "2600-VALIDATE-RESULTS"],
-        "dependencyPath": ["TSTVAL00"],
-        "rationale": "Regression/unit test driver; must validate rounding logic with known test cases."
-      },
-      {
-        "programName": "POSREC (Copybook)",
+        "programName": "POSREC",
         "impactScore": 0.75,
         "impactLevel": "Medium",
         "impactType": "Indirect",
-        "affectedParagraphs": ["P&L field definitions", "record layouts"],
-        "dependencyPath": ["PNL-CALC-PROG", "POSREC"],
-        "rationale": "Defines P&L fields used in calculations and reports; changes may be needed to ensure correct picture/rounding."
+        "affectedParagraphs": ["P&L fields definition"],
+        "dependencyPath": ["RPTPOS00", "POSREC"],
+        "rationale": "Copybook defining P&L fields used in RPTPOS00; changes may be needed if field definitions or rounding logic is centralized."
+      },
+      {
+        "programName": "AUDITLOG",
+        "impactScore": 0.70,
+        "impactLevel": "Medium",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["P&L fields definition"],
+        "dependencyPath": ["RPTAUD00", "AUDITLOG"],
+        "rationale": "Copybook defining P&L fields used in RPTAUD00; changes may be needed if field definitions or rounding logic is centralized."
       }
     ]
   }
@@ -105,33 +89,34 @@ This is a medium-to-high complexity change. It directly affects core calculation
 
 ```mermaid
 graph TD
-    PNL-CALC-PROG["PNL-CALC-PROG<br/>(High)"]:::high
-    PORTVAL["PORTVAL (DB2 Table)<br/>(High)"]:::high
-    RPTPOS00["RPTPOS00<br/>(High)"]:::high
-    RPTAUD00["RPTAUD00<br/>(High)"]:::high
-    TSTVAL00["TSTVAL00 (TSTVAL.jcl)<br/>(Medium)"]:::medium
-    POSREC["POSREC (Copybook)<br/>(Medium)"]:::medium
+  subgraph High Impact
+    PNL-CALC-PROG
+    RPTPOS00
+    RPTAUD00
+  end
+  subgraph Medium Impact
+    POSREC
+    AUDITLOG
+  end
 
-    PNL-CALC-PROG --> PORTVAL
-    PNL-CALC-PROG --> POSREC
-    RPTPOS00 --> POSREC
-    RPTAUD00 --> POSREC
-    TSTVAL00 -.-> PNL-CALC-PROG
-    TSTVAL00 -.-> RPTPOS00
-    TSTVAL00 -.-> RPTAUD00
-
-    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
-    classDef medium fill:#fff2cc,stroke:#b8860b,stroke-width:2px;
+  PNL-CALC-PROG -- supplies P&L --> RPTPOS00
+  PNL-CALC-PROG -- supplies P&L --> RPTAUD00
+  RPTPOS00 -- uses fields --> POSREC
+  RPTAUD00 -- uses fields --> AUDITLOG
 ```
+
+- **Red (High Impact):** PNL-CALC-PROG, RPTPOS00, RPTAUD00  
+- **Orange (Medium Impact):** POSREC, AUDITLOG
 
 ---
 
-**Reasoning:**  
-- **PNL-CALC-PROG** is the core calculation engine for P&L and must be updated for rounding logic.
-- **PORTVAL (DB2 Table)** is where P&L is stored; must ensure values are stored with correct precision.
-- **RPTPOS00** and **RPTAUD00** are batch reporting programs that output P&L; must display rounded values.
-- **TSTVAL00** (unit test JCL) is used to validate the rounding logic.
-- **POSREC** (copybook) defines the P&L field structure and is included in both calculation and reporting programs.
+### Reasoning
 
-**Note:**  
-Other programs and copybooks were reviewed but excluded due to lack of direct or indirect logical connection to the P&L calculation or reporting chain for this user story. Only components that process, store, or display P&L values, or validate their correctness, are included.
+- **PNL-CALC-PROG** is the core calculation routine for P&L, directly responsible for the arithmetic and the use of ROUNDED.
+- **RPTPOS00** and **RPTAUD00** are the batch reporting programs that output P&L values; both must display rounded values in all formats.
+- **POSREC** and **AUDITLOG** are copybooks included in the reporting programs, likely defining the P&L fields. If rounding logic or field definitions are centralized here, they must be reviewed and possibly updated.
+- No unrelated batch, online, or utility programs are impacted, as per the user story and dependency map.
+
+---
+
+**End of Impact Analysis Report**
