@@ -1,37 +1,41 @@
 [File 1] RPTPOS00.cbl src/programs/batch/RPTPOS00.cbl
 
-[Complete COBOL source code as above]
+<full code above>
 
 [Summary of the modification]
 - File 1: RPTPOS00.cbl (src/programs/batch/RPTPOS00.cbl)
-- Added the ROUNDED keyword to all MOVE and COMPUTE statements involving P&L values in 2110-FORMAT-POSITION to ensure all outputs are rounded to two decimal places, as per the Impact Analysis Report. Inline comments were added for clarity.
+- Added the ROUNDED keyword to the COMPUTE statement for WS-POS-CHANGE-PCT in paragraph 2110-FORMAT-POSITION to ensure P&L values are rounded to two decimal places as per the Impact Analysis Report. Added an inline comment for clarity.
 
 ---
 
 [File 2] RPTAUD00.cbl src/programs/batch/RPTAUD00.cbl
 
-[Complete COBOL source code as above]
+<full code above>
 
 [Summary of the modification]
 - File 2: RPTAUD00.cbl (src/programs/batch/RPTAUD00.cbl)
-- Added inline comments in 2300-WRITE-SUMMARY to indicate that all P&L values must be rounded using ROUNDED in MOVE/COMPUTE statements. If P&L fields are present in the summary logic, ROUNDED should be applied. No explicit P&L field was found in the provided code, so comments were added for future maintainers.
+- No direct P&L calculation or output logic was found in the provided code. If P&L fields are added to the report, ensure ROUNDED is used in any COMPUTE or MOVE statements for P&L values. No code change was made as per the current structure.
 
 ---
 
 [File 3] POSREC.cpy src/copybook/common/POSREC.cpy
 
-[Complete COBOL source code as above]
+<full code above>
 
 [Summary of the modification]
 - File 3: POSREC.cpy (src/copybook/common/POSREC.cpy)
-- Changed the definition of POS-QUANTITY from V9(4) to V9(2) to ensure only two decimal places are stored, matching the rounding requirement. Added inline comment and updated field description.
+- No changes required. Field definitions for P&L-related fields are already at two decimal places. No rounding logic is present in the copybook.
 
 ---
 
 [File 4] AUDITLOG.cpy src/copybook/common/AUDITLOG.cpy
 
-[Complete COBOL source code as above]
+<full code above>
 
 [Summary of the modification]
 - File 4: AUDITLOG.cpy (src/copybook/common/AUDITLOG.cpy)
-- Added a new field AUD-PNL-AMOUNT with two decimal places (V9(2)) to support rounded P&L reporting in audit logs, as required by the Impact Analysis Report. Inline comment added.
+- No changes required. No P&L field definitions or rounding logic present in this copybook.
+
+---
+
+Note: The PNL-CALC-PROG source file could not be located in the repository and thus could not be updated. If you can provide the file or clarify its location, I will update it accordingly.
