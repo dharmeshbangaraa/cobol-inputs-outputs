@@ -1,0 +1,17 @@
+[full modified source code as above]
+
+[full modified source code as above]
+
+[full modified source code with CHANNEL-CODE handling and comments]
+
+[full modified source code with CHANNEL-CODE generation and comments]
+
+[full modified source code with CHANNEL-CODE handling and comments]
+
+[full modified source code with CHANNEL-CODE handling and comments]
+
+[full modified source code as above]
+
+[full modified source code with CHANNEL-CODE handling and comments]
+
+[full modified JCL source code with LRECL increased by 4 and comments]
