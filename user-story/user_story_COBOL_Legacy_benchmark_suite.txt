@@ -1,4 +1,4 @@
-Title: Fix rounding discrepancies in portfolio P&L calculation in Batch Processing and Reporting modules only.
+Title: Fix rounding discrepancies in portfolio P&L calculation
 
 User Story:
 As an Operations Analyst
@@ -6,5 +6,7 @@ I want all P&L values to be rounded consistently to two decimal places
 so that financial reports and statements match downstream accounting systems exactly.
 
 Acceptance Criteria:
-1. Calculation Logic: Update the COBOL arithmetic in PNL-CALC-PROG (or relevant copybook routines) to use ROUNDED when moving computed P&L from WORK-DIVIDE fields to output fields.
-2. Reporting: Verify that batch reports (RPTPOS00 and RPTAUD00) display P&L amounts correctly rounded in both TXT and CSV outputs.
+	1. Calculation Logic: Update the COBOL arithmetic in PNL-CALC-PROG (or relevant copybook routines) to use ROUNDED when moving computed P&L from WORK-DIVIDE fields to output fields.
+	2. Data Storage: Ensure the DB2 PORTVAL.PNL_AMT column (DECIMAL(15,2)) stores values exactly with two decimal places.
+	3. Regression Test: Add unit tests in TSTVAL.jcl that feed known inputs (e.g., buy at 10.3333, sell at 10.6666) and expect P&L of “0.33” rather than “0.34” (or vice versa per defined rule).
+	4. Reporting: Verify that batch reports (RPTPOS00 and RPTAUD00) display P&L amounts correctly rounded in both TXT and CSV outputs.
