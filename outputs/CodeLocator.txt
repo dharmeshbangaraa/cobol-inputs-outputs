@@ -1,83 +1,19 @@
-Impact Analysis Report
-
-Title: Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting
-
-User Story:
-As a COBOL developer,
-I want to add a `CHANNEL-CODE` field to the transaction file,
-so that the source of each transaction (e.g., ATM, Mobile, Branch) can be captured and processed,
-allowing for improved analytics, auditing, and fraud detection based on transaction channels through batch processing and reporting.
-
-Acceptance Criteria:
-1. Definition
-   A new field `CHANNEL-CODE` (`PIC X(04)`) is defined in the relevant copybooks (e.g., `TRANSACTION.CPY`).
-
-2. File Layout
-   Transaction input and output files are updated to include the `CHANNEL-CODE` field and corresponding layout adjustments.
-
-3. Program Updates
-   All programs (batch, online, utility) that read or write transaction data are updated to handle the new field appropriately.
-
-4. Test Data
-   Sample input files and test data include valid `CHANNEL-CODE` values (e.g., `BRCH`, `ATM`, `MOBL`, `NETB`).
-
-5. LRECL & FD Adjustments
-   The LRECL (Logical Record Length) and FD (File Description) entries in COBOL programs and JCL are adjusted to reflect the new field.
-
-6. Documentation
-   The data dictionary and all relevant documentation are updated to reflect the structure and purpose of `CHANNEL-CODE`.
-
-7. Reporting
-   Any reports or logs that output transaction details include the `CHANNEL-CODE` field where applicable.
-
-Validation Notes:
-- Structure: The story clearly outlines the requirement, acceptance criteria, and justification.
-- Completeness: Covers definition, implementation, testing, documentation, and reporting.
-- Spelling & Grammar: Minor refinements made for clarity and consistency.
-
-Next Steps:
-1. Repo Scan:
-   Check `TRANSACTION.CPY` (or equivalent) for the presence of `CHANNEL-CODE`.
-   If not present, add the field:
-     05 CHANNEL-CODE PIC X(04). *> BRCH, ATM, MOBL, NETB
-
-2. Code Changes:
-   - Update relevant copybooks
-   - Modify file layouts
-   - Adjust LRECL and FD definitions
-
-3. Testing:
-   - Update input files
-   - Include diverse test values for `CHANNEL-CODE`
-
-4. Documentation:
-   - Update README
-   - Refresh the data dictionary
-   - Comment changes in COBOL programs
-
-5. Reporting:
-   - Ensure reports/logs show `CHANNEL-CODE` wherever transaction details are printed
-
-----------
-
 **Summary**:
-User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting
-
-- 6 impacted components identified (**High impact only**)
-- High complexity change affecting transaction data structure, file layouts, batch processing, reporting, and copybook definitions across multiple programs and JCL
+User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting  
+- 5 impacted components identified (**High impact only**)  
+- High complexity change affecting core transaction data structures, file layouts, batch processing, reporting, and copybooks. All programs that read/write transaction data or generate reports must be updated for the new field.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                         | Impact | Nature  | Affected Paragraphs/Sections                      | Dependency Path                        |
-|-------------------------------------------|--------|---------|---------------------------------------------------|----------------------------------------|
-| `src/copybook/common/TRNREC.cpy`          | High   | Direct  | 05 CHANNEL-CODE, Transaction Record Layout         | Copybook for transaction data structure|
-| `src/programs/batch/RPTPOS00.cbl`         | High   | Direct  | FILE-CONTROL, 1100-OPEN-FILES, 2200-PROCESS-TRANSACTIONS | Uses TRNREC for transaction history/reporting |
-| `src/programs/batch/RPTAUD00.cbl`         | High   | Direct  | FILE-CONTROL, 1100-OPEN-FILES, 2100-PROCESS-AUDIT-TRAIL | Reads/writes transaction/audit data    |
-| `src/programs/utility/UTLVAL00.cbl`       | High   | Direct  | FILE-CONTROL, 1100-OPEN-FILES, 2100-PROCESS-VALIDATION | Validates transaction data using TRNREC|
-| `src/programs/test/TSTGEN00.cbl`          | High   | Direct  | FILE-CONTROL, 2300-GEN-TRANSACTION, 2320-WRITE-TRAN-RECORD | Generates test transaction files       |
-| `src/programs/test/TSTVAL00.cbl`          | High   | Direct  | FILE-CONTROL, 1100-OPEN-FILES, 2100-EXECUTE-TEST  | Reads test transaction files           |
+| Program File Path                              | Impact | Nature  | Affected Paragraphs/Sections            | Dependency Path                                      |
+|------------------------------------------------|--------|---------|-----------------------------------------|------------------------------------------------------|
+| `src/copybook/common/TRNREC.cpy`               | High   | Direct  | CHANNEL-CODE definition                 | Used by all transaction-processing programs          |
+| `src/programs/batch/RPTPOS00.cbl`              | High   | Direct  | 1100-OPEN-FILES, 2200-PROCESS-TRANSACTIONS | Reads transaction file, outputs reports              |
+| `src/programs/utility/UTLVAL00.cbl`            | High   | Direct  | 1100-OPEN-FILES, 2400-CHECK-FORMAT      | Reads/validates transaction file via TRNREC.cpy      |
+| `src/programs/test/TSTGEN00.cbl`               | High   | Direct  | 2300-GEN-TRANSACTION, 2320-WRITE-TRAN-RECORD | Generates test transaction files                     |
+| `src/programs/test/TSTVAL00.cbl`               | High   | Direct  | 1100-OPEN-FILES, 2100-EXECUTE-TEST      | Reads test transaction files for validation          |
 
 ---
 
@@ -89,57 +25,48 @@ User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identificat
     "impactedComponents": [
       {
         "programFilePath": "src/copybook/common/TRNREC.cpy",
-        "impactScore": 0.99,
+        "impactScore": 1.0,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["05 CHANNEL-CODE", "Transaction Record Layout"],
+        "affectedParagraphs": ["CHANNEL-CODE definition"],
         "dependencyPath": ["TRNREC.cpy"],
-        "rationale": "Central copybook for transaction record; all programs using transaction data must update to include CHANNEL-CODE."
+        "rationale": "Core transaction record copybook; all programs referencing transaction data must be updated to include and process the new CHANNEL-CODE field."
       },
       {
         "programFilePath": "src/programs/batch/RPTPOS00.cbl",
-        "impactScore": 0.97,
+        "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["FILE-CONTROL", "1100-OPEN-FILES", "2200-PROCESS-TRANSACTIONS"],
+        "affectedParagraphs": ["1100-OPEN-FILES", "2200-PROCESS-TRANSACTIONS"],
         "dependencyPath": ["RPTPOS00.cbl", "TRNREC.cpy"],
-        "rationale": "Batch report program reads transaction history via TRNREC; must update file layout, FD, and reporting logic."
-      },
-      {
-        "programFilePath": "src/programs/batch/RPTAUD00.cbl",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["FILE-CONTROL", "1100-OPEN-FILES", "2100-PROCESS-AUDIT-TRAIL"],
-        "dependencyPath": ["RPTAUD00.cbl", "TRNREC.cpy"],
-        "rationale": "Audit report program processes transaction/audit logs; must reflect new CHANNEL-CODE in file layout and reports."
+        "rationale": "Reads transaction file and generates reports; must include CHANNEL-CODE in file layout, FD, and reporting output."
       },
       {
         "programFilePath": "src/programs/utility/UTLVAL00.cbl",
-        "impactScore": 0.95,
+        "impactScore": 0.97,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["FILE-CONTROL", "1100-OPEN-FILES", "2100-PROCESS-VALIDATION"],
+        "affectedParagraphs": ["1100-OPEN-FILES", "2400-CHECK-FORMAT"],
         "dependencyPath": ["UTLVAL00.cbl", "TRNREC.cpy"],
-        "rationale": "Utility program validates transaction data; must update to validate and process CHANNEL-CODE."
+        "rationale": "Performs validation on transaction files; must validate presence and format of CHANNEL-CODE."
       },
       {
         "programFilePath": "src/programs/test/TSTGEN00.cbl",
-        "impactScore": 0.93,
+        "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["FILE-CONTROL", "2300-GEN-TRANSACTION", "2320-WRITE-TRAN-RECORD"],
+        "affectedParagraphs": ["2300-GEN-TRANSACTION", "2320-WRITE-TRAN-RECORD"],
         "dependencyPath": ["TSTGEN00.cbl", "TRNREC.cpy"],
-        "rationale": "Test data generator creates transaction files; must generate CHANNEL-CODE values for test coverage."
+        "rationale": "Generates test transaction files; must populate CHANNEL-CODE for test scenarios."
       },
       {
         "programFilePath": "src/programs/test/TSTVAL00.cbl",
-        "impactScore": 0.92,
+        "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["FILE-CONTROL", "1100-OPEN-FILES", "2100-EXECUTE-TEST"],
+        "affectedParagraphs": ["1100-OPEN-FILES", "2100-EXECUTE-TEST"],
         "dependencyPath": ["TSTVAL00.cbl", "TRNREC.cpy"],
-        "rationale": "Test validation program reads transaction files; must recognize and validate CHANNEL-CODE field."
+        "rationale": "Reads and validates test transaction files; must handle CHANNEL-CODE in test validation logic."
       }
     ]
   }
@@ -152,28 +79,36 @@ User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identificat
 
 ```mermaid
 graph TD
-  A[src/copybook/common/TRNREC.cpy]:::high
-  B[src/programs/batch/RPTPOS00.cbl]:::high
-  C[src/programs/batch/RPTAUD00.cbl]:::high
-  D[src/programs/utility/UTLVAL00.cbl]:::high
-  E[src/programs/test/TSTGEN00.cbl]:::high
-  F[src/programs/test/TSTVAL00.cbl]:::high
+    subgraph Copybook
+        TRNREC["src/copybook/common/TRNREC.cpy"]
+    end
+    subgraph Batch
+        RPTPOS["src/programs/batch/RPTPOS00.cbl"]
+    end
+    subgraph Utility
+        UTLVAL["src/programs/utility/UTLVAL00.cbl"]
+    end
+    subgraph Test
+        TSTGEN["src/programs/test/TSTGEN00.cbl"]
+        TSTVAL["src/programs/test/TSTVAL00.cbl"]
+    end
 
-  B --> A
-  C --> A
-  D --> A
-  E --> A
-  F --> A
-
-  classDef high fill:#ffcccc,stroke:#d33,stroke-width:2px;
+    TRNREC -- High Impact --> RPTPOS
+    TRNREC -- High Impact --> UTLVAL
+    TRNREC -- High Impact --> TSTGEN
+    TRNREC -- High Impact --> TSTVAL
+    classDef highImpact fill:#ffcccc,stroke:#b22222,stroke-width:2px;
+    class TRNREC,RPTPOS,UTLVAL,TSTGEN,TSTVAL highImpact;
 ```
 
 ---
 
 **Reasoning**:
-- The `TRNREC.cpy` copybook is the canonical definition for transaction records and is included in all programs that process transaction data.
-- Batch/reporting programs (`RPTPOS00.cbl`, `RPTAUD00.cbl`) and utility/test programs (`UTLVAL00.cbl`, `TSTGEN00.cbl`, `TSTVAL00.cbl`) all directly use this copybook and/or process transaction files.
-- All these programs must update their file layouts, FD sections, LRECL, and logic to handle the new `CHANNEL-CODE` field, and are thus **high impact**.
-- Only these files are included as high impact; other programs/copybooks/JCL are not directly affected unless they process transaction files via TRNREC.
+- The `TRNREC.cpy` copybook is the canonical definition for transaction records and is included in all programs that process transaction data. Adding `CHANNEL-CODE` here is the primary change.
+- All batch, utility, and test programs that read/write transaction files (including for reporting and validation) depend on this copybook and must update their file layouts, FD sections, and logic to accommodate the new field.
+- Only programs and copybooks directly involved with transaction file I/O and reporting are included as **High impact**; unrelated programs are excluded.
+- Impact scores are highest for the core copybook and direct transaction-processing/reporting programs, as these are critical for correct system operation and data integrity.
+
+---
 
 **End of Report**
