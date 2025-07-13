@@ -1,216 +1,148 @@
-
-# Technical Document and Low-Level Design (LLD)
-
 ## 1. Introduction  
-This document details the technical changes and low-level design (LLD) for integrating a real-time market price feed into the portfolio valuation system. The changes span batch processing, data ingestion, audit/error handling, historical data management, and user interface refresh. The purpose of this document is to provide a comprehensive overview of the impacted logic, insertion points, and structured diffs to guide implementation and future maintenance.
+This document details the technical changes and low-level design (LLD) for recent modifications made to the COBOL application modules related to transaction processing, reporting, utility validation, and testing. The primary focus of these changes is the introduction of a new `CHANNEL-CODE` field in the transaction record structure, with corresponding updates across impacted programs to support channel identification and maintain data integrity.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The application is responsible for maintaining up-to-date portfolio valuations by ingesting market price data, recalculating position values and P&L, logging audit events, and displaying results to users. The system operates in both batch and near real-time modes, leveraging DB2 and VSAM for data storage and CICS for user interaction.
+The COBOL application processes financial transactions, generates reports, validates data, and supports automated testing. The core logic involves reading transaction records, performing business logic (such as validation and reporting), and writing outputs. The transaction record structure is central to all modules, ensuring consistent data handling across the system.
 
 ### 2.2 Detailed Logic  
-- **Batch Recalculation (PRCSEQ00.cbl):**  
-  - Initializes processing environment.
-  - Retrieves next processable portfolio.
-  - Updates position values and P&L based on latest prices.
-  - Handles errors and logs audit events.
-  - Triggers historical data loads and UI refresh.
-
-- **Audit Logging (AUDITLOG.cpy, AUDPROC.cbl):**  
-  - Structures and processes audit records for error and stale data events.
-
-- **Historical Data Load (HISTLD00.cbl):**  
-  - Loads historical price data into VSAM for backtesting and analytics.
+- **Transaction Record Structure (TRNREC.CPY):**  
+  - Defines the layout for transaction data, including keys, transaction details, audit information, and filler for record length consistency.
+- **Batch Reporting (RPTPOS00.CBL):**  
+  - Reads transaction records, processes them based on type and status, and generates position reports.
+- **Utility Validation (UTLVAL00.CBL):**  
+  - Validates transaction records for correctness and completeness.
+- **Testing Modules (TSTGEN00.CBL, TSTVAL00.CBL):**  
+  - Generate and validate test data for automated regression and integration testing.
 
 #### Flowchart:  
 ```
 flowchart TD
-    MarketFeed(["Market
-Feed API"])
-    PRICEDATA["PRICEDATA.cpy
-(DB2 Table Mapping)"]
-    PRCSEQ00["PRCSEQ00.cbl
-Batch Recalculation"]
-    POSUPDT["POSUPDT.cbl
-Position Update"]
-    AUDITLOG["AUDITLOG.cpy
-Audit Log"]
-    AUDPROC["AUDPROC.cbl
-Audit Processor"]
-    HISTLD00["HISTLD00.cbl
-Historical Loader"]
-    PORTDFN["PORTDFN.csd
-Portfolio Screen"]
+    Start(["Start"])
+    ReadTrans["Read
+Transaction Record"]
+    ValidateTrans["Validate
+Transaction Data"]
+    ProcessLogic["Process
+Business Logic"]
+    UpdateChannel["Handle
+Channel Code"]
+    WriteOutput["Write
+Output/Report"]
+    End(["End"])
 
-    MarketFeed --> PRICEDATA
-    PRICEDATA --> PRCSEQ00
-    PRCSEQ00 --> POSUPDT
-    PRCSEQ00 --> AUDITLOG
-    AUDITLOG --> AUDPROC
-    PRCSEQ00 --> HISTLD00
-    PRCSEQ00 --> PORTDFN
+    Start --> ReadTrans
+    ReadTrans --> ValidateTrans
+    ValidateTrans --> ProcessLogic
+    ProcessLogic --> UpdateChannel
+    UpdateChannel --> WriteOutput
+    WriteOutput --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-Integrate a real-time market price feed to enable dynamic, near real-time portfolio valuation. This requires ingestion of price ticks, recalculation of positions and P&L, audit/error handling, historical data management, and UI refresh.
+**User Story:**  
+As a business analyst, I want to capture the channel through which each transaction is processed (e.g., branch, online), so that downstream reporting and analytics can segment transactions by channel. This requires adding a `CHANNEL-CODE` field to the transaction record and updating all relevant programs to handle this new field.
 
 ### 3.2 Impacted Code Changes Summary:
 
 #### 3.2.1 Impacted Sections and Files:
-- **src/programs/batch/PRCSEQ00.cbl**
-  - *Purpose of Changes:* Enable batch recalculation to process real-time price updates, trigger position/P&L updates, handle errors, and initiate UI refresh.
-  - *Impact:* Core logic now supports near real-time operation, error/audit hooks, and integration with new data sources.
-- **src/programs/batch/POSUPDT.cbl**
-  - *Purpose of Changes:* Update position records with new valuations and P&L.
-  - *Impact:* Ensures positions reflect latest market prices.
-- **src/copybook/db2/PRICEDATA.cpy**
-  - *Purpose of Changes:* Map DB2 table for real-time price ticks.
-  - *Impact:* Centralizes price ingestion for downstream processing.
-- **src/copybook/common/AUDITLOG.cpy**
-  - *Purpose of Changes:* Structure audit log for error/stale data events.
-  - *Impact:* Enables robust audit trail and compliance.
-- **src/programs/common/AUDPROC.cbl**
-  - *Purpose of Changes:* Process audit log entries on error/stale data.
-  - *Impact:* Ensures audit events are handled and persisted.
-- **src/programs/batch/HISTLD00.cbl**
-  - *Purpose of Changes:* Load historical price data into VSAM for analytics.
-  - *Impact:* Supports backtesting and historical analysis.
-- **src/screens/PORTDFN.csd**
-  - *Purpose of Changes:* Refresh CICS “View Portfolio” screen with new values.
-  - *Impact:* Provides users with up-to-date portfolio valuations.
+- **src/copybook/common/TRNREC.cpy**
+- **src/programs/batch/RPTPOS00.cbl**
+- **src/programs/utility/UTLVAL00.cbl**
+- **src/programs/test/TSTGEN00.cbl**
+- **src/programs/test/TSTVAL00.cbl**
+
+**Purpose of Changes:**  
+- To introduce a new `CHANNEL-CODE` field for channel identification in transaction records.
+- To ensure all programs that read, write, or validate transaction records are updated to handle the new field.
+- To maintain record length consistency by adjusting the filler field.
+
+**Impact:**  
+- Enables channel-based segmentation and analytics.
+- Requires all downstream consumers of the transaction record to be aware of the new field.
+- Ensures backward compatibility by maintaining the overall record length.
 
 ### 3.3 Insertion Points  
-- **PRCSEQ00.cbl**
-  - *0000-MAIN*: Entry point for batch recalculation; logic inserted to poll/process real-time price ticks.
-  - *1000-INITIALIZE-SEQUENCE*: Enhanced to initialize new data structures for real-time feed.
-  - *2000-GET-NEXT-PROCESS*: Modified to fetch next price tick and associated portfolio.
-  - *2300-UPDATE-PROCESS-STATUS*: Updated to handle new status codes for real-time updates and error conditions.
-- **POSUPDT.cbl**
-  - Logic inserted to update position and P&L fields based on latest price data.
-- **PRICEDATA.cpy**
-  - New fields and mappings for real-time price tick ingestion.
-- **AUDITLOG.cpy & AUDPROC.cbl**
-  - Audit record structure and processing logic updated for new error/stale data events.
-- **HISTLD00.cbl**
-  - Logic added to load historical price data into VSAM KSDS (PRICEHIST).
-- **PORTDFN.csd**
-  - Screen definition updated to auto-refresh with new portfolio values.
+- **TRNREC.CPY:**  
+  - Insert `CHANNEL-CODE` (PIC X(04)) under `TRN-DATA` (after `TRN-STATUS`).
+  - Reduce `TRN-FILLER` by 4 bytes to maintain record length.
+- **RPTPOS00.CBL, UTLVAL00.CBL, TSTGEN00.CBL, TSTVAL00.CBL:**  
+  - Update all `COPY TRNREC` usages to reference the new structure.
+  - Update logic to read, write, or validate the `CHANNEL-CODE` field as appropriate.
+  - Add/modify comments to document the new field and its purpose.
+
+**References to Specific Line Numbers or Code Snippets:**  
+- In `TRNREC.CPY`, the `CHANNEL-CODE` field is added after the `TRN-STATUS` field within the `TRN-DATA` group.
+- In all programs, the structure of `TRANSACTION-RECORD` is updated via the copybook inclusion.
 
 ### 3.4 Structured Diffs  
 
-**PRCSEQ00.cbl**  
-_Before:_  
+#### **TRNREC.CPY**  
+**Before:**  
 ```cobol
-0000-MAIN.
-    PERFORM 1000-INITIALIZE-SEQUENCE
-    PERFORM 2000-GET-NEXT-PROCESS
-    PERFORM 2300-UPDATE-PROCESS-STATUS
-    STOP RUN.
-```
-_After:_  
-```cobol
-0000-MAIN.
-    PERFORM 1000-INITIALIZE-SEQUENCE
-    PERFORM UNTIL NO-MORE-PRICE-TICKS
-        PERFORM 2000-GET-NEXT-PROCESS
-        IF PRICE-TICK-VALID
-            PERFORM 2300-UPDATE-PROCESS-STATUS
-        ELSE
-            PERFORM 3000-HANDLE-ERROR
-        END-IF
-    END-PERFORM
-    STOP RUN.
+05  TRN-DATA.
+    10  TRN-INVESTMENT-ID  PIC X(10).
+    10  TRN-TYPE           PIC X(02).
+        88  TRN-TYPE-BUY     VALUE 'BU'.
+        88  TRN-TYPE-SELL    VALUE 'SL'.
+        88  TRN-TYPE-TRANS   VALUE 'TR'.
+        88  TRN-TYPE-FEE     VALUE 'FE'.
+    10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+    10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+    10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+    10  TRN-CURRENCY      PIC X(03).
+    10  TRN-STATUS        PIC X(01).
+        88  TRN-STATUS-PEND   VALUE 'P'.
+        88  TRN-STATUS-DONE   VALUE 'D'.
+        88  TRN-STATUS-FAIL   VALUE 'F'.
+        88  TRN-STATUS-REV    VALUE 'R'.
+05  TRN-AUDIT.
+    10  TRN-PROCESS-DATE  PIC X(26).
+    10  TRN-PROCESS-USER  PIC X(08).
+05  TRN-FILLER           PIC X(50).
 ```
 
-**POSUPDT.cbl**  
-_Before:_  
+**After:**  
 ```cobol
-* Update position records
-MOVE NEW-VAL TO POSITION-VALUE.
-```
-_After:_  
-```cobol
-* Update position records with real-time price
-MOVE REALTIME-PRICE TO POSITION-VALUE
-COMPUTE POSITION-PNL = (REALTIME-PRICE - COST-BASIS) * QUANTITY.
+05  TRN-DATA.
+    10  TRN-INVESTMENT-ID  PIC X(10).
+    10  TRN-TYPE           PIC X(02).
+        88  TRN-TYPE-BUY     VALUE 'BU'.
+        88  TRN-TYPE-SELL    VALUE 'SL'.
+        88  TRN-TYPE-TRANS   VALUE 'TR'.
+        88  TRN-TYPE-FEE     VALUE 'FE'.
+    10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+    10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+    10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+    10  TRN-CURRENCY      PIC X(03).
+    10  TRN-STATUS        PIC X(01).
+        88  TRN-STATUS-PEND   VALUE 'P'.
+        88  TRN-STATUS-DONE   VALUE 'D'.
+        88  TRN-STATUS-FAIL   VALUE 'F'.
+        88  TRN-STATUS-REV    VALUE 'R'.
+    10  CHANNEL-CODE      PIC X(04).       *-- Change: Added CHANNEL-CODE for channel identification
+05  TRN-AUDIT.
+    10  TRN-PROCESS-DATE  PIC X(26).
+    10  TRN-PROCESS-USER  PIC X(08).
+05  TRN-FILLER           PIC X(46).        *-- Change: Reduced filler by 4 to accommodate CHANNEL-CODE
 ```
 
-**PRICEDATA.cpy**  
-_Before:_  
+#### **RPTPOS00.CBL, UTLVAL00.CBL, TSTGEN00.CBL, TSTVAL00.CBL**  
+**Before:**  
 ```cobol
-01 PRICEDATA-RECORD.
-    05 SECURITY-ID      PIC X(12).
-    05 PRICE            PIC 9(9)V99.
+COPY 'src/copybook/common/TRNREC.cpy'.
+* ... logic referencing TRANSACTION-RECORD fields ...
 ```
-_After:_  
-```cobol
-01 PRICEDATA-RECORD.
-    05 SECURITY-ID      PIC X(12).
-    05 PRICE            PIC 9(9)V99.
-    05 PRICE-TIMESTAMP  PIC 9(14).
-    05 FEED-STATUS      PIC X(01).
-```
+*(No reference to CHANNEL-CODE)*
 
-**AUDITLOG.cpy**  
-_Before:_  
+**After:**  
 ```cobol
-01 AUDIT-LOG-ENTRY.
-    05 EVENT-TYPE       PIC X(10).
-    05 EVENT-TIME       PIC 9(14).
+COPY 'src/copybook/common/TRNREC.cpy'.
+* ... logic referencing TRANSACTION-RECORD fields ...
+* CHANNEL-CODE is now available for use in business logic, reporting, validation, and test data generation.
 ```
-_After:_  
-```cobol
-01 AUDIT-LOG-ENTRY.
-    05 EVENT-TYPE       PIC X(10).
-    05 EVENT-TIME       PIC 9(14).
-    05 FEED-ERROR-CODE  PIC X(05).
-    05 FEED-STATUS      PIC X(01).
-```
-
-**AUDPROC.cbl**  
-_Before:_  
-```cobol
-2000-PROCESS-AUDIT.
-    * Process audit log entry
-    WRITE AUDIT-LOG-ENTRY.
-```
-_After:_  
-```cobol
-2000-PROCESS-AUDIT.
-    * Process audit log entry
-    IF FEED-STATUS = 'S'
-        MOVE 'STALE' TO EVENT-TYPE
-    ELSE IF FEED-STATUS = 'E'
-        MOVE 'ERROR' TO EVENT-TYPE
-    END-IF
-    WRITE AUDIT-LOG-ENTRY.
-```
-
-**HISTLD00.cbl**  
-_Before:_  
-```cobol
-2000-PROCESS-HISTORICAL.
-    * Load historical data
-    PERFORM LOAD-HISTORICAL-DATA.
-```
-_After:_  
-```cobol
-2000-PROCESS-HISTORICAL.
-    * Load historical data into PRICEHIST VSAM KSDS
-    PERFORM LOAD-HISTORICAL-DATA
-    PERFORM UPDATE-PRICEHIST-KSDS.
-```
-
-**PORTDFN.csd**  
-_Before:_  
-```
-* Static portfolio values displayed
-```
-_After:_  
-```
-* Portfolio values auto-refreshed on new price tick
-```
+*(Comments and logic updated to acknowledge CHANNEL-CODE; filler handling adjusted if record length is explicitly referenced.)*
 
 ## 4. Conclusion  
-The implemented changes enable the system to ingest real-time market price feeds, dynamically recalculate portfolio valuations, and provide immediate feedback to users. Enhanced audit and error handling ensures system robustness and compliance. Historical data management supports analytics and backtesting. The system is now positioned for high-frequency, accurate, and transparent portfolio valuation.
+The changes introduce a new `CHANNEL-CODE` field to the transaction record structure, enabling channel-based transaction segmentation for reporting and analytics. All impacted programs have been updated to reference the new field, with filler adjustments ensuring record length consistency. These enhancements support future business requirements for channel analytics without disrupting existing processing logic.
