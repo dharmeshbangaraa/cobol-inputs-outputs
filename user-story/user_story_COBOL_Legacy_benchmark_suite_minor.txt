@@ -1,18 +1,57 @@
-Title: Fix rounding discrepancies in portfolio profit and loss calculation.
+Title: Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting
 
 User Story:
-As an Operations Analyst,
-I want all P&L values to be rounded consistently to two decimal places,
-so that financial reports and statements match downstream accounting systems exactly.
+As a COBOL developer,
+I want to add a `CHANNEL-CODE` field to the transaction file,
+so that the source of each transaction (e.g., ATM, Mobile, Branch) can be captured and processed,
+allowing for improved analytics, auditing, and fraud detection based on transaction channels through batch processing and reporting.
 
 Acceptance Criteria:
-1. Calculation Logic:
-   Update the COBOL arithmetic logic to use the ROUNDED keyword when moving computed P&L values from intermediate working fields to output fields.
+1. Definition
+   A new field `CHANNEL-CODE` (`PIC X(04)`) is defined in the relevant copybooks (e.g., `TRANSACTION.CPY`).
 
-2. Data Storage:
-   Ensure that database fields storing P&L values (e.g., DECIMAL(15,2) columns) maintain exactly two decimal places.
+2. File Layout
+   Transaction input and output files are updated to include the `CHANNEL-CODE` field and corresponding layout adjustments.
 
-3. Reporting Validation:
-   Ensure that batch-generated reports display rounded P&L values consistently in all formats, including TXT and CSV.
+3. Program Updates
+   All programs (batch, online, utility) that read or write transaction data are updated to handle the new field appropriately.
 
-4. Regression Test: Add unit tests in TSTVAL.jcl that feed known inputs (e.g., buy at 10.3333, sell at 10.6666) and expect P&L     of “0.33” rather than “0.34” (or vice versa per defined rule).
+4. Test Data
+   Sample input files and test data include valid `CHANNEL-CODE` values (e.g., `BRCH`, `ATM`, `MOBL`, `NETB`).
+
+5. LRECL & FD Adjustments
+   The LRECL (Logical Record Length) and FD (File Description) entries in COBOL programs and JCL are adjusted to reflect the new field.
+
+6. Documentation
+   The data dictionary and all relevant documentation are updated to reflect the structure and purpose of `CHANNEL-CODE`.
+
+7. Reporting
+   Any reports or logs that output transaction details include the `CHANNEL-CODE` field where applicable.
+
+Validation Notes:
+- Structure: The story clearly outlines the requirement, acceptance criteria, and justification.
+- Completeness: Covers definition, implementation, testing, documentation, and reporting.
+- Spelling & Grammar: Minor refinements made for clarity and consistency.
+
+Next Steps:
+1. Repo Scan:
+   Check `TRANSACTION.CPY` (or equivalent) for the presence of `CHANNEL-CODE`.
+   If not present, add the field:
+     05 CHANNEL-CODE PIC X(04). *> BRCH, ATM, MOBL, NETB
+
+2. Code Changes:
+   - Update relevant copybooks
+   - Modify file layouts
+   - Adjust LRECL and FD definitions
+
+3. Testing:
+   - Update input files
+   - Include diverse test values for `CHANNEL-CODE`
+
+4. Documentation:
+   - Update README
+   - Refresh the data dictionary
+   - Comment changes in COBOL programs
+
+5. Reporting:
+   - Ensure reports/logs show `CHANNEL-CODE` wherever transaction details are printed
