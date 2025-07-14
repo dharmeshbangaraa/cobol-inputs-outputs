@@ -8,7 +8,7 @@ so that my portfolio valuations and risk metrics are always up-to-date, enabling
 Acceptance Criteria:
 	1. Data Ingestion: The application connects to the external market-data API via MQ or REST every 5 seconds.
 	Incoming price ticks for all securities held in a portfolio are mapped to the DB2 PRICEDATA table.
-	2. Valuation Engine: On each price update, the batch job recalculates position values in PORTVAL and updates POSUPDT.
+	2. Valuation Engine: On each price update, the batch job recalculates position values in corresponding cobol file and updates to corresponding cobol file.
 	Position P&L is recalculated and stored with a timestamp.
 	3. Online Display: The CICS screen for “View Portfolio” automatically refreshes to show current valuations within 10 seconds of the last price update.
 	4. Error Handling & Audit: If the feed fails or prices are stale for more than 30 seconds, the system raises a UDF-level alarm and writes to AUDITLOG.
