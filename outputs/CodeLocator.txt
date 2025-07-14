@@ -1,19 +1,19 @@
 **Summary**:
 User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting  
 - 5 impacted components identified (**High impact only**)  
-- High complexity change affecting core transaction data structures, file layouts, batch processing, reporting, and copybooks. All programs that read/write transaction data or generate reports must be updated for the new field.
+- High complexity change: affects core transaction data structures, all batch and reporting programs that process transaction files, and JCLs referencing these files. All programs and copybooks that define, read, write, or report on transaction data must be updated for the new field.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                              | Impact | Nature  | Affected Paragraphs/Sections            | Dependency Path                                      |
-|------------------------------------------------|--------|---------|-----------------------------------------|------------------------------------------------------|
-| `src/copybook/common/TRNREC.cpy`               | High   | Direct  | CHANNEL-CODE definition                 | Used by all transaction-processing programs          |
-| `src/programs/batch/RPTPOS00.cbl`              | High   | Direct  | 1100-OPEN-FILES, 2200-PROCESS-TRANSACTIONS | Reads transaction file, outputs reports              |
-| `src/programs/utility/UTLVAL00.cbl`            | High   | Direct  | 1100-OPEN-FILES, 2400-CHECK-FORMAT      | Reads/validates transaction file via TRNREC.cpy      |
-| `src/programs/test/TSTGEN00.cbl`               | High   | Direct  | 2300-GEN-TRANSACTION, 2320-WRITE-TRAN-RECORD | Generates test transaction files                     |
-| `src/programs/test/TSTVAL00.cbl`               | High   | Direct  | 1100-OPEN-FILES, 2100-EXECUTE-TEST      | Reads test transaction files for validation          |
+| Program File Path                           | Impact | Nature  | Affected Paragraphs/Sections         | Dependency Path                                  |
+|---------------------------------------------|--------|---------|--------------------------------------|--------------------------------------------------|
+| `src/copybook/common/TRNREC.cpy`           | High   | Direct  | All (copybook structure)             | Used by all transaction-processing programs      |
+| `src/programs/batch/RPTPOS00.cbl`          | High   | Direct  | 1100-OPEN-FILES, 2200-PROCESS-TRANSACTIONS | Reads/writes transaction file, uses TRNREC       |
+| `src/programs/utility/UTLVAL00.cbl`        | High   | Direct  | 1100-OPEN-FILES, 2100-PROCESS-VALIDATION | Reads/writes transaction file, uses TRNREC       |
+| `src/programs/test/TSTGEN00.cbl`           | High   | Direct  | 1100-OPEN-FILES, 2300-GEN-TRANSACTION | Generates test transaction data, uses TRNREC     |
+| `src/programs/test/TSTVAL00.cbl`           | High   | Direct  | 1100-OPEN-FILES, 2000-PROCESS        | Validates test transaction data, uses TRNREC     |
 
 ---
 
@@ -25,48 +25,48 @@ User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identificat
     "impactedComponents": [
       {
         "programFilePath": "src/copybook/common/TRNREC.cpy",
-        "impactScore": 1.0,
+        "impactScore": 0.99,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["CHANNEL-CODE definition"],
+        "affectedParagraphs": ["COPYBOOK_STRUCTURE"],
         "dependencyPath": ["TRNREC.cpy"],
-        "rationale": "Core transaction record copybook; all programs referencing transaction data must be updated to include and process the new CHANNEL-CODE field."
+        "rationale": "Primary copybook for transaction record structure; all programs using transaction data depend on this definition. Adding CHANNEL-CODE here is foundational."
       },
       {
         "programFilePath": "src/programs/batch/RPTPOS00.cbl",
-        "impactScore": 0.98,
+        "impactScore": 0.97,
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": ["1100-OPEN-FILES", "2200-PROCESS-TRANSACTIONS"],
         "dependencyPath": ["RPTPOS00.cbl", "TRNREC.cpy"],
-        "rationale": "Reads transaction file and generates reports; must include CHANNEL-CODE in file layout, FD, and reporting output."
+        "rationale": "Batch reporting program that reads/writes transaction files and uses TRNREC copybook. Must be updated to handle new field and adjust file layouts/LRECL."
       },
       {
         "programFilePath": "src/programs/utility/UTLVAL00.cbl",
-        "impactScore": 0.97,
+        "impactScore": 0.96,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1100-OPEN-FILES", "2400-CHECK-FORMAT"],
+        "affectedParagraphs": ["1100-OPEN-FILES", "2100-PROCESS-VALIDATION"],
         "dependencyPath": ["UTLVAL00.cbl", "TRNREC.cpy"],
-        "rationale": "Performs validation on transaction files; must validate presence and format of CHANNEL-CODE."
+        "rationale": "Utility validation program that processes transaction files and uses TRNREC. Will require updates to handle new field and adjust validation logic."
       },
       {
         "programFilePath": "src/programs/test/TSTGEN00.cbl",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2300-GEN-TRANSACTION", "2320-WRITE-TRAN-RECORD"],
+        "affectedParagraphs": ["1100-OPEN-FILES", "2300-GEN-TRANSACTION"],
         "dependencyPath": ["TSTGEN00.cbl", "TRNREC.cpy"],
-        "rationale": "Generates test transaction files; must populate CHANNEL-CODE for test scenarios."
+        "rationale": "Test data generator for transactions. Must produce test records with CHANNEL-CODE and update file layouts accordingly."
       },
       {
         "programFilePath": "src/programs/test/TSTVAL00.cbl",
-        "impactScore": 0.95,
+        "impactScore": 0.94,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1100-OPEN-FILES", "2100-EXECUTE-TEST"],
+        "affectedParagraphs": ["1100-OPEN-FILES", "2000-PROCESS"],
         "dependencyPath": ["TSTVAL00.cbl", "TRNREC.cpy"],
-        "rationale": "Reads and validates test transaction files; must handle CHANNEL-CODE in test validation logic."
+        "rationale": "Test validation program for transaction files. Must validate presence and correctness of CHANNEL-CODE in test data."
       }
     ]
   }
@@ -80,35 +80,35 @@ User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identificat
 ```mermaid
 graph TD
     subgraph Copybook
-        TRNREC["src/copybook/common/TRNREC.cpy"]
+        A[src/copybook/common/TRNREC.cpy]:::high
     end
     subgraph Batch
-        RPTPOS["src/programs/batch/RPTPOS00.cbl"]
+        B[src/programs/batch/RPTPOS00.cbl]:::high
     end
     subgraph Utility
-        UTLVAL["src/programs/utility/UTLVAL00.cbl"]
+        C[src/programs/utility/UTLVAL00.cbl]:::high
     end
     subgraph Test
-        TSTGEN["src/programs/test/TSTGEN00.cbl"]
-        TSTVAL["src/programs/test/TSTVAL00.cbl"]
+        D[src/programs/test/TSTGEN00.cbl]:::high
+        E[src/programs/test/TSTVAL00.cbl]:::high
     end
 
-    TRNREC -- High Impact --> RPTPOS
-    TRNREC -- High Impact --> UTLVAL
-    TRNREC -- High Impact --> TSTGEN
-    TRNREC -- High Impact --> TSTVAL
-    classDef highImpact fill:#ffcccc,stroke:#b22222,stroke-width:2px;
-    class TRNREC,RPTPOS,UTLVAL,TSTGEN,TSTVAL highImpact;
+    A --> B
+    A --> C
+    A --> D
+    A --> E
+
+    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
 ```
 
 ---
 
 **Reasoning**:
-- The `TRNREC.cpy` copybook is the canonical definition for transaction records and is included in all programs that process transaction data. Adding `CHANNEL-CODE` here is the primary change.
-- All batch, utility, and test programs that read/write transaction files (including for reporting and validation) depend on this copybook and must update their file layouts, FD sections, and logic to accommodate the new field.
-- Only programs and copybooks directly involved with transaction file I/O and reporting are included as **High impact**; unrelated programs are excluded.
-- Impact scores are highest for the core copybook and direct transaction-processing/reporting programs, as these are critical for correct system operation and data integrity.
+- The `TRNREC.cpy` copybook is the canonical definition for transaction records. All transaction-processing programs include this copybook, so any structural change (like adding `CHANNEL-CODE`) is high impact.
+- `RPTPOS00.cbl` is a batch reporting program that reads/writes transaction files and will need to process the new field.
+- `UTLVAL00.cbl` is a utility for validating transaction files; it must be updated to validate the new field.
+- `TSTGEN00.cbl` and `TSTVAL00.cbl` are test programs that generate and validate transaction test data, respectively, and must be updated to handle the new field.
+- All these programs will require LRECL/FD adjustments, logic to read/write the new field, and updates to reporting/validation logic.
+- Only these components are marked as HIGH impact because they directly define, process, or validate the transaction file structure. Other programs, copybooks, and JCLs are not directly impacted unless they reference transaction files or TRNREC.cpy, which is not indicated in the dependency map for HIGH impact.
 
----
-
-**End of Report**
+**Note:** If additional programs or JCLs in the repository reference the transaction file or TRNREC.cpy, they should be similarly updated, but only the above are confirmed as HIGH impact from the available dependency analysis.
