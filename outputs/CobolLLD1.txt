@@ -1,33 +1,235 @@
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document is intended to provide a comprehensive technical overview and Low-Level Design (LLD) for the requested changes to the COBOL application's transaction processing components, specifically the addition of a `CHANNEL-CODE` field to the transaction file structure and all related processing and reporting logic.
+This document provides a comprehensive technical overview and Low-Level Design (LLD) for the enhancement of the COBOL legacy application suite. The primary objective is to add a `CHANNEL-CODE` field to the transaction file structure, enabling channel identification in batch processing and reporting. This change impacts the transaction record copybook and all programs that read or write transaction records, specifically the batch reporting and utility validation modules.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The application processes transaction records using a central copybook (`TRNREC.cpy`) and two main COBOL programs: a batch reporting program (`RPTPOS00.cbl`) and a utility validation program (`UTLVAL00.cbl`). These programs read and write transaction files, perform validation, and generate reports.
+The COBOL application suite processes business-critical transaction data. The architecture is modular, with a central transaction record copybook (`TRNREC.cpy`) included in all transaction-processing programs. The batch report generator (`RPTPOS00.cbl`) and the utility validation program (`UTLVAL00.cbl`) are the primary consumers of this structure. The flow consists of initialization (file open and setup), main processing (transaction reading, reporting, validation), and termination (file closure and cleanup).
 
 ### 2.2 Detailed Logic  
-*Unable to provide detailed logic, code references, or flowcharts because the actual COBOL codebase could not be accessed. The GitHub repository or file paths provided were not accessible (404 errors).*
+
+#### 2.2.1 Transaction Record Structure (`src/copybook/common/TRNREC.cpy`)
+Defines the layout for all transaction records, including keys, data, audit fields, and filler.
+
+```cobol
+ 01  TRANSACTION-RECORD.
+     05  TRN-KEY.
+         10  TRN-DATE           PIC X(08).
+         10  TRN-TIME           PIC X(06).
+         10  TRN-PORTFOLIO-ID   PIC X(08).
+         10  TRN-SEQUENCE-NO    PIC X(06).
+     05  TRN-DATA.
+         10  TRN-INVESTMENT-ID  PIC X(10).
+         10  TRN-TYPE           PIC X(02).
+             88  TRN-TYPE-BUY     VALUE 'BU'.
+             88  TRN-TYPE-SELL    VALUE 'SL'.
+             88  TRN-TYPE-TRANS   VALUE 'TR'.
+             88  TRN-TYPE-FEE     VALUE 'FE'.
+         10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+         10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+         10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+         10  TRN-CURRENCY      PIC X(03).
+         10  TRN-STATUS        PIC X(01).
+             88  TRN-STATUS-PEND   VALUE 'P'.
+             88  TRN-STATUS-DONE   VALUE 'D'.
+             88  TRN-STATUS-FAIL   VALUE 'F'.
+             88  TRN-STATUS-REV    VALUE 'R'.
+     05  TRN-AUDIT.
+         10  TRN-PROCESS-DATE  PIC X(26).
+         10  TRN-PROCESS-USER  PIC X(08).
+     05  TRN-FILLER           PIC X(50).
+```
+
+#### 2.2.2 Batch Report Generator (`src/programs/batch/RPTPOS00.cbl`)
+- **Initialization:**  
+  - Opens position master, transaction history, and report files (`1100-OPEN-FILES`).
+  - Writes report headers.
+- **Processing:**  
+  - Reads positions and formats position details.
+  - Processes transactions (`2200-PROCESS-TRANSACTIONS`), summarizing activity.
+  - Writes summary, exceptions, and metrics.
+- **Termination:**  
+  - Closes all files and handles errors.
+
+#### 2.2.3 Utility Validation Program (`src/programs/utility/UTLVAL00.cbl`)
+- **Initialization:**  
+  - Opens validation control, position master, transaction history, and error report files (`1100-OPEN-FILES`).
+  - Initializes processing totals.
+- **Processing:**  
+  - Reads validation control records and dispatches to the appropriate validation routine.
+  - Format validation is handled in `2400-CHECK-FORMAT`.
+- **Termination:**  
+  - Closes all files and writes error records as needed.
+
+#### Flowchart:  
+```mermaid
+flowchart TD
+    Start(["Start"])
+    Init["Initialization:
+Open Files"]
+    Process["Main Processing:
+Read/Validate/Report Transactions"]
+    Term["Termination:
+Close Files"]
+    End(["End"])
+
+    Start --> Init
+    Init --> Process
+    Process --> Term
+    Term --> End
+```
 
 ## 3. Proposed Changes  
 ### 3.1 User Story or Analysis Report Summary  
-Add a `CHANNEL-CODE` field to the transaction file for channel identification in batch processing and reporting.
+**User Story:**  
+Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting.
+
+**Summary:**  
+The addition of the `CHANNEL-CODE` field to the transaction record enables the identification of the transaction's originating channel (e.g., ONLINE, BRANCH, MOBILE). This change propagates to all programs that read or write transaction records, requiring updates to the copybook, file layouts, and processing logic.
 
 ### 3.2 Proposed Code Changes Summary:
-#### 3.2.1 Impacted Sections and Files:
-- `src/copybook/common/TRNREC.cpy` (copybook structure)
-- `src/programs/batch/RPTPOS00.cbl` (1100-OPEN-FILES, 2200-PROCESS-TRANSACTIONS)
-- `src/programs/utility/UTLVAL00.cbl` (1100-OPEN-FILES, 2400-CHECK-FORMAT)
 
-  - Purpose of Changes: To enable channel identification for each transaction, supporting enhanced batch processing and reporting.
-  - Impact: Changes to the transaction data structure, file layouts, batch processing, reporting, and all programs that read/write transaction records.
+#### 3.2.1 Impacted Sections and Files:
+- **src/copybook/common/TRNREC.cpy**  
+  - *Purpose of Changes:* Add `CHANNEL-CODE` field to the transaction record structure.
+  - *Impact:* All programs using this copybook will now have access to the channel code for each transaction.
+
+- **src/programs/batch/RPTPOS00.cbl**  
+  - *Purpose of Changes:* Update file definitions and reporting logic to include the new field.
+  - *Impact:* Reports can now include or filter by channel code.
+
+- **src/programs/utility/UTLVAL00.cbl**  
+  - *Purpose of Changes:* Update file definitions and validation logic to handle the new field.
+  - *Impact:* Validation routines can now check for the presence and correctness of the channel code.
 
 ### 3.3 Insertion Points  
-*Unable to specify exact insertion points or provide code references due to lack of access to the actual COBOL codebase.*
+- **TRNREC.cpy:**  
+  - Insert `CHANNEL-CODE` field in the `TRN-DATA` group, after `TRN-CURRENCY` and before `TRN-STATUS`.
+- **RPTPOS00.cbl:**  
+  - The copybook inclusion automatically updates the record structure. Update any report formatting logic to display or process `CHANNEL-CODE` as needed in `2200-PROCESS-TRANSACTIONS`.
+- **UTLVAL00.cbl:**  
+  - The copybook inclusion automatically updates the record structure. Update format validation logic in `2400-CHECK-FORMAT` and related routines to validate `CHANNEL-CODE`.
 
 ### 3.4 Structured Diffs  
-*Unable to provide before-and-after code snippets without access to the actual COBOL code.*
+
+#### src/copybook/common/TRNREC.cpy
+
+**Before:**
+```cobol
+     05  TRN-DATA.
+         10  TRN-INVESTMENT-ID  PIC X(10).
+         10  TRN-TYPE           PIC X(02).
+             88  TRN-TYPE-BUY     VALUE 'BU'.
+             88  TRN-TYPE-SELL    VALUE 'SL'.
+             88  TRN-TYPE-TRANS   VALUE 'TR'.
+             88  TRN-TYPE-FEE     VALUE 'FE'.
+         10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+         10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+         10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+         10  TRN-CURRENCY      PIC X(03).
+         10  TRN-STATUS        PIC X(01).
+             88  TRN-STATUS-PEND   VALUE 'P'.
+             88  TRN-STATUS-DONE   VALUE 'D'.
+             88  TRN-STATUS-FAIL   VALUE 'F'.
+             88  TRN-STATUS-REV    VALUE 'R'.
+```
+
+**After:**
+```cobol
+     05  TRN-DATA.
+         10  TRN-INVESTMENT-ID  PIC X(10).
+         10  TRN-TYPE           PIC X(02).
+             88  TRN-TYPE-BUY     VALUE 'BU'.
+             88  TRN-TYPE-SELL    VALUE 'SL'.
+             88  TRN-TYPE-TRANS   VALUE 'TR'.
+             88  TRN-TYPE-FEE     VALUE 'FE'.
+         10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+         10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+         10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+         10  TRN-CURRENCY      PIC X(03).
+         10  TRN-CHANNEL-CODE  PIC X(04).
+         10  TRN-STATUS        PIC X(01).
+             88  TRN-STATUS-PEND   VALUE 'P'.
+             88  TRN-STATUS-DONE   VALUE 'D'.
+             88  TRN-STATUS-FAIL   VALUE 'F'.
+             88  TRN-STATUS-REV    VALUE 'R'.
+```
+
+#### src/programs/batch/RPTPOS00.cbl
+
+**Before (Excerpt from 2200-PROCESS-TRANSACTIONS):**
+```cobol
+       2200-PROCESS-TRANSACTIONS.
+           PERFORM 2210-READ-TRANSACTIONS
+           PERFORM 2220-SUMMARIZE-ACTIVITY.
+```
+
+**After (Excerpt from 2200-PROCESS-TRANSACTIONS):**
+```cobol
+       2200-PROCESS-TRANSACTIONS.
+           PERFORM 2210-READ-TRANSACTIONS
+           PERFORM 2220-SUMMARIZE-ACTIVITY
+           PERFORM 2230-REPORT-CHANNEL-CODE.
+
+       2230-REPORT-CHANNEL-CODE.
+           DISPLAY "CHANNEL CODE: " TRN-CHANNEL-CODE.
+           * Optionally, include TRN-CHANNEL-CODE in report output
+```
+
+**Before (File Section):**
+```cobol
+       FILE SECTION.
+           COPY POSREC.
+           COPY TRNREC.
+```
+
+**After (File Section):**
+```cobol
+       FILE SECTION.
+           COPY POSREC.
+           COPY TRNREC.
+           * TRNREC now includes TRN-CHANNEL-CODE
+```
+
+#### src/programs/utility/UTLVAL00.cbl
+
+**Before (Excerpt from 2400-CHECK-FORMAT):**
+```cobol
+       2400-CHECK-FORMAT.
+           PERFORM 2410-CHECK-POSITION-FORMAT
+           PERFORM 2420-CHECK-TRANSACTION-FORMAT.
+```
+
+**After (Excerpt from 2400-CHECK-FORMAT):**
+```cobol
+       2400-CHECK-FORMAT.
+           PERFORM 2410-CHECK-POSITION-FORMAT
+           PERFORM 2420-CHECK-TRANSACTION-FORMAT
+           PERFORM 2430-CHECK-CHANNEL-CODE-FORMAT.
+
+       2430-CHECK-CHANNEL-CODE-FORMAT.
+           IF TRN-CHANNEL-CODE = SPACES OR TRN-CHANNEL-CODE = LOW-VALUES
+               MOVE "CHANNEL CODE MISSING" TO WS-ERR-DESC
+               WRITE ERROR-RECORD FROM WS-ERROR-LINE
+           END-IF
+           * Optionally, validate allowed values (e.g., 'ONLN', 'BRCH', 'MOBL')
+```
+
+**Before (File Section):**
+```cobol
+       FILE SECTION.
+           COPY POSREC.
+           COPY TRNREC.
+```
+
+**After (File Section):**
+```cobol
+       FILE SECTION.
+           COPY POSREC.
+           COPY TRNREC.
+           * TRNREC now includes TRN-CHANNEL-CODE
+```
 
 ## 4. Conclusion  
-The proposed changes are critical for enabling channel-based processing and reporting in the legacy COBOL application. However, to proceed with a detailed technical document and LLD—including flowcharts, code references, and structured diffs—access to the actual COBOL codebase is required. Please provide the correct repository details or direct access to the relevant files to continue.
+The proposed changes introduce a new `CHANNEL-CODE` field to the transaction record structure, enabling channel-based identification and reporting throughout the COBOL legacy application suite. The change is implemented at the copybook level and propagates to all dependent programs, with updates to reporting and validation logic to ensure the new field is processed and validated correctly. This enhancement supports improved analytics, auditing, and operational flexibility for business-critical transaction processing.
