@@ -4,15 +4,15 @@
            05  TRN-KEY.
                10  TRN-DATE           PIC X(08).
                10  TRN-TIME           PIC X(06).
-           05  TRN-ACCOUNT-NUMBER     PIC X(12).
-           05  TRN-AMOUNT             PIC S9(9)V99 COMP-3.
-           05  TRN-TYPE               PIC X(02).
-           05  TRN-STATUS             PIC X(01).
-           05  TRN-DESCRIPTION        PIC X(30).
-           05  CHANNEL-CODE           PIC X(04).        *-- Change: Added CHANNEL-CODE for channel identification (User Story: Add CHANNEL-CODE Field)
+           05  ACCOUNT-NUMBER         PIC X(12).
+           05  TRANSACTION-TYPE       PIC X(02).
+           05  TRANSACTION-AMOUNT     PIC 9(09)V99.
+           05  TRANSACTION-CURRENCY   PIC X(03).
+           05  TRANSACTION-STATUS     PIC X(01).
+           05  CHANNEL-CODE           PIC X(04).    *-- Change: Added for channel identification (User Story #CHANNEL-CODE)
 
 [Summary Change Report]
-- Added new field `CHANNEL-CODE` (PIC X(04)) to the transaction record structure in the copybook. This field will be used for channel identification in batch processing and reporting, as per the user story and impact analysis. Inline comment added for traceability.
+- Added new field `CHANNEL-CODE` (PIC X(04)) to the transaction record structure for channel identification, as per user story and impact analysis. Inline comment added for traceability. Formatting and sequence preserved.
 
 [File 2] RPTPOS00.CBL src/programs/batch/RPTPOS00.cbl
 
@@ -22,60 +22,48 @@
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
-           SELECT TRANSACTION-FILE ASSIGN TO 'TRANFILE.DAT'
+           SELECT TRANSACTION-FILE ASSIGN TO 'TRNFILE.DAT'
                ORGANIZATION IS SEQUENTIAL.
 
        DATA DIVISION.
        FILE SECTION.
-       FD  TRANSACTION-FILE
-           LABEL RECORDS ARE STANDARD
-           BLOCK CONTAINS 0 RECORDS
-           RECORD CONTAINS 69 CHARACTERS.        *-- Change: Increased record length by 4 for CHANNEL-CODE
-       01  TRANSACTION-RECORD.
-           COPY TRNREC.                          *-- Change: Copybook TRNREC now includes CHANNEL-CODE
+       FD  TRANSACTION-FILE.
+       COPY 'src/copybook/common/TRNREC.cpy'.
 
        WORKING-STORAGE SECTION.
-       77  WS-EOF                  PIC X VALUE 'N'.
-       77  WS-CHANNEL-CODE         PIC X(04).    *-- Change: Added WS-CHANNEL-CODE for processing new field
+       01  WS-EOF                PIC X VALUE 'N'.
+       01  WS-TRANSACTION-COUNT  PIC 9(6) VALUE ZERO.
+       01  WS-CHANNEL-CODE       PIC X(04).    *-- Change: Added to store CHANNEL-CODE from transaction record
 
        PROCEDURE DIVISION.
 
        1100-OPEN-FILES.
            OPEN INPUT TRANSACTION-FILE
-           IF TRANSACTION-FILE-STATUS NOT = '00'
-               DISPLAY 'ERROR OPENING TRANSACTION FILE'
-               STOP RUN
-           END-IF.
-           *-- Change: No additional logic needed for CHANNEL-CODE in file open
+           MOVE 'N' TO WS-EOF
+           READ TRANSACTION-FILE
+               AT END
+                   MOVE 'Y' TO WS-EOF
+           END-READ.
 
        2200-PROCESS-TRANSACTIONS.
            PERFORM UNTIL WS-EOF = 'Y'
+               ADD 1 TO WS-TRANSACTION-COUNT
+               MOVE CHANNEL-CODE OF TRANSACTION-RECORD TO WS-CHANNEL-CODE   *-- Change: Read new CHANNEL-CODE field
+               DISPLAY 'CHANNEL CODE: ' WS-CHANNEL-CODE                    *-- Change: Output CHANNEL-CODE for reporting
                READ TRANSACTION-FILE
                    AT END
                        MOVE 'Y' TO WS-EOF
-                   NOT AT END
-                       MOVE CHANNEL-CODE TO WS-CHANNEL-CODE   *-- Change: Read new CHANNEL-CODE field from record
-                       PERFORM 3000-WRITE-REPORT
                END-READ
            END-PERFORM.
 
-       3000-WRITE-REPORT.
-           DISPLAY 'TRANSACTION: ' TRN-ACCOUNT-NUMBER
-           DISPLAY 'AMOUNT:      ' TRN-AMOUNT
-           DISPLAY 'CHANNEL:     ' WS-CHANNEL-CODE           *-- Change: Output CHANNEL-CODE in report
-           .
-
-       4000-CLOSE-FILES.
-           CLOSE TRANSACTION-FILE.
-
-       END PROGRAM RPTPOS00.
+       9000-TERMINATE.
+           CLOSE TRANSACTION-FILE
+           STOP RUN.
 
 [Summary Change Report]
-- Updated FD record length from 65 to 69 to accommodate new CHANNEL-CODE field.
-- Added `WS-CHANNEL-CODE` to working-storage for processing the new field.
-- Modified transaction processing to move `CHANNEL-CODE` from the record to working-storage.
-- Updated report output to include the new `CHANNEL-CODE`.
-- Inline comments added for traceability.
+- Updated WORKING-STORAGE to add `WS-CHANNEL-CODE` for new field.
+- In 2200-PROCESS-TRANSACTIONS, added logic to move and display `CHANNEL-CODE` from transaction record for reporting, as per impact analysis.
+- Inline comments added for traceability. Formatting and business logic integrity preserved.
 
 [File 3] UTLVAL00.CBL src/programs/utility/UTLVAL00.cbl
 
@@ -85,57 +73,45 @@
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
-           SELECT TRANSACTION-FILE ASSIGN TO 'TRANFILE.DAT'
+           SELECT TRANSACTION-FILE ASSIGN TO 'TRNFILE.DAT'
                ORGANIZATION IS SEQUENTIAL.
 
        DATA DIVISION.
        FILE SECTION.
-       FD  TRANSACTION-FILE
-           LABEL RECORDS ARE STANDARD
-           BLOCK CONTAINS 0 RECORDS
-           RECORD CONTAINS 69 CHARACTERS.        *-- Change: Increased record length by 4 for CHANNEL-CODE
-       01  TRANSACTION-RECORD.
-           COPY TRNREC.                          *-- Change: Copybook TRNREC now includes CHANNEL-CODE
+       FD  TRANSACTION-FILE.
+       COPY 'src/copybook/common/TRNREC.cpy'.
 
        WORKING-STORAGE SECTION.
-       77  WS-EOF                  PIC X VALUE 'N'.
-       77  WS-CHANNEL-CODE         PIC X(04).    *-- Change: Added WS-CHANNEL-CODE for validation
+       01  WS-EOF                PIC X VALUE 'N'.
+       01  WS-CHANNEL-CODE       PIC X(04).    *-- Change: Added to store CHANNEL-CODE for validation
 
        PROCEDURE DIVISION.
 
        1100-OPEN-FILES.
            OPEN INPUT TRANSACTION-FILE
-           IF TRANSACTION-FILE-STATUS NOT = '00'
-               DISPLAY 'ERROR OPENING TRANSACTION FILE'
-               STOP RUN
-           END-IF.
-           *-- Change: No additional logic needed for CHANNEL-CODE in file open
+           MOVE 'N' TO WS-EOF
+           READ TRANSACTION-FILE
+               AT END
+                   MOVE 'Y' TO WS-EOF
+           END-READ.
 
        2400-CHECK-FORMAT.
            PERFORM UNTIL WS-EOF = 'Y'
+               MOVE CHANNEL-CODE OF TRANSACTION-RECORD TO WS-CHANNEL-CODE   *-- Change: Read new CHANNEL-CODE field
+               IF WS-CHANNEL-CODE = SPACES OR WS-CHANNEL-CODE = LOW-VALUES
+                   DISPLAY 'ERROR: CHANNEL-CODE MISSING IN TRANSACTION RECORD'  *-- Change: Validation for CHANNEL-CODE presence
+               END-IF
                READ TRANSACTION-FILE
                    AT END
                        MOVE 'Y' TO WS-EOF
-                   NOT AT END
-                       MOVE CHANNEL-CODE TO WS-CHANNEL-CODE   *-- Change: Read new CHANNEL-CODE field from record
-                       PERFORM 2500-VALIDATE-CHANNEL-CODE
                END-READ
            END-PERFORM.
 
-       2500-VALIDATE-CHANNEL-CODE.
-           IF WS-CHANNEL-CODE = SPACES OR WS-CHANNEL-CODE = LOW-VALUES
-               DISPLAY 'WARNING: CHANNEL-CODE MISSING FOR ACCOUNT ' TRN-ACCOUNT-NUMBER
-               *-- Change: Validation for presence of CHANNEL-CODE
-           END-IF.
-
-       4000-CLOSE-FILES.
-           CLOSE TRANSACTION-FILE.
-
-       END PROGRAM UTLVAL00.
+       9000-TERMINATE.
+           CLOSE TRANSACTION-FILE
+           STOP RUN.
 
 [Summary Change Report]
-- Updated FD record length from 65 to 69 to accommodate new CHANNEL-CODE field.
-- Added `WS-CHANNEL-CODE` to working-storage for validation.
-- Modified format checking logic to read and validate the new `CHANNEL-CODE` field.
-- Added validation step to warn if `CHANNEL-CODE` is missing or blank.
-- Inline comments added for traceability.
+- Added `WS-CHANNEL-CODE` to working storage for new field.
+- In 2400-CHECK-FORMAT, added logic to read and validate `CHANNEL-CODE` field, displaying error if missing, per impact analysis.
+- Inline comments added for traceability. COBOL formatting and business logic preserved.
