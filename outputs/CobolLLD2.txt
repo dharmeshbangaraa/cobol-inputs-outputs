@@ -1,134 +1,146 @@
-# Technical Document and Low-Level Design (LLD)
+** Technical Document and Low-Level Design (LLD)**
 
 ## 1. Introduction  
-This document details the technical changes and low-level design (LLD) for the recent enhancements made to the COBOL application modules related to transaction processing, reporting, and validation. The primary focus of these changes is the introduction of a new `CHANNEL-CODE` field in the transaction record structure, with corresponding updates in reporting and validation logic across multiple programs.
+This document details the technical changes and low-level design (LLD) for the COBOL application modules impacted by the introduction of the `TRN-CHANNEL-CODE` field in the transaction record structure. The changes span the transaction record copybook, the daily position report generator, and the data validation utility. The purpose of this document is to provide a comprehensive overview of the modifications, their rationale, and the expected impact on the system.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The COBOL application suite manages financial transaction records, generates daily position reports, and performs comprehensive data validation. The core modules include:
-- **TRNREC.CPY**: Defines the transaction record structure.
-- **RPTPOS00.CBL**: Generates daily position reports, summarizing portfolio and transaction activity.
+The COBOL application processes financial transactions and positions, generates daily reports, and performs data validation. The main modules involved are:
+- **TRNREC.CPY**: Defines the structure of transaction records.
+- **RPTPOS00.CBL**: Generates daily position and transaction activity reports.
 - **UTLVAL00.CBL**: Performs data validation, including integrity and format checks.
 
 ### 2.2 Detailed Logic  
 #### Transaction Record Structure (TRNREC.CPY)
-- Defines all fields for a transaction, including date, time, portfolio, investment, type, quantity, price, amount, currency, status, and audit information.
-- The new `TRN-CHANNEL-CODE` field (PIC X(04)) is added for channel identification.
+- Defines the layout for transaction records, including keys, data fields, audit information, and filler for record length consistency.
 
-#### Daily Position Report (RPTPOS00.CBL)
-- Initializes and opens necessary files.
-- Reads position and transaction records.
-- Formats and writes position and transaction details to the report.
-- The transaction detail now includes the new channel code.
+#### Daily Position Report Generator (RPTPOS00.CBL)
+- **Initialization**: Opens necessary files and writes report headers.
+- **Processing**: Reads position and transaction records, formats them, and writes details to the report file.
+- **Transaction Formatting**: Maps transaction fields from the record to the report layout.
+- **Cleanup**: Closes all files and handles errors.
 
 #### Data Validation Utility (UTLVAL00.CBL)
-- Opens and reads validation control, position, and transaction files.
-- Performs various validation routines (integrity, cross-reference, format, balance).
-- Now validates the presence and format of the new channel code in transaction records.
+- **Initialization**: Opens files and initializes processing totals.
+- **Processing**: Reads validation control records and performs the specified validation (integrity, cross-reference, format, balance).
+- **Transaction Integrity Check**: Ensures required fields are present.
+- **Transaction Format Check**: Validates field formats.
+- **Cleanup**: Closes files and writes error records as needed.
 
 #### Flowchart:  
 ```
 flowchart TD
     Start(["Start"])
     Init["Initialize
-Files and
-Headers"]
-    ReadPos["Read
-Position
-Records"]
-    FormatPos["Format
-Position
-Details"]
-    ReadTran["Read
-Transaction
-Records"]
-    FormatTran["Format
-Transaction
-Details
-(Includes
-CHANNEL-CODE)"]
-    Validate["Perform
-Data
-Validation
-(Includes
-CHANNEL-CODE
-Checks)"]
-    WriteReport["Write
-Report
-Records"]
+(Open Files,
+Write Headers)"]
+    ProcessPositions["Process Positions
+(Read, Format,
+Write Details)"]
+    ProcessTransactions["Process Transactions
+(Read, Format,
+Write Details)"]
+    ValidateData["Validate Data
+(Integrity, Format,
+Cross-Reference,
+Balance)"]
     Cleanup["Cleanup
-and Close
-Files"]
+(Close Files,
+Handle Errors)"]
     End(["End"])
 
     Start --> Init
-    Init --> ReadPos
-    ReadPos --> FormatPos
-    FormatPos --> ReadTran
-    ReadTran --> FormatTran
-    FormatTran --> Validate
-    Validate --> WriteReport
-    WriteReport --> Cleanup
+    Init --> ProcessPositions
+    ProcessPositions --> ProcessTransactions
+    ProcessTransactions --> ValidateData
+    ValidateData --> Cleanup
     Cleanup --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-**Requirement:**  
-Introduce a new `CHANNEL-CODE` field to the transaction record structure to enable channel-based identification and reporting. Update all relevant modules to support, report, and validate this new field.
+**Requirement**:  
+Introduce a new field, `TRN-CHANNEL-CODE`, to the transaction record structure to capture the channel through which a transaction was initiated. Update all relevant modules to support reporting and validation of this new field.
 
 ### 3.2 Impacted Code Changes Summary:
-
 #### 3.2.1 Impacted Sections and Files:
-- **TRNREC.CPY** (`src/copybook/common/TRNREC.cpy`)
-- **RPTPOS00.CBL** (`src/programs/batch/RPTPOS00.cbl`)
-- **UTLVAL00.CBL** (`src/programs/utility/UTLVAL00.cbl`)
+- **TRNREC.CPY** (src/copybook/common/TRNREC.cpy)
+- **RPTPOS00.CBL** (src/programs/batch/RPTPOS00.cbl)
+- **UTLVAL00.CBL** (src/programs/utility/UTLVAL00.cbl)
 
 **Purpose of Changes:**  
-To support channel-based transaction tracking and reporting, and to ensure data integrity and format compliance for the new field.
+To enable tracking, reporting, and validation of the transaction channel, improving auditability and supporting new business requirements for channel-based analytics.
 
 **Impact:**  
 - All transaction records now include a channel code.
-- Reports generated by RPTPOS00 now display the channel code for each transaction.
-- UTLVAL00 validates the presence and format of the channel code, improving data quality and traceability.
+- Reports display the channel code for each transaction.
+- Validation routines ensure the presence and correct format of the channel code, reducing data quality issues.
 
 ### 3.3 Insertion Points  
 - **TRNREC.CPY**:  
-  - Inserted `TRN-CHANNEL-CODE` field in the transaction record structure after `TRN-STATUS`.
-  - Reduced `TRN-FILLER` by 4 bytes to maintain record length.
+  - Added `TRN-CHANNEL-CODE` field to the transaction data structure.
+  - Reduced the filler size to maintain the overall record length.
   - Updated field descriptions to document the new field.
 
 - **RPTPOS00.CBL**:  
-  - In `WS-TRANSACTION-DETAIL`, added `WS-TRAN-CHANNEL` (PIC X(04)) for reporting the channel code.
-  - In `2215-FORMAT-TRANSACTION` paragraph, mapped `TRN-CHANNEL-CODE` to `WS-TRAN-CHANNEL` for output.
+  - In the working-storage section, added `WS-TRAN-CHANNEL` to `WS-TRANSACTION-DETAIL`.
+  - In `2215-FORMAT-TRANSACTION`, mapped `TRN-CHANNEL-CODE` to `WS-TRAN-CHANNEL` for reporting.
+  - Updated the copybook inclusion to use the new structure.
 
 - **UTLVAL00.CBL**:  
-  - Added `WS-CHANNEL-CODE-VALID` (PIC X(04)) in working storage for validation.
-  - In `2220-CHECK-TRANSACTION-INTEGRITY`, inserted logic to check for missing channel code.
-  - In `2420-CHECK-TRANSACTION-FORMAT`, inserted logic to validate the format of the channel code.
+  - Added `WS-CHANNEL-CODE-VALID` for validation logic.
+  - In `2220-CHECK-TRANSACTION-INTEGRITY`, added logic to check for missing channel code.
+  - In `2420-CHECK-TRANSACTION-FORMAT`, added logic to validate the format of the channel code.
+  - Updated the copybook inclusion to use the new structure.
 
 ### 3.4 Structured Diffs  
-
 #### TRNREC.CPY  
 **Before:**  
 ```cobol
 05  TRN-DATA.
+    10  TRN-INVESTMENT-ID  PIC X(10).
+    10  TRN-TYPE           PIC X(02).
+        88  TRN-TYPE-BUY     VALUE 'BU'.
+        88  TRN-TYPE-SELL    VALUE 'SL'.
+        88  TRN-TYPE-TRANS   VALUE 'TR'.
+        88  TRN-TYPE-FEE     VALUE 'FE'.
+    10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+    10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+    10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+    10  TRN-CURRENCY      PIC X(03).
     10  TRN-STATUS        PIC X(01).
         88  TRN-STATUS-PEND   VALUE 'P'.
         88  TRN-STATUS-DONE   VALUE 'D'.
         88  TRN-STATUS-FAIL   VALUE 'F'.
         88  TRN-STATUS-REV    VALUE 'R'.
+05  TRN-AUDIT.
+    10  TRN-PROCESS-DATE  PIC X(26).
+    10  TRN-PROCESS-USER  PIC X(08).
 05  TRN-FILLER           PIC X(50).
 ```
+
 **After:**  
 ```cobol
 05  TRN-DATA.
+    10  TRN-INVESTMENT-ID  PIC X(10).
+    10  TRN-TYPE           PIC X(02).
+        88  TRN-TYPE-BUY     VALUE 'BU'.
+        88  TRN-TYPE-SELL    VALUE 'SL'.
+        88  TRN-TYPE-TRANS   VALUE 'TR'.
+        88  TRN-TYPE-FEE     VALUE 'FE'.
+    10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+    10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
+    10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
+    10  TRN-CURRENCY      PIC X(03).
     10  TRN-STATUS        PIC X(01).
         88  TRN-STATUS-PEND   VALUE 'P'.
         88  TRN-STATUS-DONE   VALUE 'D'.
         88  TRN-STATUS-FAIL   VALUE 'F'.
         88  TRN-STATUS-REV    VALUE 'R'.
     10  TRN-CHANNEL-CODE   PIC X(04).    *-- Change: Added CHANNEL-CODE for channel identification
+05  TRN-AUDIT.
+    10  TRN-PROCESS-DATE  PIC X(26).
+    10  TRN-PROCESS-USER  PIC X(08).
 05  TRN-FILLER           PIC X(46).      *-- Change: Reduced filler by 4 bytes due to CHANNEL-CODE addition
 ```
 
@@ -145,6 +157,7 @@ To support channel-based transaction tracking and reporting, and to ensure data 
     05  WS-TRAN-QUANTITY     PIC -ZZZZZZZZ9.9999.
     05  WS-TRAN-AMOUNT       PIC -ZZZZZZZZZZZ.99.
 ```
+
 **After:**  
 ```cobol
 01  WS-TRANSACTION-DETAIL.
@@ -172,6 +185,7 @@ To support channel-based transaction tracking and reporting, and to ensure data 
     MOVE TRN-AMOUNT         TO WS-TRAN-AMOUNT
     WRITE REPORT-RECORD FROM WS-TRANSACTION-DETAIL.
 ```
+
 **After:**  
 ```cobol
 2215-FORMAT-TRANSACTION.
@@ -190,29 +204,21 @@ To support channel-based transaction tracking and reporting, and to ensure data 
 #### UTLVAL00.CBL  
 **Before:**  
 ```cobol
-01  WS-ERROR-LINE.
-    05  WS-ERR-TYPE          PIC X(10).
-    05  FILLER               PIC X(2) VALUE SPACES.
-    05  WS-ERR-KEY           PIC X(20).
-    05  FILLER               PIC X(2) VALUE SPACES.
-    05  WS-ERR-DESC          PIC X(98).
+01  WS-CHANNEL-CODE-VALID   PIC X(04).
 ```
+*(This field did not exist before)*
+
 **After:**  
 ```cobol
-01  WS-ERROR-LINE.
-    05  WS-ERR-TYPE          PIC X(10).
-    05  FILLER               PIC X(2) VALUE SPACES.
-    05  WS-ERR-KEY           PIC X(20).
-    05  FILLER               PIC X(2) VALUE SPACES.
-    05  WS-ERR-DESC          PIC X(98).
 01  WS-CHANNEL-CODE-VALID   PIC X(04). *-- Change: Added for CHANNEL-CODE validation
 ```
 
 **Before:**  
 ```cobol
 2220-CHECK-TRANSACTION-INTEGRITY.
-    * Existing integrity checks...
+    * Existing logic
 ```
+
 **After:**  
 ```cobol
 2220-CHECK-TRANSACTION-INTEGRITY.
@@ -227,8 +233,9 @@ To support channel-based transaction tracking and reporting, and to ensure data 
 **Before:**  
 ```cobol
 2420-CHECK-TRANSACTION-FORMAT.
-    * Existing format checks...
+    * Existing logic
 ```
+
 **After:**  
 ```cobol
 2420-CHECK-TRANSACTION-FORMAT.
@@ -242,5 +249,4 @@ To support channel-based transaction tracking and reporting, and to ensure data 
 ```
 
 ## 4. Conclusion  
-The introduction of the `CHANNEL-CODE` field enhances the application's ability to track and report transaction origination channels. All relevant modules have been updated to support, report, and validate this new field, ensuring data integrity and compliance with new business requirements. These changes are expected to improve reporting granularity and data quality across the system.
-
+The introduction of the `TRN-CHANNEL-CODE` field enhances the system's ability to track and report the origin channel of each transaction, supporting improved analytics and auditability. The changes ensure that all relevant modules—data structure, reporting, and validation—are updated to handle the new field, with robust validation to maintain data quality. These modifications are expected to have a positive impact on reporting accuracy and compliance with new business requirements.
