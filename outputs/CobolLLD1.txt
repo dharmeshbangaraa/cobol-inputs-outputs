@@ -1,298 +1,403 @@
+# Technical Document and Low-Level Design (LLD)
+
 ## 1. Introduction  
-This document provides a comprehensive technical and low-level design for the modernization of the COBOL-based portfolio valuation system. The focus is on integrating a real-time market price feed to enable dynamic portfolio valuation, as outlined in the latest Impact Analysis Report. The document details the existing logic, identifies impacted modules, describes the required changes, and provides structured code diffs to guide implementation and review.
+This document provides a comprehensive technical and low-level design overview for the COBOL legacy application modules impacted by the integration of a real-time market price feed for dynamic portfolio valuation. The document covers the existing logic, identifies insertion points for the required changes, and presents structured diffs for all available impacted components, as per the Impact Analysis Report.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The legacy COBOL application processes portfolio valuations in batch and online (CICS) modes. It ingests price data, recalculates portfolio and position values, updates records, displays results, and logs audit/error events. The system is modular, with dedicated programs for valuation, position updates, price ingestion, display, audit, and historical data management.
+The application is a modular legacy COBOL system supporting batch and online processing for portfolio valuation, historical price archiving, and audit logging. The key impacted modules are responsible for:
+- Batch loading and archiving of historical price data.
+- Audit logging for error and feed status.
+- (Note: Some modules referenced in the Impact Analysis Report are missing from the repository and are noted below.)
 
 ### 2.2 Detailed Logic  
 
-#### Key Modules and Their Roles
+#### 2.2.1 Batch Historical Price Loader (`src/programs/batch/HISTLD00.cbl`)
+- **Initialization:** Opens files, connects to DB2, and initializes checkpoints.
+- **Processing:** Reads historical price records, loads them into DB2, and checks for commit thresholds.
+- **Termination:** Commits outstanding transactions, closes files, disconnects from DB2, and displays statistics.
 
-- **PORTVAL.cbl**: Central valuation engine. Initializes processing, updates prices, recalculates portfolio values, computes P&L, and updates positions.
-- **POSUPDT.cbl**: Updates position records as part of the valuation process.
-- **PRICEDATA.cbl**: Ingests real-time price ticks from external APIs into DB2.
-- **PORTDISP.cbl**: CICS program for online portfolio display, with auto-refresh logic.
-- **AUDPROC.cbl**: Handles audit logging for errors and stale feeds.
-- **AUDITLOG.cpy**: Copybook defining the audit log record structure.
-- **HISTLD00.cbl**: Loads historical price data into VSAM for backtesting and audit.
-
-#### Example: Audit Processing Logic (`AUDPROC.cbl`)
+**Relevant Code Snippet:**
 ```cobol
-44       2000-PROCESS-AUDIT.
-45           INITIALIZE AUDIT-RECORD
-46           
-47           MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
-48           MOVE LS-SYSTEM-INFO     TO AUD-HEADER
-49           MOVE LS-TYPE            TO AUD-TYPE
-50           MOVE LS-ACTION          TO AUD-ACTION
-51           MOVE LS-STATUS          TO AUD-STATUS
-52           MOVE LS-KEY-INFO        TO AUD-KEY-INFO
-53           MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
-54           MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
-55           MOVE LS-MESSAGE         TO AUD-MESSAGE
-56           
-57           WRITE AUDIT-RECORD
-58           
-59           IF WS-FILE-STATUS NOT = '00'
-60               DISPLAY 'Error writing audit record: ' WS-FILE-STATUS
-61               MOVE 8 TO LS-RETURN-CODE
-62           ELSE
-63               MOVE 0 TO LS-RETURN-CODE
-64           END-IF
-65           .
-66           
-67       3000-TERMINATE.
-68           CLOSE AUDIT-FILE
-69           .
+       PROCEDURE DIVISION.
+       0000-MAIN.
+           PERFORM 1000-INITIALIZE
+           PERFORM 2000-PROCESS
+               UNTIL END-OF-FILE
+               OR WS-ERROR-COUNT > 100
+           PERFORM 3000-TERMINATE
+           MOVE WS-ERROR-COUNT TO RETURN-CODE
+           GOBACK
+           .
+       1000-INITIALIZE.
+           PERFORM 1100-OPEN-FILES
+           PERFORM 1200-CONNECT-DB2
+           PERFORM 1300-INIT-CHECKPOINTS
+           .
+       2000-PROCESS.
+           PERFORM 2100-READ-HISTORY
+           IF MORE-RECORDS
+               PERFORM 2200-LOAD-TO-DB2
+               PERFORM 2300-CHECK-COMMIT
+           END-IF
+           .
+       3000-TERMINATE.
+           PERFORM 3100-FINAL-COMMIT
+           PERFORM 3200-CLOSE-FILES
+           PERFORM 3300-DISCONNECT-DB2
+           PERFORM 3400-DISPLAY-STATS
+           .
+       2100-READ-HISTORY.
+           READ TRANSACTION-HISTORY
+               AT END
+                   SET END-OF-FILE TO TRUE
+               NOT AT END
+                   ADD 1 TO WS-RECORDS-READ
+           END-READ
+           .
 ```
 
-#### Example: Audit Log Record Structure (`AUDITLOG.cpy`)
+#### 2.2.2 Audit Processor (`src/programs/common/AUDPROC.cbl`)
+- **Initialization:** Accepts system time, opens the audit file, and handles file open errors.
+- **Audit Processing:** Initializes the audit record, populates audit fields, writes the record, and handles write errors.
+- **Termination:** Closes the audit file.
+
+**Relevant Code Snippet:**
 ```cobol
-7       01  AUDIT-RECORD.
-8           05  AUD-HEADER.
-9               10  AUD-TIMESTAMP     PIC X(26).
-10              10  AUD-SYSTEM-ID     PIC X(8).
-11              10  AUD-USER-ID       PIC X(8).
-12              10  AUD-PROGRAM       PIC X(8).
-13              10  AUD-TERMINAL      PIC X(8).
-14          05  AUD-TYPE             PIC X(4).
-15              88  AUD-TRANSACTION     VALUE 'TRAN'.
-16              88  AUD-USER-ACTION     VALUE 'USER'.
-17              88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-18          05  AUD-ACTION           PIC X(8).
-19              88  AUD-CREATE         VALUE 'CREATE  '.
-20              88  AUD-UPDATE         VALUE 'UPDATE  '.
-21              88  AUD-DELETE         VALUE 'DELETE  '.
-22              88  AUD-INQUIRE        VALUE 'INQUIRE '.
-23              88  AUD-LOGIN          VALUE 'LOGIN   '.
-24              88  AUD-LOGOUT         VALUE 'LOGOUT  '.
-25              88  AUD-STARTUP        VALUE 'STARTUP '.
-26              88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
-27          05  AUD-STATUS           PIC X(4).
-28              88  AUD-SUCCESS        VALUE 'SUCC'.
-29              88  AUD-FAILURE        VALUE 'FAIL'.
-30              88  AUD-WARNING        VALUE 'WARN'.
-31          05  AUD-KEY-INFO.
-32              10  AUD-PORTFOLIO-ID  PIC X(8).
-33              10  AUD-ACCOUNT-NO    PIC X(10).
-34          05  AUD-BEFORE-IMAGE     PIC X(100).
-35          05  AUD-AFTER-IMAGE      PIC X(100).
-36          05  AUD-MESSAGE          PIC X(100). 
+      1000-INITIALIZE.
+          ACCEPT WS-FORMATTED-TIME FROM TIME STAMP
+          OPEN EXTEND AUDIT-FILE
+          IF WS-FILE-STATUS NOT = '00'
+              DISPLAY 'Error opening audit file: ' WS-FILE-STATUS
+              MOVE 8 TO LS-RETURN-CODE
+              PERFORM 3000-TERMINATE
+              GOBACK
+          END-IF
+          .
+      2000-PROCESS-AUDIT.
+          INITIALIZE AUDIT-RECORD
+          MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
+          MOVE LS-SYSTEM-INFO     TO AUD-HEADER
+          MOVE LS-TYPE            TO AUD-TYPE
+          MOVE LS-ACTION          TO AUD-ACTION
+          MOVE LS-STATUS          TO AUD-STATUS
+          MOVE LS-KEY-INFO        TO AUD-KEY-INFO
+          MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
+          MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
+          MOVE LS-MESSAGE         TO AUD-MESSAGE
+          WRITE AUDIT-RECORD
+          IF WS-FILE-STATUS NOT = '00'
+              DISPLAY 'Error writing audit record: ' WS-FILE-STATUS
+              MOVE 8 TO LS-RETURN-CODE
+          ELSE
+              MOVE 0 TO LS-RETURN-CODE
+          END-IF
+          .
+      3000-TERMINATE.
+          CLOSE AUDIT-FILE
+          . 
 ```
 
-#### Example: Historical Loader (`HISTLD00.cbl`)
+#### 2.2.3 Audit Log Copybook (`src/copybook/common/AUDITLOG.cpy`)
+Defines the structure of the audit record, including timestamp, system/user/program IDs, action/status codes, key info, before/after images, and message.
+
+**Relevant Code Snippet:**
 ```cobol
-38       1000-INITIALIZE.
-39           PERFORM 1100-OPEN-FILES
-40           PERFORM 1200-CONNECT-DB2
-41           PERFORM 1300-INIT-CHECKPOINTS
-42           .
-43           
-44       2000-PROCESS.
-45           PERFORM 2100-READ-HISTORY
-46           
-47           IF MORE-RECORDS
-48               PERFORM 2200-LOAD-TO-DB2
-49               PERFORM 2300-CHECK-COMMIT
-50           END-IF
-51           .
-52           
-53       2100-READ-HISTORY.
-54           READ TRANSACTION-HISTORY
-55               AT END
-56                   SET END-OF-FILE TO TRUE
-57               NOT AT END
-58                   ADD 1 TO WS-RECORDS-READ
-59           END-READ
-60           .
+       01  AUDIT-RECORD.
+           05  AUD-HEADER.
+               10  AUD-TIMESTAMP     PIC X(26).
+               10  AUD-SYSTEM-ID     PIC X(8).
+               10  AUD-USER-ID       PIC X(8).
+               10  AUD-PROGRAM       PIC X(8).
+               10  AUD-TERMINAL      PIC X(8).
+           05  AUD-TYPE             PIC X(4).
+               88  AUD-TRANSACTION     VALUE 'TRAN'.
+               88  AUD-USER-ACTION     VALUE 'USER'.
+               88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
+           05  AUD-ACTION           PIC X(8).
+               88  AUD-CREATE         VALUE 'CREATE  '.
+               88  AUD-UPDATE         VALUE 'UPDATE  '.
+               88  AUD-DELETE         VALUE 'DELETE  '.
+               88  AUD-INQUIRE        VALUE 'INQUIRE '.
+               88  AUD-LOGIN          VALUE 'LOGIN   '.
+               88  AUD-LOGOUT         VALUE 'LOGOUT  '.
+               88  AUD-STARTUP        VALUE 'STARTUP '.
+               88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
+           05  AUD-STATUS           PIC X(4).
+               88  AUD-SUCCESS        VALUE 'SUCC'.
+               88  AUD-FAILURE        VALUE 'FAIL'.
+               88  AUD-WARNING        VALUE 'WARN'.
+           05  AUD-KEY-INFO.
+               10  AUD-PORTFOLIO-ID  PIC X(8).
+               10  AUD-ACCOUNT-NO    PIC X(10).
+           05  AUD-BEFORE-IMAGE     PIC X(100).
+           05  AUD-AFTER-IMAGE      PIC X(100).
+           05  AUD-MESSAGE          PIC X(100).
 ```
 
-#### Flowchart:  
+#### 2.2.4 Missing Files/Sections
+- `src/programs/batch/BCHVAL00.cbl` (2000-PRICE-UPDATE, 2100-REVAL-POS): **File not found**
+- `src/programs/online/PORTDISP.cbl` (1000-REFRESH-SCREEN, 1100-DISPLAY): **File not found**
+- `src/copybook/db2/PRICEDATA.cpy` (DATA DIVISION): **File not found**
+
+#### Flowchart:
 ```mermaid
 flowchart TD
     Start(["Start"])
-    IngestPrice["Ingest
-Price Data"]
-    UpdateValuation["Update
-Portfolio Valuation"]
-    UpdatePositions["Update
-Positions"]
-    DisplayPortfolio["Display
-Portfolio (CICS)"]
-    AuditLog["Audit/Error
-Logging"]
-    LoadHistory["Load
-Historical Data"]
+    Init["1000-INITIALIZE"]
+    Process["2000-PROCESS"]
+    ReadHist["2100-READ-HISTORY"]
+    LoadDB2["2200-LOAD-TO-DB2"]
+    CheckCommit["2300-CHECK-COMMIT"]
+    Terminate["3000-TERMINATE"]
+    AuditInit["1000-INITIALIZE (AUDPROC)"]
+    AuditProc["2000-PROCESS-AUDIT"]
+    AuditTerm["3000-TERMINATE (AUDPROC)"]
     End(["End"])
 
-    Start --> IngestPrice
-    IngestPrice --> UpdateValuation
-    UpdateValuation --> UpdatePositions
-    UpdateValuation --> DisplayPortfolio
-    UpdateValuation --> AuditLog
-    IngestPrice --> LoadHistory
-    LoadHistory --> AuditLog
-    DisplayPortfolio --> End
-    AuditLog --> End
+    Start --> Init
+    Init --> Process
+    Process --> ReadHist
+    ReadHist -->|More Records| LoadDB2
+    LoadDB2 --> CheckCommit
+    CheckCommit --> Process
+    ReadHist -->|End of File| Terminate
+    Terminate --> End
+
+    Process -.-> AuditProc
+    AuditProc --> AuditTerm
 ```
 
 ## 3. Proposed Changes  
 ### 3.1 User Story or Analysis Report Summary  
 **User Story:**  
-Integrate real-time market price feed for dynamic portfolio valuation.  
-- Enable ingestion of real-time price ticks.
-- Trigger immediate portfolio and position revaluation.
-- Auto-refresh online display within 10 seconds.
-- Enhance audit/error handling for stale feeds.
-- Support historical tick storage for backtesting.
+Integrate real-time market price feed for dynamic portfolio valuation.
+
+**Analysis Report Summary:**  
+- High-impact changes to batch and online valuation, error/audit handling, DB2 and VSAM data persistence, and CICS screen refresh.
+- Impacted modules: batch valuation engine, online display, historical loader, audit processor, and related copybooks.
 
 ### 3.2 Proposed Code Changes Summary
 
-#### 3.2.1 Impacted Sections and Files
+#### 3.2.1 Impacted Sections and Files:
+- `src/programs/batch/HISTLD00.cbl`: `2000-PROCESS`, `2100-READ-HISTORY`
+- `src/programs/common/AUDPROC.cbl`: `2000-PROCESS-AUDIT`, `3000-TERMINATE`
+- `src/copybook/common/AUDITLOG.cpy`: `DATA DIVISION`
+- **Note:** Other high-impact files listed in the analysis report are missing from the repository.
 
-| File Path                                 | Sections/Paragraphs Impacted                          |
-|--------------------------------------------|-------------------------------------------------------|
-| src/programs/batch/PORTVAL.cbl            | 1000-INIT, 2000-PRICE-UPDATE, 2100-REVAL, 2200-PNL-CALC, 2300-UPDATE-POS |
-| src/programs/batch/POSUPDT.cbl            | All (entire file)                                     |
-| src/programs/db2/PRICEDATA.cbl            | 1000-INGEST, 1100-API-READ, 1200-DB2-INSERT           |
-| src/programs/cics/PORTDISP.cbl            | 1000-INIT, 2000-REFRESH, 2100-DISPLAY                 |
-| src/programs/common/AUDPROC.cbl           | 2000-PROCESS-AUDIT, 3000-TERMINATE                    |
-| src/copybook/common/AUDITLOG.cpy          | All (entire file)                                     |
-| src/programs/batch/HISTLD00.cbl           | 1000-INIT, 2000-LOAD-HIST, 2100-VSAM-WRITE            |
+**Purpose of Changes:**  
+- Enable ingestion and archiving of real-time and historical price feeds.
+- Enhance audit logging for feed errors and stale data.
+- Prepare for integration with real-time valuation and display modules.
 
-- **Purpose of Changes:**  
-  To enable real-time, dynamic portfolio valuation by integrating a live market price feed, ensuring immediate recalculation of portfolio and position values, and providing robust audit/error handling and historical data support.
-
-- **Impact:**  
-  - Real-time data ingestion and processing.
-  - Immediate update of portfolio and position values.
-  - Enhanced online user experience with near real-time display.
-  - Improved audit trail and error detection for compliance.
-  - Support for historical analysis and backtesting.
+**Impact:**  
+- Improved data freshness and auditability.
+- Foundation for dynamic, real-time portfolio valuation.
+- Enhanced error handling and traceability.
 
 ### 3.3 Insertion Points  
-
-- **PORTVAL.cbl**:  
-  - Insert logic to receive and process real-time price ticks in `2000-PRICE-UPDATE`.
-  - Trigger `2100-REVAL` and `2200-PNL-CALC` immediately after price update.
-  - Update position records via `2300-UPDATE-POS`.
-
-- **POSUPDT.cbl**:  
-  - Modify to support high-frequency updates and ensure thread-safety if running in parallel.
-
-- **PRICEDATA.cbl**:  
-  - Enhance `1000-INGEST` and `1100-API-READ` to support streaming API/websocket.
-  - Insert error handling for feed latency/staleness.
-
-- **PORTDISP.cbl**:  
-  - Update `2000-REFRESH` to auto-refresh display within 10 seconds of new valuation.
-
-- **AUDPROC.cbl**:  
-  - Enhance `2000-PROCESS-AUDIT` to log stale feed and error events.
-  - Ensure `3000-TERMINATE` closes all new audit streams.
-
-- **AUDITLOG.cpy**:  
-  - Add new fields if required for real-time feed metadata.
-
-- **HISTLD00.cbl**:  
-  - Update `2000-LOAD-HIST` and `2100-VSAM-WRITE` to support new VSAM KSDS for tick data.
+- **HISTLD00.cbl:**  
+  - Insert logic in `2000-PROCESS` to handle real-time price feed ingestion and VSAM/DB2 persistence.
+  - Extend `2100-READ-HISTORY` to support both batch and real-time feed sources.
+- **AUDPROC.cbl:**  
+  - Update `2000-PROCESS-AUDIT` to log new error types (e.g., feed latency, stale data).
+  - Ensure `3000-TERMINATE` flushes all audit records before shutdown.
+- **AUDITLOG.cpy:**  
+  - Add fields for feed source, latency, and error codes if not present.
 
 ### 3.4 Structured Diffs  
 
-#### Example: `AUDPROC.cbl` (2000-PROCESS-AUDIT)
+#### `src/programs/batch/HISTLD00.cbl`
 
 **Before:**
 ```cobol
-44       2000-PROCESS-AUDIT.
-45           INITIALIZE AUDIT-RECORD
-...
-55           MOVE LS-MESSAGE         TO AUD-MESSAGE
-56           
-57           WRITE AUDIT-RECORD
-58           
-59           IF WS-FILE-STATUS NOT = '00'
-60               DISPLAY 'Error writing audit record: ' WS-FILE-STATUS
-61               MOVE 8 TO LS-RETURN-CODE
-62           ELSE
-63               MOVE 0 TO LS-RETURN-CODE
-64           END-IF
-65           .
+       2000-PROCESS.
+           PERFORM 2100-READ-HISTORY
+           IF MORE-RECORDS
+               PERFORM 2200-LOAD-TO-DB2
+               PERFORM 2300-CHECK-COMMIT
+           END-IF
+           .
 ```
 
 **After:**
 ```cobol
-44       2000-PROCESS-AUDIT.
-45           INITIALIZE AUDIT-RECORD
-...
-55           MOVE LS-MESSAGE         TO AUD-MESSAGE
-56           
-57           IF FEED-STATUS = 'STALE'
-58               MOVE 'WARN' TO AUD-STATUS
-59               MOVE 'Market feed stale' TO AUD-MESSAGE
-60           END-IF
-61           
-62           WRITE AUDIT-RECORD
-63           
-64           IF WS-FILE-STATUS NOT = '00'
-65               DISPLAY 'Error writing audit record: ' WS-FILE-STATUS
-66               MOVE 8 TO LS-RETURN-CODE
-67           ELSE
-68               MOVE 0 TO LS-RETURN-CODE
-69           END-IF
-70           .
+       2000-PROCESS.
+           PERFORM 2100-READ-HISTORY
+           IF MORE-RECORDS
+               PERFORM 2200-LOAD-TO-DB2
+               PERFORM 2300-CHECK-COMMIT
+           END-IF
+           *-- Begin Real-Time Feed Integration --
+           IF REALTIME-FEED-AVAILABLE
+               PERFORM 2150-INGEST-REALTIME-FEED
+               PERFORM 2200-LOAD-TO-DB2
+               PERFORM 2300-CHECK-COMMIT
+           END-IF
+           *-- End Real-Time Feed Integration --
+           .
 ```
-
-#### Example: `AUDITLOG.cpy` (add feed metadata)
 
 **Before:**
 ```cobol
-36          05  AUD-MESSAGE          PIC X(100). 
+       2100-READ-HISTORY.
+           READ TRANSACTION-HISTORY
+               AT END
+                   SET END-OF-FILE TO TRUE
+               NOT AT END
+                   ADD 1 TO WS-RECORDS-READ
+           END-READ
+           .
 ```
 
 **After:**
 ```cobol
-36          05  AUD-MESSAGE          PIC X(100).
-37          05  AUD-FEED-TIMESTAMP   PIC X(26).
-38          05  AUD-FEED-SOURCE      PIC X(32).
+       2100-READ-HISTORY.
+           IF FEED-SOURCE = 'BATCH'
+               READ TRANSACTION-HISTORY
+                   AT END
+                       SET END-OF-FILE TO TRUE
+                   NOT AT END
+                       ADD 1 TO WS-RECORDS-READ
+               END-READ
+           ELSE IF FEED-SOURCE = 'REALTIME'
+               PERFORM 2150-INGEST-REALTIME-FEED
+           END-IF
+           .
 ```
 
-#### Example: `HISTLD00.cbl` (support VSAM tick storage)
+#### `src/programs/common/AUDPROC.cbl`
 
 **Before:**
 ```cobol
-53       2100-READ-HISTORY.
-54           READ TRANSACTION-HISTORY
-55               AT END
-56                   SET END-OF-FILE TO TRUE
-57               NOT AT END
-58                   ADD 1 TO WS-RECORDS-READ
-59           END-READ
-60           .
+      2000-PROCESS-AUDIT.
+          INITIALIZE AUDIT-RECORD
+          MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
+          MOVE LS-SYSTEM-INFO     TO AUD-HEADER
+          MOVE LS-TYPE            TO AUD-TYPE
+          MOVE LS-ACTION          TO AUD-ACTION
+          MOVE LS-STATUS          TO AUD-STATUS
+          MOVE LS-KEY-INFO        TO AUD-KEY-INFO
+          MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
+          MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
+          MOVE LS-MESSAGE         TO AUD-MESSAGE
+          WRITE AUDIT-RECORD
+          IF WS-FILE-STATUS NOT = '00'
+              DISPLAY 'Error writing audit record: ' WS-FILE-STATUS
+              MOVE 8 TO LS-RETURN-CODE
+          ELSE
+              MOVE 0 TO LS-RETURN-CODE
+          END-IF
+          .
 ```
 
 **After:**
 ```cobol
-53       2100-READ-HISTORY.
-54           READ TRANSACTION-HISTORY
-55               AT END
-56                   SET END-OF-FILE TO TRUE
-57               NOT AT END
-58                   ADD 1 TO WS-RECORDS-READ
-59                   PERFORM 2105-WRITE-TICK-VSAM
-60           END-READ
-61           .
-
-62       2105-WRITE-TICK-VSAM.
-63           MOVE TRANSACTION-HISTORY-RECORD TO VSAM-TICK-RECORD
-64           WRITE VSAM-TICK-RECORD
-65           .
+      2000-PROCESS-AUDIT.
+          INITIALIZE AUDIT-RECORD
+          MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
+          MOVE LS-SYSTEM-INFO     TO AUD-HEADER
+          MOVE LS-TYPE            TO AUD-TYPE
+          MOVE LS-ACTION          TO AUD-ACTION
+          MOVE LS-STATUS          TO AUD-STATUS
+          MOVE LS-KEY-INFO        TO AUD-KEY-INFO
+          MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
+          MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
+          MOVE LS-MESSAGE         TO AUD-MESSAGE
+          *-- Begin Real-Time Feed Audit Enhancements --
+          IF FEED-ERROR
+              MOVE 'FEEDERR' TO AUD-STATUS
+              MOVE FEED-ERROR-CODE TO AUD-MESSAGE
+          ELSE IF FEED-STALE
+              MOVE 'STALE' TO AUD-STATUS
+              MOVE 'Feed data is stale' TO AUD-MESSAGE
+          END-IF
+          *-- End Real-Time Feed Audit Enhancements --
+          WRITE AUDIT-RECORD
+          IF WS-FILE-STATUS NOT = '00'
+              DISPLAY 'Error writing audit record: ' WS-FILE-STATUS
+              MOVE 8 TO LS-RETURN-CODE
+          ELSE
+              MOVE 0 TO LS-RETURN-CODE
+          END-IF
+          .
 ```
 
-> **Note:**  
-> For other modules (PORTVAL.cbl, POSUPDT.cbl, PRICEDATA.cbl, PORTDISP.cbl), structured diffs should follow the same pattern:  
-> - Insert logic for real-time feed handling, error detection, and immediate recalculation as per the Impact Analysis Report.  
-> - Reference the exact paragraph/section and line numbers for insertion.
+#### `src/copybook/common/AUDITLOG.cpy`
+
+**Before:**
+```cobol
+       01  AUDIT-RECORD.
+           05  AUD-HEADER.
+               10  AUD-TIMESTAMP     PIC X(26).
+               10  AUD-SYSTEM-ID     PIC X(8).
+               10  AUD-USER-ID       PIC X(8).
+               10  AUD-PROGRAM       PIC X(8).
+               10  AUD-TERMINAL      PIC X(8).
+           05  AUD-TYPE             PIC X(4).
+               88  AUD-TRANSACTION     VALUE 'TRAN'.
+               88  AUD-USER-ACTION     VALUE 'USER'.
+               88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
+           05  AUD-ACTION           PIC X(8).
+               88  AUD-CREATE         VALUE 'CREATE  '.
+               88  AUD-UPDATE         VALUE 'UPDATE  '.
+               88  AUD-DELETE         VALUE 'DELETE  '.
+               88  AUD-INQUIRE        VALUE 'INQUIRE '.
+               88  AUD-LOGIN          VALUE 'LOGIN   '.
+               88  AUD-LOGOUT         VALUE 'LOGOUT  '.
+               88  AUD-STARTUP        VALUE 'STARTUP '.
+               88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
+           05  AUD-STATUS           PIC X(4).
+               88  AUD-SUCCESS        VALUE 'SUCC'.
+               88  AUD-FAILURE        VALUE 'FAIL'.
+               88  AUD-WARNING        VALUE 'WARN'.
+           05  AUD-KEY-INFO.
+               10  AUD-PORTFOLIO-ID  PIC X(8).
+               10  AUD-ACCOUNT-NO    PIC X(10).
+           05  AUD-BEFORE-IMAGE     PIC X(100).
+           05  AUD-AFTER-IMAGE      PIC X(100).
+           05  AUD-MESSAGE          PIC X(100).
+```
+
+**After:**
+```cobol
+       01  AUDIT-RECORD.
+           05  AUD-HEADER.
+               10  AUD-TIMESTAMP     PIC X(26).
+               10  AUD-SYSTEM-ID     PIC X(8).
+               10  AUD-USER-ID       PIC X(8).
+               10  AUD-PROGRAM       PIC X(8).
+               10  AUD-TERMINAL      PIC X(8).
+           05  AUD-TYPE             PIC X(4).
+               88  AUD-TRANSACTION     VALUE 'TRAN'.
+               88  AUD-USER-ACTION     VALUE 'USER'.
+               88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
+           05  AUD-ACTION           PIC X(8).
+               88  AUD-CREATE         VALUE 'CREATE  '.
+               88  AUD-UPDATE         VALUE 'UPDATE  '.
+               88  AUD-DELETE         VALUE 'DELETE  '.
+               88  AUD-INQUIRE        VALUE 'INQUIRE '.
+               88  AUD-LOGIN          VALUE 'LOGIN   '.
+               88  AUD-LOGOUT         VALUE 'LOGOUT  '.
+               88  AUD-STARTUP        VALUE 'STARTUP '.
+               88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
+           05  AUD-STATUS           PIC X(6).
+               88  AUD-SUCCESS        VALUE 'SUCC'.
+               88  AUD-FAILURE        VALUE 'FAIL'.
+               88  AUD-WARNING        VALUE 'WARN'.
+               88  AUD-FEEDERR        VALUE 'FEEDERR'.
+               88  AUD-STALE          VALUE 'STALE'.
+           05  AUD-KEY-INFO.
+               10  AUD-PORTFOLIO-ID  PIC X(8).
+               10  AUD-ACCOUNT-NO    PIC X(10).
+           05  AUD-BEFORE-IMAGE     PIC X(100).
+           05  AUD-AFTER-IMAGE      PIC X(100).
+           05  AUD-MESSAGE          PIC X(100).
+           05  AUD-FEED-SOURCE      PIC X(8).
+           05  AUD-FEED-LATENCY     PIC 9(5)V99.
+           05  AUD-FEED-ERROR-CODE  PIC X(10).
+```
 
 ## 4. Conclusion  
-The proposed changes enable the COBOL application to support real-time, dynamic portfolio valuation by integrating a live market price feed. The modifications ensure immediate recalculation of portfolio and position values, robust audit/error handling, and support for historical data analysis. These enhancements modernize the system, improve user experience, and ensure compliance with audit requirements.
+The proposed changes enable the COBOL legacy application to ingest and process real-time market price feeds, dynamically update portfolio valuations, and provide robust audit logging for feed errors and stale data. These enhancements lay the groundwork for a modernized, real-time valuation platform with improved traceability and operational resilience.  
+**Note:** Some high-impact modules referenced in the Impact Analysis Report were not present in the repository and are not included in this LLD. All available impacted code has been analyzed and updated accordingly.
