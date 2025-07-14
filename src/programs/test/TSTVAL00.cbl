@@ -1,0 +1,1 @@
+(Full COBOL source code as in the observation above, including all comments and inline change notes.)
