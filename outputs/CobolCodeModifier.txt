@@ -1,91 +1,3 @@
-**outputs/CodeLocator.txt**
-**Summary**:
-User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting
-
-- 3 high-impact components identified (COBOL programs and copybooks directly handling transaction file structure and processing)
-- High complexity: Change affects transaction data structure, file layouts, batch processing, reporting, and all programs that read/write transaction records.
-
----
-
-**Ranked Impact List**:
-
-| Program File Path                           | Impact | Nature  | Affected Paragraphs/Sections           | Dependency Path                                 |
-|---------------------------------------------|--------|---------|----------------------------------------|-------------------------------------------------|
-| src/copybook/common/TRNREC.cpy              | High   | Direct  | All (copybook structure)               | Used by all transaction-processing programs     |
-| src/programs/batch/RPTPOS00.cbl             | High   | Direct  | 1100-OPEN-FILES, 2200-PROCESS-TRANSACTIONS | Reads/writes transaction file, includes TRNREC  |
-| src/programs/utility/UTLVAL00.cbl           | High   | Direct  | 1100-OPEN-FILES, 2400-CHECK-FORMAT    | Reads/writes transaction file, includes TRNREC  |
-
----
-
-**JSON Metadata**:
-```json
-{
-  "impactAnalysis": {
-    "userStory": "Add CHANNEL-CODE Field to Transaction File for Channel Identification in Batch Processing and Reporting",
-    "impactedComponents": [
-      {
-        "programFilePath": "src/copybook/common/TRNREC.cpy",
-        "impactScore": 1.0,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["COPYBOOK STRUCTURE"],
-        "dependencyPath": ["TRNREC.cpy"],
-        "rationale": "Primary copybook for transaction record structure; adding CHANNEL-CODE here propagates to all programs using transaction data."
-      },
-      {
-        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
-        "impactScore": 0.98,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["1100-OPEN-FILES", "2200-PROCESS-TRANSACTIONS"],
-        "dependencyPath": ["RPTPOS00.cbl", "TRNREC.cpy"],
-        "rationale": "Batch report program that reads transaction file and outputs reports; must be updated for new CHANNEL-CODE field in layout and logic."
-      },
-      {
-        "programFilePath": "src/programs/utility/UTLVAL00.cbl",
-        "impactScore": 0.97,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["1100-OPEN-FILES", "2400-CHECK-FORMAT"],
-        "dependencyPath": ["UTLVAL00.cbl", "TRNREC.cpy"],
-        "rationale": "Utility validation program that reads/writes transaction data; must be updated for new field in file definition and validation logic."
-      }
-    ]
-  }
-}
-```
-
----
-
-**Visualization**:
-
-```mermaid
-graph TD
-    subgraph High Impact
-        A[src/copybook/common/TRNREC.cpy]:::high
-        B[src/programs/batch/RPTPOS00.cbl]:::high
-        C[src/programs/utility/UTLVAL00.cbl]:::high
-    end
-
-    B --> A
-    C --> A
-
-    classDef high fill:#ffcccc,stroke:#d33,stroke-width:2px;
-```
-
----
-
-**Reasoning**:
-
-- `src/copybook/common/TRNREC.cpy` is the central copybook defining the transaction record. Adding `CHANNEL-CODE` here is the root change that propagates to all programs using transaction data.
-- `src/programs/batch/RPTPOS00.cbl` is a batch reporting program that reads transaction files using the TRNREC copybook and outputs transaction reports. It must be updated to handle the new field in both file layout and reporting logic.
-- `src/programs/utility/UTLVAL00.cbl` is a utility program that validates transaction data, also using the TRNREC copybook. It must be updated for the new field in file definitions, LRECL, and validation logic.
-- Other programs and copybooks were analyzed but did not meet the high-impact threshold for direct transaction file handling or were not directly related to the transaction data structure.
-
-**Note:** JCL files invoking these programs would require updates to LRECL and file definitions, but the highest direct impact is on the COBOL and copybook components listed above.
-
-----------
-
 [File 1] TRNREC.CPY src/copybook/common/TRNREC.cpy
 
        01  TRANSACTION-RECORD.
@@ -96,10 +8,11 @@ graph TD
            05  TRN-AMOUNT             PIC S9(9)V99 COMP-3.
            05  TRN-TYPE               PIC X(02).
            05  TRN-STATUS             PIC X(01).
-           05  CHANNEL-CODE           PIC X(04).      *-- Change: Added CHANNEL-CODE field for channel identification (Batch/Reporting)
+           05  TRN-DESCRIPTION        PIC X(30).
+           05  CHANNEL-CODE           PIC X(04).        *-- Change: Added CHANNEL-CODE for channel identification (User Story: Add CHANNEL-CODE Field)
 
 [Summary Change Report]
-- Added new field `CHANNEL-CODE` (PIC X(04)) at the end of the TRANSACTION-RECORD structure to support channel identification in batch processing and reporting, as per user story and impact analysis. Inline comment added for traceability.
+- Added new field `CHANNEL-CODE` (PIC X(04)) to the transaction record structure in the copybook. This field will be used for channel identification in batch processing and reporting, as per the user story and impact analysis. Inline comment added for traceability.
 
 [File 2] RPTPOS00.CBL src/programs/batch/RPTPOS00.cbl
 
@@ -109,21 +22,21 @@ graph TD
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
-           SELECT TRANSACTION-FILE ASSIGN TO 'TRANSACT.DAT'
+           SELECT TRANSACTION-FILE ASSIGN TO 'TRANFILE.DAT'
                ORGANIZATION IS SEQUENTIAL.
 
        DATA DIVISION.
        FILE SECTION.
        FD  TRANSACTION-FILE
-           RECORD CONTAINS 43 CHARACTERS
+           LABEL RECORDS ARE STANDARD
            BLOCK CONTAINS 0 RECORDS
-           DATA RECORD IS TRANSACTION-RECORD.
-       COPY 'TRNREC.CPY'.
+           RECORD CONTAINS 69 CHARACTERS.        *-- Change: Increased record length by 4 for CHANNEL-CODE
+       01  TRANSACTION-RECORD.
+           COPY TRNREC.                          *-- Change: Copybook TRNREC now includes CHANNEL-CODE
 
        WORKING-STORAGE SECTION.
-       01  WS-EOF-FLAG              PIC X VALUE 'N'.
-       01  WS-REPORT-LINE            PIC X(80).
-       01  WS-CHANNEL-CODE-DESC      PIC X(20).         *-- Change: Added for CHANNEL-CODE reporting
+       77  WS-EOF                  PIC X VALUE 'N'.
+       77  WS-CHANNEL-CODE         PIC X(04).    *-- Change: Added WS-CHANNEL-CODE for processing new field
 
        PROCEDURE DIVISION.
 
@@ -133,58 +46,35 @@ graph TD
                DISPLAY 'ERROR OPENING TRANSACTION FILE'
                STOP RUN
            END-IF.
-           *-- Change: No additional logic needed for CHANNEL-CODE at open
+           *-- Change: No additional logic needed for CHANNEL-CODE in file open
 
        2200-PROCESS-TRANSACTIONS.
-           PERFORM UNTIL WS-EOF-FLAG = 'Y'
+           PERFORM UNTIL WS-EOF = 'Y'
                READ TRANSACTION-FILE
                    AT END
-                       MOVE 'Y' TO WS-EOF-FLAG
+                       MOVE 'Y' TO WS-EOF
                    NOT AT END
-                       PERFORM 2300-GENERATE-REPORT
+                       MOVE CHANNEL-CODE TO WS-CHANNEL-CODE   *-- Change: Read new CHANNEL-CODE field from record
+                       PERFORM 3000-WRITE-REPORT
                END-READ
            END-PERFORM.
 
-       2300-GENERATE-REPORT.
-           EVALUATE CHANNEL-CODE
-               WHEN 'BCH'
-                   MOVE 'BATCH CHANNEL' TO WS-CHANNEL-CODE-DESC
-               WHEN 'WEB'
-                   MOVE 'WEB CHANNEL' TO WS-CHANNEL-CODE-DESC
-               WHEN 'ATM'
-                   MOVE 'ATM CHANNEL' TO WS-CHANNEL-CODE-DESC
-               WHEN OTHER
-                   MOVE 'UNKNOWN CHANNEL' TO WS-CHANNEL-CODE-DESC
-           END-EVALUATE
-           STRING
-               TRN-DATE DELIMITED BY SIZE
-               ' ' DELIMITED BY SIZE
-               TRN-TIME DELIMITED BY SIZE
-               ' ' DELIMITED BY SIZE
-               TRN-ACCOUNT-NUMBER DELIMITED BY SIZE
-               ' ' DELIMITED BY SIZE
-               TRN-AMOUNT DELIMITED BY SIZE
-               ' ' DELIMITED BY SIZE
-               TRN-TYPE DELIMITED BY SIZE
-               ' ' DELIMITED BY SIZE
-               TRN-STATUS DELIMITED BY SIZE
-               ' ' DELIMITED BY SIZE
-               CHANNEL-CODE DELIMITED BY SIZE
-               ' ' DELIMITED BY SIZE
-               WS-CHANNEL-CODE-DESC DELIMITED BY SIZE
-               INTO WS-REPORT-LINE
-           END-STRING
-           DISPLAY WS-REPORT-LINE
-           . *-- Change: Included CHANNEL-CODE in report output and added description logic
+       3000-WRITE-REPORT.
+           DISPLAY 'TRANSACTION: ' TRN-ACCOUNT-NUMBER
+           DISPLAY 'AMOUNT:      ' TRN-AMOUNT
+           DISPLAY 'CHANNEL:     ' WS-CHANNEL-CODE           *-- Change: Output CHANNEL-CODE in report
+           .
 
-       9999-EXIT.
-           CLOSE TRANSACTION-FILE
-           STOP RUN.
+       4000-CLOSE-FILES.
+           CLOSE TRANSACTION-FILE.
+
+       END PROGRAM RPTPOS00.
 
 [Summary Change Report]
-- Updated FD and COPY to include new CHANNEL-CODE field (via TRNREC.cpy).
-- Added WS-CHANNEL-CODE-DESC for reporting.
-- In 2300-GENERATE-REPORT, added logic to interpret CHANNEL-CODE and include it (and its description) in the report output.
+- Updated FD record length from 65 to 69 to accommodate new CHANNEL-CODE field.
+- Added `WS-CHANNEL-CODE` to working-storage for processing the new field.
+- Modified transaction processing to move `CHANNEL-CODE` from the record to working-storage.
+- Updated report output to include the new `CHANNEL-CODE`.
 - Inline comments added for traceability.
 
 [File 3] UTLVAL00.CBL src/programs/utility/UTLVAL00.cbl
@@ -195,22 +85,21 @@ graph TD
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
-           SELECT TRANSACTION-FILE ASSIGN TO 'TRANSACT.DAT'
+           SELECT TRANSACTION-FILE ASSIGN TO 'TRANFILE.DAT'
                ORGANIZATION IS SEQUENTIAL.
 
        DATA DIVISION.
        FILE SECTION.
        FD  TRANSACTION-FILE
-           RECORD CONTAINS 43 CHARACTERS
+           LABEL RECORDS ARE STANDARD
            BLOCK CONTAINS 0 RECORDS
-           DATA RECORD IS TRANSACTION-RECORD.
-       COPY 'TRNREC.CPY'.
+           RECORD CONTAINS 69 CHARACTERS.        *-- Change: Increased record length by 4 for CHANNEL-CODE
+       01  TRANSACTION-RECORD.
+           COPY TRNREC.                          *-- Change: Copybook TRNREC now includes CHANNEL-CODE
 
        WORKING-STORAGE SECTION.
-       01  WS-EOF-FLAG              PIC X VALUE 'N'.
-       01  WS-ERROR-FLAG            PIC X VALUE 'N'.
-       01  WS-ERROR-MSG             PIC X(80).
-       01  WS-CHANNEL-CODE-VALID    PIC X VALUE 'N'.      *-- Change: Added for CHANNEL-CODE validation
+       77  WS-EOF                  PIC X VALUE 'N'.
+       77  WS-CHANNEL-CODE         PIC X(04).    *-- Change: Added WS-CHANNEL-CODE for validation
 
        PROCEDURE DIVISION.
 
@@ -220,45 +109,33 @@ graph TD
                DISPLAY 'ERROR OPENING TRANSACTION FILE'
                STOP RUN
            END-IF.
-           *-- Change: No additional logic needed for CHANNEL-CODE at open
+           *-- Change: No additional logic needed for CHANNEL-CODE in file open
 
        2400-CHECK-FORMAT.
-           PERFORM UNTIL WS-EOF-FLAG = 'Y'
+           PERFORM UNTIL WS-EOF = 'Y'
                READ TRANSACTION-FILE
                    AT END
-                       MOVE 'Y' TO WS-EOF-FLAG
+                       MOVE 'Y' TO WS-EOF
                    NOT AT END
-                       PERFORM 2410-VALIDATE-RECORD
+                       MOVE CHANNEL-CODE TO WS-CHANNEL-CODE   *-- Change: Read new CHANNEL-CODE field from record
+                       PERFORM 2500-VALIDATE-CHANNEL-CODE
                END-READ
            END-PERFORM.
 
-       2410-VALIDATE-RECORD.
-           IF CHANNEL-CODE = 'BCH'
-               MOVE 'Y' TO WS-CHANNEL-CODE-VALID
-           ELSE IF CHANNEL-CODE = 'WEB'
-               MOVE 'Y' TO WS-CHANNEL-CODE-VALID
-           ELSE IF CHANNEL-CODE = 'ATM'
-               MOVE 'Y' TO WS-CHANNEL-CODE-VALID
-           ELSE
-               MOVE 'N' TO WS-CHANNEL-CODE-VALID
-           END-IF
-           IF WS-CHANNEL-CODE-VALID = 'N'
-               MOVE 'INVALID CHANNEL-CODE: ' TO WS-ERROR-MSG
-               STRING CHANNEL-CODE DELIMITED BY SIZE
-                      ' IN RECORD: ' DELIMITED BY SIZE
-                      TRN-ACCOUNT-NUMBER DELIMITED BY SIZE
-                      INTO WS-ERROR-MSG WITH POINTER 23
-               END-STRING
-               DISPLAY WS-ERROR-MSG
-           END-IF
-           . *-- Change: Added validation for CHANNEL-CODE and error reporting
+       2500-VALIDATE-CHANNEL-CODE.
+           IF WS-CHANNEL-CODE = SPACES OR WS-CHANNEL-CODE = LOW-VALUES
+               DISPLAY 'WARNING: CHANNEL-CODE MISSING FOR ACCOUNT ' TRN-ACCOUNT-NUMBER
+               *-- Change: Validation for presence of CHANNEL-CODE
+           END-IF.
 
-       9999-EXIT.
-           CLOSE TRANSACTION-FILE
-           STOP RUN.
+       4000-CLOSE-FILES.
+           CLOSE TRANSACTION-FILE.
+
+       END PROGRAM UTLVAL00.
 
 [Summary Change Report]
-- Updated FD and COPY to include new CHANNEL-CODE field (via TRNREC.cpy).
-- Added WS-CHANNEL-CODE-VALID for validation.
-- In 2410-VALIDATE-RECORD, added logic to validate CHANNEL-CODE (must be 'BCH', 'WEB', or 'ATM'); if invalid, display error message with record details.
+- Updated FD record length from 65 to 69 to accommodate new CHANNEL-CODE field.
+- Added `WS-CHANNEL-CODE` to working-storage for validation.
+- Modified format checking logic to read and validate the new `CHANNEL-CODE` field.
+- Added validation step to warn if `CHANNEL-CODE` is missing or blank.
 - Inline comments added for traceability.
