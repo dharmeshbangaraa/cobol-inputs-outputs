@@ -1,252 +1,164 @@
-** Technical Document and Low-Level Design (LLD)**
+# Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document details the technical changes and low-level design (LLD) for the COBOL application modules impacted by the introduction of the `TRN-CHANNEL-CODE` field in the transaction record structure. The changes span the transaction record copybook, the daily position report generator, and the data validation utility. The purpose of this document is to provide a comprehensive overview of the modifications, their rationale, and the expected impact on the system.
+This document provides a detailed explanation of the existing logic and structure for the COBOL modules involved in audit trail processing and historical position loading. The modules covered are critical for audit/error handling and the integration of real-time market price feeds.  
+No code changes were required for these modules based on the latest Impact Analysis Report; however, this document is provided for completeness and traceability.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The COBOL application processes financial transactions and positions, generates daily reports, and performs data validation. The main modules involved are:
-- **TRNREC.CPY**: Defines the structure of transaction records.
-- **RPTPOS00.CBL**: Generates daily position and transaction activity reports.
-- **UTLVAL00.CBL**: Performs data validation, including integrity and format checks.
+The application consists of the following key components:
+- **AUDPROC.cbl**: Handles audit trail processing, writing audit records for system and user actions.
+- **AUDITLOG.cpy**: Defines the structure of audit trail records.
+- **HISTLD00.cbl**: Loads historical position data into DB2, maintaining batch control and error handling.
 
 ### 2.2 Detailed Logic  
-#### Transaction Record Structure (TRNREC.CPY)
-- Defines the layout for transaction records, including keys, data fields, audit information, and filler for record length consistency.
 
-#### Daily Position Report Generator (RPTPOS00.CBL)
-- **Initialization**: Opens necessary files and writes report headers.
-- **Processing**: Reads position and transaction records, formats them, and writes details to the report file.
-- **Transaction Formatting**: Maps transaction fields from the record to the report layout.
-- **Cleanup**: Closes all files and handles errors.
+#### **AUDPROC.cbl**  
+- **Initialization (Lines 38-50):**  
+  - Accepts the current timestamp.
+  - Opens the audit file for extension.
+  - Handles file open errors by setting a return code and terminating.
+- **Audit Processing (Lines 52-73):**  
+  - Initializes the audit record.
+  - Populates audit fields from the linkage section.
+  - Writes the audit record to the file.
+  - Handles write errors and sets appropriate return codes.
+- **Termination (Lines 75-77):**  
+  - Closes the audit file.
 
-#### Data Validation Utility (UTLVAL00.CBL)
-- **Initialization**: Opens files and initializes processing totals.
-- **Processing**: Reads validation control records and performs the specified validation (integrity, cross-reference, format, balance).
-- **Transaction Integrity Check**: Ensures required fields are present.
-- **Transaction Format Check**: Validates field formats.
-- **Cleanup**: Closes files and writes error records as needed.
+#### **AUDITLOG.cpy**  
+- Defines the structure of an audit record, including header information, action types, status codes, key info, before/after images, and messages.
+- Utilizes level-88 condition names for common values (e.g., action types, status).
+
+#### **HISTLD00.cbl**  
+- **Initialization (Lines 38-50):**  
+  - Opens input and control files.
+  - Connects to DB2.
+  - Initializes checkpoints using the batch control file.
+- **Processing Loop (Lines 52-62):**  
+  - Reads transaction history records.
+  - Loads each record into the DB2 POSHIST table.
+  - Handles duplicate keys and errors.
+  - Commits work at defined thresholds and updates checkpoints.
+- **Termination (Lines 64-77):**  
+  - Final commit and checkpoint update.
+  - Closes files and disconnects from DB2.
+  - Displays processing statistics.
+- **Error Handling (Lines 79-87):**  
+  - Calls a common error routine and rolls back DB2 work on error.
 
 #### Flowchart:  
 ```
 flowchart TD
     Start(["Start"])
     Init["Initialize
-(Open Files,
-Write Headers)"]
-    ProcessPositions["Process Positions
-(Read, Format,
-Write Details)"]
-    ProcessTransactions["Process Transactions
-(Read, Format,
-Write Details)"]
-    ValidateData["Validate Data
-(Integrity, Format,
-Cross-Reference,
-Balance)"]
-    Cleanup["Cleanup
-(Close Files,
-Handle Errors)"]
-    End(["End"])
+Files/DB2/Checkpoints"]
+    ProcessLoop["Process
+Each Record"]
+    ReadRecord["Read
+Transaction History"]
+    LoadDB2["Load to
+DB2 POSHIST"]
+    CommitCheck["Check
+Commit Threshold"]
+    CommitWork["Commit
+and Update Checkpoint"]
+    Terminate["Terminate:
+Final Commit, Close Files,
+Disconnect DB2"]
+    ErrorRoutine["Error
+Handling"]
 
     Start --> Init
-    Init --> ProcessPositions
-    ProcessPositions --> ProcessTransactions
-    ProcessTransactions --> ValidateData
-    ValidateData --> Cleanup
-    Cleanup --> End
+    Init --> ProcessLoop
+    ProcessLoop --> ReadRecord
+    ReadRecord -->|More Records| LoadDB2
+    LoadDB2 --> CommitCheck
+    CommitCheck -->|Threshold Met| CommitWork
+    CommitCheck -->|Threshold Not Met| ReadRecord
+    CommitWork --> ReadRecord
+    ReadRecord -->|End of File or Error| Terminate
+    LoadDB2 -->|Error| ErrorRoutine
+    ErrorRoutine --> Terminate
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-**Requirement**:  
-Introduce a new field, `TRN-CHANNEL-CODE`, to the transaction record structure to capture the channel through which a transaction was initiated. Update all relevant modules to support reporting and validation of this new field.
+No changes were required for these files based on the Impact Analysis Report. The files are included for completeness as they are directly involved in audit/error handling and historical price tick loading for real-time market price feed integration.
 
 ### 3.2 Impacted Code Changes Summary:
 #### 3.2.1 Impacted Sections and Files:
-- **TRNREC.CPY** (src/copybook/common/TRNREC.cpy)
-- **RPTPOS00.CBL** (src/programs/batch/RPTPOS00.cbl)
-- **UTLVAL00.CBL** (src/programs/utility/UTLVAL00.cbl)
+- **AUDPROC.cbl** (`src/programs/common/AUDPROC.cbl`)
+- **AUDITLOG.cpy** (`src/copybook/common/AUDITLOG.cpy`)
+- **HISTLD00.cbl** (`src/programs/batch/HISTLD00.cbl`)
 
-**Purpose of Changes:**  
-To enable tracking, reporting, and validation of the transaction channel, improving auditability and supporting new business requirements for channel-based analytics.
-
-**Impact:**  
-- All transaction records now include a channel code.
-- Reports display the channel code for each transaction.
-- Validation routines ensure the presence and correct format of the channel code, reducing data quality issues.
+  - **Purpose of Changes:**  
+    No changes were made. The modules are included due to their direct involvement in the integration of real-time market price feeds and related audit/error handling.
+  - **Impact:**  
+    No impact on system logic or data flow. The existing logic continues to support audit trail processing and historical data loading as required.
 
 ### 3.3 Insertion Points  
-- **TRNREC.CPY**:  
-  - Added `TRN-CHANNEL-CODE` field to the transaction data structure.
-  - Reduced the filler size to maintain the overall record length.
-  - Updated field descriptions to document the new field.
-
-- **RPTPOS00.CBL**:  
-  - In the working-storage section, added `WS-TRAN-CHANNEL` to `WS-TRANSACTION-DETAIL`.
-  - In `2215-FORMAT-TRANSACTION`, mapped `TRN-CHANNEL-CODE` to `WS-TRAN-CHANNEL` for reporting.
-  - Updated the copybook inclusion to use the new structure.
-
-- **UTLVAL00.CBL**:  
-  - Added `WS-CHANNEL-CODE-VALID` for validation logic.
-  - In `2220-CHECK-TRANSACTION-INTEGRITY`, added logic to check for missing channel code.
-  - In `2420-CHECK-TRANSACTION-FORMAT`, added logic to validate the format of the channel code.
-  - Updated the copybook inclusion to use the new structure.
+- **No new logic was inserted.**  
+- All existing logic remains unchanged.  
+- The files and sections listed above are referenced for completeness and traceability.
 
 ### 3.4 Structured Diffs  
-#### TRNREC.CPY  
-**Before:**  
+**No code changes were made.**  
+For reference, the structure of the modules remains as follows:
+
+**AUDPROC.cbl (Excerpt):**
 ```cobol
-05  TRN-DATA.
-    10  TRN-INVESTMENT-ID  PIC X(10).
-    10  TRN-TYPE           PIC X(02).
-        88  TRN-TYPE-BUY     VALUE 'BU'.
-        88  TRN-TYPE-SELL    VALUE 'SL'.
-        88  TRN-TYPE-TRANS   VALUE 'TR'.
-        88  TRN-TYPE-FEE     VALUE 'FE'.
-    10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
-    10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
-    10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
-    10  TRN-CURRENCY      PIC X(03).
-    10  TRN-STATUS        PIC X(01).
-        88  TRN-STATUS-PEND   VALUE 'P'.
-        88  TRN-STATUS-DONE   VALUE 'D'.
-        88  TRN-STATUS-FAIL   VALUE 'F'.
-        88  TRN-STATUS-REV    VALUE 'R'.
-05  TRN-AUDIT.
-    10  TRN-PROCESS-DATE  PIC X(26).
-    10  TRN-PROCESS-USER  PIC X(08).
-05  TRN-FILLER           PIC X(50).
+1000-INITIALIZE.
+    ACCEPT WS-FORMATTED-TIME FROM TIME STAMP
+    OPEN EXTEND AUDIT-FILE
+    IF WS-FILE-STATUS NOT = '00'
+        DISPLAY 'Error opening audit file: ' WS-FILE-STATUS
+        MOVE 8 TO LS-RETURN-CODE
+        PERFORM 3000-TERMINATE
+        GOBACK
+    END-IF
+.
 ```
 
-**After:**  
+**AUDITLOG.cpy (Excerpt):**
 ```cobol
-05  TRN-DATA.
-    10  TRN-INVESTMENT-ID  PIC X(10).
-    10  TRN-TYPE           PIC X(02).
-        88  TRN-TYPE-BUY     VALUE 'BU'.
-        88  TRN-TYPE-SELL    VALUE 'SL'.
-        88  TRN-TYPE-TRANS   VALUE 'TR'.
-        88  TRN-TYPE-FEE     VALUE 'FE'.
-    10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
-    10  TRN-PRICE         PIC S9(11)V9(4) COMP-3.
-    10  TRN-AMOUNT        PIC S9(13)V9(2) COMP-3.
-    10  TRN-CURRENCY      PIC X(03).
-    10  TRN-STATUS        PIC X(01).
-        88  TRN-STATUS-PEND   VALUE 'P'.
-        88  TRN-STATUS-DONE   VALUE 'D'.
-        88  TRN-STATUS-FAIL   VALUE 'F'.
-        88  TRN-STATUS-REV    VALUE 'R'.
-    10  TRN-CHANNEL-CODE   PIC X(04).    *-- Change: Added CHANNEL-CODE for channel identification
-05  TRN-AUDIT.
-    10  TRN-PROCESS-DATE  PIC X(26).
-    10  TRN-PROCESS-USER  PIC X(08).
-05  TRN-FILLER           PIC X(46).      *-- Change: Reduced filler by 4 bytes due to CHANNEL-CODE addition
+01  AUDIT-RECORD.
+    05  AUD-HEADER.
+        10  AUD-TIMESTAMP     PIC X(26).
+        10  AUD-SYSTEM-ID     PIC X(8).
+        10  AUD-USER-ID       PIC X(8).
+        10  AUD-PROGRAM       PIC X(8).
+        10  AUD-TERMINAL      PIC X(8).
+    05  AUD-TYPE             PIC X(4).
+        88  AUD-TRANSACTION     VALUE 'TRAN'.
+        88  AUD-USER-ACTION     VALUE 'USER'.
+        88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
+    ...
 ```
 
-#### RPTPOS00.CBL  
-**Before:**  
+**HISTLD00.cbl (Excerpt):**
 ```cobol
-01  WS-TRANSACTION-DETAIL.
-    05  WS-TRAN-DATE         PIC X(08).
-    05  WS-TRAN-TIME         PIC X(06).
-    05  WS-TRAN-PORTFOLIO    PIC X(08).
-    05  WS-TRAN-SEQUENCE     PIC X(06).
-    05  WS-TRAN-INVESTMENT   PIC X(10).
-    05  WS-TRAN-TYPE         PIC X(02).
-    05  WS-TRAN-QUANTITY     PIC -ZZZZZZZZ9.9999.
-    05  WS-TRAN-AMOUNT       PIC -ZZZZZZZZZZZ.99.
-```
-
-**After:**  
-```cobol
-01  WS-TRANSACTION-DETAIL.
-    05  WS-TRAN-DATE         PIC X(08).
-    05  WS-TRAN-TIME         PIC X(06).
-    05  WS-TRAN-PORTFOLIO    PIC X(08).
-    05  WS-TRAN-SEQUENCE     PIC X(06).
-    05  WS-TRAN-INVESTMENT   PIC X(10).
-    05  WS-TRAN-TYPE         PIC X(02).
-    05  WS-TRAN-QUANTITY     PIC -ZZZZZZZZ9.9999.
-    05  WS-TRAN-AMOUNT       PIC -ZZZZZZZZZZZ.99.
-    05  WS-TRAN-CHANNEL      PIC X(04). *-- Change: Added for CHANNEL-CODE reporting
-```
-
-**Before:**  
-```cobol
-2215-FORMAT-TRANSACTION.
-    MOVE TRN-DATE           TO WS-TRAN-DATE
-    MOVE TRN-TIME           TO WS-TRAN-TIME
-    MOVE TRN-PORTFOLIO-ID   TO WS-TRAN-PORTFOLIO
-    MOVE TRN-SEQUENCE-NO    TO WS-TRAN-SEQUENCE
-    MOVE TRN-INVESTMENT-ID  TO WS-TRAN-INVESTMENT
-    MOVE TRN-TYPE           TO WS-TRAN-TYPE
-    MOVE TRN-QUANTITY       TO WS-TRAN-QUANTITY
-    MOVE TRN-AMOUNT         TO WS-TRAN-AMOUNT
-    WRITE REPORT-RECORD FROM WS-TRANSACTION-DETAIL.
-```
-
-**After:**  
-```cobol
-2215-FORMAT-TRANSACTION.
-    MOVE TRN-DATE           TO WS-TRAN-DATE
-    MOVE TRN-TIME           TO WS-TRAN-TIME
-    MOVE TRN-PORTFOLIO-ID   TO WS-TRAN-PORTFOLIO
-    MOVE TRN-SEQUENCE-NO    TO WS-TRAN-SEQUENCE
-    MOVE TRN-INVESTMENT-ID  TO WS-TRAN-INVESTMENT
-    MOVE TRN-TYPE           TO WS-TRAN-TYPE
-    MOVE TRN-QUANTITY       TO WS-TRAN-QUANTITY
-    MOVE TRN-AMOUNT         TO WS-TRAN-AMOUNT
-    MOVE TRN-CHANNEL-CODE   TO WS-TRAN-CHANNEL   *-- Change: Map new CHANNEL-CODE field for reporting
-    WRITE REPORT-RECORD FROM WS-TRANSACTION-DETAIL.
-```
-
-#### UTLVAL00.CBL  
-**Before:**  
-```cobol
-01  WS-CHANNEL-CODE-VALID   PIC X(04).
-```
-*(This field did not exist before)*
-
-**After:**  
-```cobol
-01  WS-CHANNEL-CODE-VALID   PIC X(04). *-- Change: Added for CHANNEL-CODE validation
-```
-
-**Before:**  
-```cobol
-2220-CHECK-TRANSACTION-INTEGRITY.
-    * Existing logic
-```
-
-**After:**  
-```cobol
-2220-CHECK-TRANSACTION-INTEGRITY.
-    IF TRN-CHANNEL-CODE = SPACES OR TRN-CHANNEL-CODE = LOW-VALUES
-        MOVE 'CHANNEL-CODE MISSING' TO WS-ERR-DESC
-        MOVE 'INTEGRITY' TO WS-ERR-TYPE
-        MOVE TRN-PORTFOLIO-ID TO WS-ERR-KEY
-        WRITE ERROR-RECORD FROM WS-ERROR-LINE
-    END-IF. *-- Change: Added validation for CHANNEL-CODE presence
-```
-
-**Before:**  
-```cobol
-2420-CHECK-TRANSACTION-FORMAT.
-    * Existing logic
-```
-
-**After:**  
-```cobol
-2420-CHECK-TRANSACTION-FORMAT.
-    IF TRN-CHANNEL-CODE NOT = SPACES AND
-       (TRN-CHANNEL-CODE < 'A' OR TRN-CHANNEL-CODE > 'Z99')
-        MOVE 'INVALID CHANNEL-CODE FORMAT' TO WS-ERR-DESC
-        MOVE 'FORMAT' TO WS-ERR-TYPE
-        MOVE TRN-PORTFOLIO-ID TO WS-ERR-KEY
-        WRITE ERROR-RECORD FROM WS-ERROR-LINE
-    END-IF. *-- Change: Added format validation for CHANNEL-CODE
+2200-LOAD-TO-DB2.
+    INITIALIZE POSHIST-RECORD
+    MOVE TH-ACCOUNT-NO    TO PH-ACCOUNT-NO
+    MOVE TH-PORTFOLIO-ID  TO PH-PORTFOLIO-ID
+    ...
+    EXEC SQL
+        INSERT INTO POSHIST
+        VALUES (:POSHIST-RECORD)
+    END-EXEC
+    IF SQLCODE = 0
+        ADD 1 TO WS-RECORDS-WRITTEN
+    ELSE
+        IF SQLCODE = -803
+            CONTINUE
+        ELSE
+            ADD 1 TO WS-ERROR-COUNT
+            PERFORM DB2-ERROR-ROUTINE
+        END-IF
+    END-IF
+.
 ```
 
 ## 4. Conclusion  
-The introduction of the `TRN-CHANNEL-CODE` field enhances the system's ability to track and report the origin channel of each transaction, supporting improved analytics and auditability. The changes ensure that all relevant modules—data structure, reporting, and validation—are updated to handle the new field, with robust validation to maintain data quality. These modifications are expected to have a positive impact on reporting accuracy and compliance with new business requirements.
+No changes were made to the audit trail processing or historical position loading modules as a result of the latest impact analysis. The existing logic continues to provide robust support for audit/error handling and real-time market price feed integration. This document serves as a reference for the current state of these modules and ensures traceability for future enhancements or debugging efforts.
