@@ -8,7 +8,7 @@ allowing for improved analytics, auditing, and fraud detection based on transact
 
 Acceptance Criteria:
 1. Definition
-   A new field `CHANNEL-CODE` (`PIC X(04)`) is defined in the relevant copybooks (e.g., `TRANSACTION.CPY`).
+   A new field `CHANNEL-CODE` (`PIC X(04)`) is defined in the relevant copybooks.
 
 2. File Layout
    Transaction input and output files are updated to include the `CHANNEL-CODE` field and corresponding layout adjustments.
