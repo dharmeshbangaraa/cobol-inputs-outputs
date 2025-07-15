@@ -1,126 +1,80 @@
-Summary:
+**Summary**:
+User Story: [Please insert the user story from the previous agent output here, e.g., "US-5678: Enhance batch process to log audit trail for all portfolio updates"]  
+- 3 impacted components identified (**High impact only**)  
+- High complexity change affecting audit trail logging and batch update chain
 
-User Story: Integrate real-time market price feed for dynamic portfolio valuation  
-- 6 impacted components identified (**High impact only**)  
-- High complexity change: impacts real-time data ingestion, batch and online valuation, error/audit handling, DB2 and VSAM data persistence, and CICS screen refresh.
+**Ranked Impact List**:
 
----
+| Program File Path                        | Impact | Nature  | Affected Paragraphs                      | Dependency Path                                      |
+|------------------------------------------|--------|---------|------------------------------------------|------------------------------------------------------|
+| `src/programs/portfolio/PORTUPDT.cbl`    | High   | Direct  | 3000-UPDATE, 4000-WRITE-AUDIT            | PORTUPDT (batch update entry point, audit write)      |
+| `src/programs/common/AUDPROC.cbl`        | High   | Direct  | 2000-PROCESS-AUDIT, 3000-TERMINATE       | PORTUPDT → AUDPROC (audit logging routine)           |
+| `src/copybook/common/AUDITLOG.cpy`       | High   | Direct  | [copybook: AUDIT-RECORD, AUDIT-FILE]     | PORTUPDT/AUDPROC (shared audit data structure)       |
 
-Ranked Impact List:
-
-| Program File Path                           | Impact | Nature   | Affected Paragraphs/Sections         | Dependency Path                                   |
-|---------------------------------------------|--------|----------|--------------------------------------|---------------------------------------------------|
-| src/programs/batch/BCHVAL00.cbl             | High   | Direct   | 2000-PRICE-UPDATE, 2100-REVAL-POS    | Real-time valuation engine, updates PRICEDATA      |
-| src/programs/online/PORTDISP.cbl            | High   | Direct   | 1000-REFRESH-SCREEN, 1100-DISPLAY    | CICS “View Portfolio” screen, displays valuations  |
-| src/programs/batch/HISTLD00.cbl             | High   | Direct   | 2000-LOAD-HIST-PRICE, 2100-ARCHIVE   | Loads/persists historical price data (PRICEHIST)   |
-| src/programs/common/AUDPROC.cbl             | High   | Direct   | 2000-PROCESS-AUDIT, 3000-TERMINATE   | Writes to AUDITLOG on error/stale feed            |
-| src/copybook/db2/PRICEDATA.cpy              | High   | Direct   | DATA DIVISION                        | DB2 table mapping for real-time price updates      |
-| src/copybook/common/AUDITLOG.cpy            | High   | Direct   | DATA DIVISION                        | Copybook for audit logging                        |
-
----
-
-JSON Metadata:
-```
+**JSON Metadata**:
+```json
 {
   "impactAnalysis": {
-    "userStory": "Integrate real-time market price feed for dynamic portfolio valuation",
+    "userStory": "US-5678",
     "impactedComponents": [
       {
-        "programFilePath": "src/programs/batch/BCHVAL00.cbl",
+        "programFilePath": "src/programs/portfolio/PORTUPDT.cbl",
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-PRICE-UPDATE", "2100-REVAL-POS"],
-        "dependencyPath": ["BCHVAL00"],
-        "rationale": "Batch valuation engine that recalculates position values and P&L on each price update, updates PRICEDATA."
-      },
-      {
-        "programFilePath": "src/programs/online/PORTDISP.cbl",
-        "impactScore": 0.96,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["1000-REFRESH-SCREEN", "1100-DISPLAY"],
-        "dependencyPath": ["PORTDISP"],
-        "rationale": "CICS online program for 'View Portfolio'; must refresh and display real-time valuations within 10 seconds."
-      },
-      {
-        "programFilePath": "src/programs/batch/HISTLD00.cbl",
-        "impactScore": 0.94,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["2000-LOAD-HIST-PRICE", "2100-ARCHIVE"],
-        "dependencyPath": ["HISTLD00"],
-        "rationale": "Loads and archives historical price feeds into new VSAM KSDS PRICEHIST for backtesting."
+        "affectedParagraphs": ["3000-UPDATE", "4000-WRITE-AUDIT"],
+        "dependencyPath": ["PORTUPDT"],
+        "rationale": "Primary batch update program; directly writes audit trail after portfolio updates"
       },
       {
         "programFilePath": "src/programs/common/AUDPROC.cbl",
-        "impactScore": 0.92,
+        "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": ["2000-PROCESS-AUDIT", "3000-TERMINATE"],
-        "dependencyPath": ["AUDPROC"],
-        "rationale": "Handles error and audit logging when feed fails or prices are stale, writing to AUDITLOG."
-      },
-      {
-        "programFilePath": "src/copybook/db2/PRICEDATA.cpy",
-        "impactScore": 0.91,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["DATA DIVISION"],
-        "dependencyPath": ["BCHVAL00", "PRICEDATA.cpy"],
-        "rationale": "DB2 copybook for PRICEDATA table, updated by ingestion and valuation logic."
+        "dependencyPath": ["PORTUPDT", "AUDPROC"],
+        "rationale": "Handles audit record processing and file output for all audit events"
       },
       {
         "programFilePath": "src/copybook/common/AUDITLOG.cpy",
-        "impactScore": 0.90,
+        "impactScore": 0.93,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["DATA DIVISION"],
-        "dependencyPath": ["AUDPROC", "AUDITLOG.cpy"],
-        "rationale": "Copybook for audit logging, used for error and feed failure audit trail."
+        "affectedParagraphs": ["AUDIT-RECORD", "AUDIT-FILE"],
+        "dependencyPath": ["PORTUPDT", "AUDPROC", "AUDITLOG"],
+        "rationale": "Defines audit record/file structure used throughout the audit trail chain"
       }
     ]
   }
 }
 ```
 
----
-
-Visualization:
-
+**Visualization**:
 ```mermaid
 graph TD
-    BCHVAL00["src/programs/batch/BCHVAL00.cbl"]
-    PORTDISP["src/programs/online/PORTDISP.cbl"]
-    HISTLD00["src/programs/batch/HISTLD00.cbl"]
-    AUDPROC["src/programs/common/AUDPROC.cbl"]
-    PRICEDATA["src/copybook/db2/PRICEDATA.cpy"]
-    AUDITLOG["src/copybook/common/AUDITLOG.cpy"]
+  style PORTUPDT fill:#ffcccc,stroke:#b22222,stroke-width:2px
+  style AUDPROC fill:#ffcccc,stroke:#b22222,stroke-width:2px
+  style AUDITLOG fill:#ffcccc,stroke:#b22222,stroke-width:2px
 
-    BCHVAL00 -- uses --> PRICEDATA
-    BCHVAL00 -- triggers --> HISTLD00
-    BCHVAL00 -- logs errors --> AUDPROC
-    PORTDISP -- displays --> PRICEDATA
-    AUDPROC -- uses --> AUDITLOG
-    HISTLD00 -- archives --> PRICEDATA
-    HISTLD00 -- writes --> AUDITLOG
+  PORTUPDT["src/programs/portfolio/PORTUPDT.cbl"]
+  AUDPROC["src/programs/common/AUDPROC.cbl"]
+  AUDITLOG["src/copybook/common/AUDITLOG.cpy"]
 
-    style BCHVAL00 fill:#ffcccc,stroke:#d33,stroke-width:2px
-    style PORTDISP fill:#ffcccc,stroke:#d33,stroke-width:2px
-    style HISTLD00 fill:#ffcccc,stroke:#d33,stroke-width:2px
-    style AUDPROC fill:#ffcccc,stroke:#d33,stroke-width:2px
-    style PRICEDATA fill:#ffcccc,stroke:#d33,stroke-width:2px
-    style AUDITLOG fill:#ffcccc,stroke:#d33,stroke-width:2px
+  PORTUPDT --> AUDPROC
+  PORTUPDT --> AUDITLOG
+  AUDPROC --> AUDITLOG
 ```
 
 ---
 
-Notes on Reasoning:
+**Reasoning**:
+- `PORTUPDT.cbl` is the main batch update program for portfolios and is responsible for invoking audit trail logic after updates.
+- `AUDPROC.cbl` is the common audit processing routine, called by batch programs to write audit records.
+- `AUDITLOG.cpy` is the copybook defining the audit record/file structure, included by both `PORTUPDT` and `AUDPROC`.
+- All three are tightly coupled in the audit trail flow, and any change to audit requirements or data structure will have a high impact on these components.
 
-- Only files present in the GitHub repository are included.
-- All selected components are directly responsible for real-time price ingestion, valuation, online display, error/audit handling, or DB2/VSAM data persistence as per the user story.
-- All copybooks are included only if directly referenced in the high-impact valuation, audit, or data flow.
-- JCL files are not listed as high-impact unless they directly control the valuation or ingestion batch, which in this repo is handled in the COBOL batch programs.
-- Impact scores are assigned based on proximity to the user story’s requirements, criticality, and direct data/control flow.
-
-End of Report
+**Note:**  
+- Only files present in the repository are included.
+- Only components with a **High** impact score are listed.
+- Paths are exact as per the repository structure.  
+- Please replace the user story in the summary and JSON with the actual user story from the previous agent output if different.
