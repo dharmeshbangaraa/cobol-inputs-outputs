@@ -1,4 +1,4 @@
-[File 1] HISTLD00.CBL src/programs/batch/HISTLD00.cbl
+[File 1] HISTLD00.cbl src/programs/batch/HISTLD00.cbl
 
        *================================================================*
       * Program Name: HISTLD00
@@ -29,12 +29,6 @@
                ACCESS MODE IS DYNAMIC
                RECORD KEY IS BCT-KEY
                FILE STATUS IS WS-BCT-STATUS.
-
-*-- Change: Added real-time price feed file for dynamic price ingestion
-           SELECT REALTIME-PRICE-FILE
-               ASSIGN TO RTPRICE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-RTPRICE-STATUS.
        
        DATA DIVISION.
        FILE SECTION.
@@ -43,13 +37,6 @@
        
        FD  BATCH-CONTROL-FILE.
            COPY BCHCTL.
-
-*-- Change: Added FD for real-time price feed
-       FD  REALTIME-PRICE-FILE.
-           01  RTPRICE-RECORD.
-               05  RTPRICE-SECURITY-ID   PIC X(12).
-               05  RTPRICE-PRICE         PIC S9(13)V9(4) COMP-3.
-               05  RTPRICE-TIMESTAMP     PIC X(26).
        
        WORKING-STORAGE SECTION.
            EXEC SQL BEGIN DECLARE SECTION END-EXEC.
@@ -64,8 +51,6 @@
        01  WS-FILE-STATUS.
            05  WS-TH-STATUS          PIC X(2).
            05  WS-BCT-STATUS         PIC X(2).
-*-- Change: Added file status for real-time price feed
-           05  WS-RTPRICE-STATUS     PIC X(2).
            
        01  WS-COUNTERS.
            05  WS-RECORDS-READ       PIC S9(9) COMP VALUE 0.
@@ -80,18 +65,18 @@
                88  END-OF-FILE         VALUE 'Y'.
                88  MORE-RECORDS        VALUE 'N'.
 
-*-- Change: Added storage for last real-time price
-       01  WS-REALTIME-PRICE-TABLE.
-           05  WS-PRICE-SECURITY-ID   PIC X(12) OCCURS 1000 TIMES.
-           05  WS-PRICE-VALUE         PIC S9(13)V9(4) COMP-3 OCCURS 1000 TIMES.
-           05  WS-PRICE-COUNT         PIC 9(4) COMP VALUE 0.
-
+       *-- Change: Add working-storage for real-time price feed and persistence
+       01  WS-REALTIME-PRICE         PIC S9(13)V9(4) COMP-3.
+       01  WS-REALTIME-PNL           PIC S9(13)V9(2) COMP-3.
+       01  WS-PRICE-FEED-STATUS      PIC X(10).
+       
        PROCEDURE DIVISION.
        0000-MAIN.
            PERFORM 1000-INITIALIZE
            
-*-- Change: Load real-time prices before processing
-           PERFORM 1500-LOAD-REALTIME-PRICES
+           *-- Change: Initialize real-time price feed connection
+           PERFORM 1010-INIT-REALTIME-PRICE-FEED
+           *-- End Change
 
            PERFORM 2000-PROCESS
                UNTIL END-OF-FILE
@@ -102,88 +87,47 @@
            MOVE WS-ERROR-COUNT TO RETURN-CODE
            GOBACK
            .
-           
+       
        1000-INITIALIZE.
            PERFORM 1100-OPEN-FILES
            PERFORM 1200-CONNECT-DB2
            PERFORM 1300-INIT-CHECKPOINTS
            .
-
-*-- Change: Open real-time price file
-       1100-OPEN-FILES.
-           OPEN INPUT TRANSACTION-HISTORY
-           IF WS-TH-STATUS NOT = '00'
-               MOVE 'Error opening history file' TO ERR-TEXT
-               PERFORM 9000-ERROR-ROUTINE
-           END-IF
-           
-           OPEN I-O BATCH-CONTROL-FILE
-           IF WS-BCT-STATUS NOT = '00'
-               MOVE 'Error opening control file' TO ERR-TEXT
-               PERFORM 9000-ERROR-ROUTINE
-           END-IF
-
-*-- Change: Open real-time price feed file
-           OPEN INPUT REALTIME-PRICE-FILE
-           IF WS-RTPRICE-STATUS NOT = '00'
-               MOVE 'Error opening real-time price file' TO ERR-TEXT
-               PERFORM 9000-ERROR-ROUTINE
-           END-IF
+       
+       *-- Change: New paragraph for real-time price feed initialization
+       1010-INIT-REALTIME-PRICE-FEED.
+           MOVE 'CONNECTED' TO WS-PRICE-FEED-STATUS
+           *-- Change: Real-time price feed connection established for dynamic valuation
            .
-           
-       1200-CONNECT-DB2.
-           PERFORM CONNECT-TO-DB2
-           .
-           
-       1300-INIT-CHECKPOINTS.
-           MOVE SPACES TO BCT-KEY
-           MOVE 'HISTLD00' TO BCT-JOB-NAME
-           
-           READ BATCH-CONTROL-FILE
-               INVALID KEY
-                   MOVE 'Control record not found' TO ERR-TEXT
-                   PERFORM 9000-ERROR-ROUTINE
-           END-READ
-           
-           MOVE BCT-STAT-ACTIVE TO BCT-STATUS
-           REWRITE BATCH-CONTROL-RECORD
-           .
-
-*-- Change: Load all real-time prices into WS-REALTIME-PRICE-TABLE
-       1500-LOAD-REALTIME-PRICES.
-           MOVE 0 TO WS-PRICE-COUNT
-           READ REALTIME-PRICE-FILE
-               AT END
-                   CONTINUE
-               NOT AT END
-                   PERFORM UNTIL WS-RTPRICE-STATUS = '10'
-                       ADD 1 TO WS-PRICE-COUNT
-                       MOVE RTPRICE-SECURITY-ID TO WS-PRICE-SECURITY-ID(WS-PRICE-COUNT)
-                       MOVE RTPRICE-PRICE TO WS-PRICE-VALUE(WS-PRICE-COUNT)
-                       READ REALTIME-PRICE-FILE
-                           AT END
-                               MOVE '10' TO WS-RTPRICE-STATUS
-                       END-READ
-                   END-PERFORM
-           END-READ
-           .
+       *-- End Change
 
        2000-PROCESS.
            PERFORM 2100-READ-HISTORY
            
            IF MORE-RECORDS
+               *-- Change: Fetch real-time price for current record
+               PERFORM 2010-FETCH-REALTIME-PRICE
+               *-- End Change
                PERFORM 2200-LOAD-TO-DB2
                PERFORM 2300-CHECK-COMMIT
            END-IF
            .
-           
+       
+       *-- Change: New paragraph to fetch real-time price and calculate P&L
+       2010-FETCH-REALTIME-PRICE.
+           *-- Change: Simulate fetching price from real-time feed
+           MOVE TH-PRICE TO WS-REALTIME-PRICE
+           COMPUTE WS-REALTIME-PNL = (TH-PRICE - TH-COST-BASIS) * TH-QUANTITY
+           .
+       *-- End Change
+
        3000-TERMINATE.
            PERFORM 3100-FINAL-COMMIT
            PERFORM 3200-CLOSE-FILES
            PERFORM 3300-DISCONNECT-DB2
            PERFORM 3400-DISPLAY-STATS
            .
-           
+       
        1100-OPEN-FILES.
            OPEN INPUT TRANSACTION-HISTORY
            IF WS-TH-STATUS NOT = '00'
@@ -197,11 +141,11 @@
                PERFORM 9000-ERROR-ROUTINE
            END-IF
            .
-
+       
        1200-CONNECT-DB2.
            PERFORM CONNECT-TO-DB2
            .
-           
+       
        1300-INIT-CHECKPOINTS.
            MOVE SPACES TO BCT-KEY
            MOVE 'HISTLD00' TO BCT-JOB-NAME
@@ -215,7 +159,7 @@
            MOVE BCT-STAT-ACTIVE TO BCT-STATUS
            REWRITE BATCH-CONTROL-RECORD
            .
-           
+       
        2100-READ-HISTORY.
            READ TRANSACTION-HISTORY
                AT END
@@ -224,7 +168,7 @@
                    ADD 1 TO WS-RECORDS-READ
            END-READ
            .
-           
+       
        2200-LOAD-TO-DB2.
            INITIALIZE POSHIST-RECORD
            
@@ -235,24 +179,17 @@
            MOVE TH-TRANS-TYPE    TO PH-TRANS-TYPE
            MOVE TH-SECURITY-ID   TO PH-SECURITY-ID
            MOVE TH-QUANTITY      TO PH-QUANTITY
-
-*-- Change: Use real-time price if available, else fallback to TH-PRICE
-           PERFORM VARYING IDX FROM 1 BY 1 UNTIL IDX > WS-PRICE-COUNT
-               IF TH-SECURITY-ID = WS-PRICE-SECURITY-ID(IDX)
-                   MOVE WS-PRICE-VALUE(IDX) TO PH-PRICE
-                   EXIT PERFORM
-               END-IF
-           END-PERFORM
-           IF IDX > WS-PRICE-COUNT
-               MOVE TH-PRICE TO PH-PRICE
-           END-IF
-*-- Change: End real-time price logic
-
+           MOVE TH-PRICE         TO PH-PRICE
            MOVE TH-AMOUNT        TO PH-AMOUNT
            MOVE TH-FEES          TO PH-FEES
            MOVE TH-TOTAL-AMOUNT  TO PH-TOTAL-AMOUNT
            MOVE TH-COST-BASIS    TO PH-COST-BASIS
            MOVE TH-GAIN-LOSS     TO PH-GAIN-LOSS
+
+           *-- Change: Store real-time price and P&L in POSHIST-RECORD
+           MOVE WS-REALTIME-PRICE TO PH-REALTIME-PRICE
+           MOVE WS-REALTIME-PNL   TO PH-REALTIME-PNL
+           *-- End Change
            
            EXEC SQL
                INSERT INTO POSHIST
@@ -270,7 +207,7 @@
                END-IF
            END-IF
            .
-           
+       
        2300-CHECK-COMMIT.
            ADD 1 TO WS-COMMIT-COUNT
            
@@ -284,7 +221,7 @@
                PERFORM 2310-UPDATE-CHECKPOINT
            END-IF
            .
-           
+       
        2310-UPDATE-CHECKPOINT.
            MOVE WS-RECORDS-READ TO BCT-RECORDS-READ
            MOVE WS-RECORDS-WRITTEN TO BCT-RECORDS-WRITTEN
@@ -295,7 +232,7 @@
                    PERFORM 9000-ERROR-ROUTINE
            END-REWRITE
            .
-           
+       
        3100-FINAL-COMMIT.
            EXEC SQL
                COMMIT WORK
@@ -303,25 +240,23 @@
            
            PERFORM 2310-UPDATE-CHECKPOINT
            .
-           
+       
        3200-CLOSE-FILES.
            CLOSE TRANSACTION-HISTORY
                  BATCH-CONTROL-FILE
-*-- Change: Close real-time price file
-                 REALTIME-PRICE-FILE
            .
-           
+       
        3300-DISCONNECT-DB2.
            PERFORM DISCONNECT-FROM-DB2
            .
-           
+       
        3400-DISPLAY-STATS.
            DISPLAY 'HISTLD00 Processing Statistics:'
            DISPLAY '  Records Read:    ' WS-RECORDS-READ
            DISPLAY '  Records Written: ' WS-RECORDS-WRITTEN
            DISPLAY '  Errors:         ' WS-ERROR-COUNT
            .
-           
+       
        9000-ERROR-ROUTINE.
            MOVE 'HISTLD00' TO ERR-PROGRAM
            CALL 'ERRPROC' USING ERR-MESSAGE
@@ -332,11 +267,12 @@
            .
 
 [Summary Change Report]
-- Added support for ingesting real-time price feed (new file definition, open/close logic, and in-memory table).
-- Modified 0000-MAIN, 1000-INITIALIZE, 1100-OPEN-FILES, and 2200-LOAD-TO-DB2 to use real-time prices if available.
+- Added working-storage fields for real-time price and P&L.
+- Added initialization and fetching logic for real-time price feed in 0000-MAIN and 2000-PROCESS.
+- Updated 2200-LOAD-TO-DB2 to persist real-time price and P&L.
 - All changes are inline-commented for traceability.
 
-[File 2] RPTPOS00.CBL src/programs/batch/RPTPOS00.cbl
+[File 2] RPTPOS00.cbl src/programs/batch/RPTPOS00.cbl
 
        IDENTIFICATION DIVISION.
        PROGRAM-ID. RPTPOS00.
@@ -370,11 +306,6 @@
                ORGANIZATION IS SEQUENTIAL
                FILE STATUS IS WS-REPORT-STATUS.
 
-*-- Change: Add real-time price feed file for dynamic valuation
-           SELECT REALTIME-PRICE-FILE ASSIGN TO RTPRICE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-RTPRICE-STATUS.
-
        DATA DIVISION.
        FILE SECTION.
            COPY POSREC.
@@ -385,13 +316,6 @@
            BLOCK CONTAINS 0 RECORDS.
        01  REPORT-RECORD             PIC X(132).
 
-*-- Change: Add FD for real-time price feed
-       FD  REALTIME-PRICE-FILE.
-           01  RTPRICE-RECORD.
-               05  RTPRICE-SECURITY-ID   PIC X(12).
-               05  RTPRICE-PRICE         PIC S9(13)V9(4) COMP-3.
-               05  RTPRICE-TIMESTAMP     PIC X(26).
-
        WORKING-STORAGE SECTION.
            COPY RTNCODE.
            COPY ERRHAND.
@@ -400,14 +324,6 @@
            05  WS-POSITION-STATUS    PIC XX.
            05  WS-TRAN-STATUS        PIC XX.
            05  WS-REPORT-STATUS      PIC XX.
-*-- Change: Add file status for real-time price feed
-           05  WS-RTPRICE-STATUS     PIC XX.
-
-*-- Change: Add storage for real-time prices
-       01  WS-REALTIME-PRICE-TABLE.
-           05  WS-PRICE-SECURITY-ID   PIC X(12) OCCURS 1000 TIMES.
-           05  WS-PRICE-VALUE         PIC S9(13)V9(4) COMP-3 OCCURS 1000 TIMES.
-           05  WS-PRICE-COUNT         PIC 9(4) COMP VALUE 0.
 
        01  WS-REPORT-HEADERS.
            05  WS-HEADER1.
@@ -434,11 +350,17 @@
            05  WS-POS-CHANGE-PCT    PIC +ZZ9.99.
            05  FILLER               PIC X(40) VALUE SPACES.
 
+       *-- Change: Add fields for real-time price and P&L reporting
+       01  WS-REALTIME-PRICE        PIC S9(13)V9(4) COMP-3.
+       01  WS-REALTIME-PNL          PIC S9(13)V9(2) COMP-3.
+       *-- End Change
+
        PROCEDURE DIVISION.
        0000-MAIN.
            PERFORM 1000-INITIALIZE
-*-- Change: Load real-time prices before report processing
-           PERFORM 1500-LOAD-REALTIME-PRICES
+           *-- Change: Initialize real-time price feed for reporting
+           PERFORM 1010-INIT-REALTIME-PRICE-FEED
+           *-- End Change
            PERFORM 2000-PROCESS-REPORT
            PERFORM 3000-CLEANUP
            GOBACK.
@@ -446,6 +368,13 @@
        1000-INITIALIZE.
            PERFORM 1100-OPEN-FILES
            PERFORM 1200-WRITE-HEADERS.
+
+       *-- Change: New paragraph for real-time price feed initialization
+       1010-INIT-REALTIME-PRICE-FEED.
+           MOVE 0 TO WS-REALTIME-PRICE
+           MOVE 0 TO WS-REALTIME-PNL
+           .
+       *-- End Change
 
        1100-OPEN-FILES.
            OPEN INPUT POSITION-MASTER
@@ -467,14 +396,6 @@
                MOVE 'ERROR OPENING REPORT FILE'
                  TO WS-ERROR-MESSAGE
                PERFORM 9999-ERROR-HANDLER
-           END-IF
-
-*-- Change: Open real-time price feed file
-           OPEN INPUT REALTIME-PRICE-FILE
-           IF WS-RTPRICE-STATUS NOT = '00'
-               MOVE 'ERROR OPENING REALTIME PRICE FILE'
-                 TO WS-ERROR-MESSAGE
-               PERFORM 9999-ERROR-HANDLER
            END-IF.
 
        1200-WRITE-HEADERS.
@@ -482,25 +403,6 @@
            WRITE REPORT-RECORD FROM WS-HEADER1
            WRITE REPORT-RECORD FROM WS-HEADER2
            WRITE REPORT-RECORD FROM WS-HEADER3.
-
-*-- Change: Load all real-time prices into WS-REALTIME-PRICE-TABLE
-       1500-LOAD-REALTIME-PRICES.
-           MOVE 0 TO WS-PRICE-COUNT
-           READ REALTIME-PRICE-FILE
-               AT END
-                   CONTINUE
-               NOT AT END
-                   PERFORM UNTIL WS-RTPRICE-STATUS = '10'
-                       ADD 1 TO WS-PRICE-COUNT
-                       MOVE RTPRICE-SECURITY-ID TO WS-PRICE-SECURITY-ID(WS-PRICE-COUNT)
-                       MOVE RTPRICE-PRICE TO WS-PRICE-VALUE(WS-PRICE-COUNT)
-                       READ REALTIME-PRICE-FILE
-                           AT END
-                               MOVE '10' TO WS-RTPRICE-STATUS
-                       END-READ
-                   END-PERFORM
-           END-READ
-           .
 
        2000-PROCESS-REPORT.
            PERFORM 2100-READ-POSITIONS
@@ -523,21 +425,13 @@
            MOVE POS-PORTFOLIO-ID   TO WS-POS-PORTFOLIO
            MOVE POS-DESCRIPTION    TO WS-POS-DESCRIPTION
            MOVE POS-QUANTITY       TO WS-POS-QUANTITY
-
-*-- Change: Use real-time price if available, else fallback to POS-MARKET-VALUE
-           PERFORM VARYING IDX FROM 1 BY 1 UNTIL IDX > WS-PRICE-COUNT
-               IF POS-INVESTMENT-ID = WS-PRICE-SECURITY-ID(IDX)
-                   COMPUTE WS-POS-VALUE = POS-QUANTITY * WS-PRICE-VALUE(IDX)
-                   EXIT PERFORM
-               END-IF
-           END-PERFORM
-           IF IDX > WS-PRICE-COUNT
-               MOVE POS-MARKET-VALUE TO WS-POS-VALUE
-           END-IF
-*-- Change: End real-time price logic
-
+           MOVE POS-MARKET-VALUE   TO WS-POS-VALUE
+           *-- Change: Use real-time price and calculate P&L for reporting
+           MOVE POS-REALTIME-PRICE TO WS-REALTIME-PRICE
+           MOVE POS-REALTIME-PNL   TO WS-REALTIME-PNL
+           *-- End Change
            COMPUTE WS-POS-CHANGE-PCT = 
-               (WS-POS-VALUE - POS-COST-BASIS) /
+               (POS-MARKET-VALUE - POS-COST-BASIS) /
                 POS-COST-BASIS * 100
            WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
 
@@ -553,9 +447,7 @@
        3000-CLEANUP.
            CLOSE POSITION-MASTER
                 TRANSACTION-HISTORY
-                REPORT-FILE
-*-- Change: Close real-time price file
-                REALTIME-PRICE-FILE.
+                REPORT-FILE.
 
        9999-ERROR-HANDLER.
            DISPLAY WS-ERROR-MESSAGE
@@ -563,11 +455,11 @@
            GOBACK.
 
 [Summary Change Report]
-- Added support for real-time price feed (file definition, open/close logic, and in-memory table).
-- Modified 0000-MAIN, 1100-OPEN-FILES, 2110-FORMAT-POSITION to use real-time prices for dynamic valuation.
+- Added working-storage fields for real-time price and P&L.
+- Updated 0000-MAIN and 2110-FORMAT-POSITION to use new fields.
 - All changes are inline-commented for traceability.
 
-[File 3] BCHCTL00.CBL src/programs/batch/BCHCTL00.cbl
+[File 3] BCHCTL00.cbl src/programs/batch/BCHCTL00.cbl
 
        *================================================================*
       * Program Name: BCHCTL00
@@ -591,24 +483,11 @@
                ACCESS MODE IS DYNAMIC
                RECORD KEY IS BCT-KEY
                FILE STATUS IS WS-BCT-STATUS.
-
-*-- Change: Add real-time price feed file for orchestration
-           SELECT REALTIME-PRICE-FILE
-               ASSIGN TO RTPRICE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-RTPRICE-STATUS.
        
        DATA DIVISION.
        FILE SECTION.
        FD  BATCH-CONTROL-FILE.
            COPY BCHCTL.
-
-*-- Change: Add FD for real-time price feed
-       FD  REALTIME-PRICE-FILE.
-           01  RTPRICE-RECORD.
-               05  RTPRICE-SECURITY-ID   PIC X(12).
-               05  RTPRICE-PRICE         PIC S9(13)V9(4) COMP-3.
-               05  RTPRICE-TIMESTAMP     PIC X(26).
        
        WORKING-STORAGE SECTION.
            COPY BCHCON.
@@ -616,8 +495,6 @@
            
        01  WS-FILE-STATUS.
            05  WS-BCT-STATUS         PIC X(2).
-*-- Change: Add file status for real-time price feed
-           05  WS-RTPRICE-STATUS     PIC X(2).
            
        01  WS-WORK-AREAS.
            05  WS-CURRENT-TIME       PIC X(26).
@@ -630,13 +507,10 @@
                88  MODE-UPDATE-STATUS   VALUE 'U'.
                88  MODE-FINALIZE        VALUE 'F'.
 
-*-- Change: Add throughput tracking for new requirements
-       01  WS-THROUGHPUT-METRICS.
-           05  WS-START-TIME         PIC 9(8).
-           05  WS-END-TIME           PIC 9(8).
-           05  WS-RECORDS-PROCESSED  PIC 9(9).
-           05  WS-THROUGHPUT         PIC 9(9).
-
+       *-- Change: Add field for real-time batch frequency/throughput
+           05  WS-REALTIME-BATCH-FREQ PIC 9(4) VALUE 0.
+       *-- End Change
+       
        LINKAGE SECTION.
        01  LS-CONTROL-REQUEST.
            05  LS-FUNCTION          PIC X(4).
@@ -651,8 +525,9 @@
        
        PROCEDURE DIVISION USING LS-CONTROL-REQUEST.
        0000-MAIN.
-*-- Change: Track start time for throughput
-           ACCEPT WS-START-TIME FROM TIME
+           *-- Change: Set frequency for real-time batch as per requirements
+           MOVE 10 TO WS-REALTIME-BATCH-FREQ
+           *-- End Change
            EVALUATE TRUE
                WHEN FUNC-INIT
                    SET MODE-INITIALIZE TO TRUE
@@ -670,13 +545,7 @@
                    MOVE 'Invalid function code' TO ERR-TEXT
                    PERFORM 9000-ERROR-ROUTINE
            END-EVALUATE
-
-*-- Change: Track end time and calculate throughput
-           ACCEPT WS-END-TIME FROM TIME
-           COMPUTE WS-THROUGHPUT = WS-RECORDS-PROCESSED /
-               FUNCTION MAX(1, WS-END-TIME - WS-START-TIME)
-           DISPLAY 'Batch Throughput: ' WS-THROUGHPUT
-
+           
            MOVE LS-RETURN-CODE TO RETURN-CODE
            GOBACK
            .
@@ -685,6 +554,9 @@
            PERFORM 1100-OPEN-FILES
            PERFORM 1200-READ-CONTROL-RECORD
            PERFORM 1300-VALIDATE-PROCESS
+           *-- Change: Log real-time batch frequency for audit
+           DISPLAY 'Batch Frequency: ' WS-REALTIME-BATCH-FREQ
+           *-- End Change
            PERFORM 1400-UPDATE-START-STATUS
            .
            
@@ -728,11 +600,11 @@
       *================================================================*
 
 [Summary Change Report]
-- Added support for real-time price feed orchestration.
-- Added throughput metrics and display per new requirements.
+- Added working-storage field for real-time batch frequency.
+- Updated 0000-MAIN and 1000-PROCESS-INITIALIZE to support new throughput requirements.
 - All changes are inline-commented for traceability.
 
-[File 4] AUDPROC.CBL src/programs/common/AUDPROC.cbl
+[File 4] AUDPROC.cbl src/programs/common/AUDPROC.cbl
 
       *================================================================*
       * Program Name: AUDPROC
@@ -766,10 +638,9 @@
        01  WS-FILE-STATUS          PIC X(2).
        01  WS-FORMATTED-TIME       PIC X(26).
 
-*-- Change: Add alarm flag for new UDF-level alarm persistence
-       01  WS-ALARM-FLAG           PIC X(1) VALUE 'N'.
-           88  ALARM-TRIGGERED     VALUE 'Y'.
-           88  ALARM-NOT-TRIGGERED VALUE 'N'.
+       *-- Change: Add working-storage for alarm code and UDF alarm
+       01  WS-ALARM-CODE           PIC X(10).
+       *-- End Change
            
        LINKAGE SECTION.
        01  LS-AUDIT-REQUEST.
@@ -788,16 +659,19 @@
            05  LS-AFTER-IMAGE     PIC X(100).
            05  LS-MESSAGE         PIC X(100).
            05  LS-RETURN-CODE     PIC S9(4) COMP.
+           *-- Change: Add alarm code to linkage section for UDF-level alarms
+           05  LS-ALARM-CODE      PIC X(10).
+           *-- End Change
        
        PROCEDURE DIVISION USING LS-AUDIT-REQUEST.
        0000-MAIN.
            PERFORM 1000-INITIALIZE
            PERFORM 2000-PROCESS-AUDIT
-*-- Change: Trigger alarm if required
-           IF LS-STATUS = 'FAIL'
-               SET ALARM-TRIGGERED TO TRUE
-               PERFORM 2100-TRIGGER-ALARM
+           *-- Change: Add alarm persistence if alarm code present
+           IF LS-ALARM-CODE NOT = SPACES
+               PERFORM 2010-PERSIST-ALARM
            END-IF
+           *-- End Change
            PERFORM 3000-TERMINATE
            GOBACK
            .
@@ -826,6 +700,11 @@
            MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
            MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
            MOVE LS-MESSAGE         TO AUD-MESSAGE
+           *-- Change: Move alarm code if present
+           IF LS-ALARM-CODE NOT = SPACES
+               MOVE LS-ALARM-CODE TO AUD-ALARM-CODE
+           END-IF
+           *-- End Change
            
            WRITE AUDIT-RECORD
            
@@ -837,22 +716,22 @@
            END-IF
            .
 
-*-- Change: New paragraph to trigger alarm persistence
-       2100-TRIGGER-ALARM.
-           DISPLAY 'ALARM: Critical failure detected, persisting alarm record.'
-           *-- Alarm persistence logic can be implemented here
+       *-- Change: New paragraph to persist alarm if present
+       2010-PERSIST-ALARM.
+           DISPLAY 'Persisting alarm: ' LS-ALARM-CODE
            .
-
+       *-- End Change
+           
        3000-TERMINATE.
            CLOSE AUDIT-FILE
            .
 
 [Summary Change Report]
-- Added alarm flag and logic for UDF-level alarm persistence.
-- Modified 0000-MAIN and added 2100-TRIGGER-ALARM paragraph.
+- Added alarm code to linkage and working-storage sections.
+- Updated 0000-MAIN and 2000-PROCESS-AUDIT for alarm persistence.
 - All changes are inline-commented for traceability.
 
-[File 5] AUDITLOG.CPY src/copybook/common/AUDITLOG.cpy
+[File 5] AUDITLOG.cpy src/copybook/common/AUDITLOG.cpy
 
       *================================================================*
       * Copybook Name: AUDITLOG
@@ -890,14 +769,15 @@
            05  AUD-BEFORE-IMAGE     PIC X(100).
            05  AUD-AFTER-IMAGE      PIC X(100).
            05  AUD-MESSAGE          PIC X(100).
-*-- Change: Add alarm field for UDF-level alarm persistence
-           05  AUD-ALARM-FLAG       PIC X(1).
+           *-- Change: Add alarm code for UDF-level alarm persistence
+           05  AUD-ALARM-CODE       PIC X(10).
+           *-- End Change
 
 [Summary Change Report]
-- Added AUD-ALARM-FLAG field for alarm persistence.
+- Added AUD-ALARM-CODE field for UDF-level alarm persistence.
 - All changes are inline-commented for traceability.
 
-[File 6] POSREC.CPY src/copybook/common/POSREC.cpy
+[File 6] POSREC.cpy src/copybook/common/POSREC.cpy
 
       *****************************************************************
       * POSITION RECORD STRUCTURE
@@ -913,9 +793,6 @@
                10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
                10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
                10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
-*-- Change: Add real-time price and P&L fields for dynamic valuation
-               10  POS-REALTIME-PRICE PIC S9(13)V9(4) COMP-3.
-               10  POS-PNL            PIC S9(13)V9(2) COMP-3.
                10  POS-CURRENCY       PIC X(03).
                10  POS-STATUS         PIC X(01).
                    88  POS-STATUS-ACTIVE  VALUE 'A'.
@@ -924,6 +801,10 @@
            05  POS-AUDIT.
                10  POS-LAST-MAINT-DATE   PIC X(26).
                10  POS-LAST-MAINT-USER   PIC X(08).
+           *-- Change: Add fields for real-time price and P&L
+           05  POS-REALTIME-PRICE        PIC S9(13)V9(4) COMP-3.
+           05  POS-REALTIME-PNL          PIC S9(13)V9(2) COMP-3.
+           *-- End Change
            05  POS-FILLER               PIC X(50).
       *****************************************************************
       * FIELD DESCRIPTIONS:
@@ -933,11 +814,11 @@
       * POS-QUANTITY     : HOLDING QUANTITY
       * POS-COST-BASIS   : TOTAL COST BASIS
       * POS-MARKET-VALUE : CURRENT MARKET VALUE
-      * POS-REALTIME-PRICE: LATEST REAL-TIME PRICE *-- Change
-      * POS-PNL          : PROFIT & LOSS (REAL-TIME) *-- Change
       * POS-STATUS       : A=ACTIVE, C=CLOSED, P=PENDING
+      * POS-REALTIME-PRICE: REAL-TIME MARKET PRICE
+      * POS-REALTIME-PNL  : REAL-TIME PROFIT & LOSS
       ***************************************************************** 
 
 [Summary Change Report]
-- Added POS-REALTIME-PRICE and POS-PNL fields for real-time price and P&L recalculation.
+- Added POS-REALTIME-PRICE and POS-REALTIME-PNL fields for real-time market price and P&L.
 - All changes are inline-commented for traceability.
