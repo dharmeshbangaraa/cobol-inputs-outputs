@@ -129,4 +129,4 @@ All paths and files are strictly from the provided repository and are directly o
 
 ----------
 
-The actual GitHub repository URL is missing from your input (it is shown as "<github-url>" or "codebase-github-url.value"). To proceed with reading, modifying, and outputting the impacted COBOL and copybook files as per your requirements, I need the real GitHub repository URL. Please provide the actual repository URL so I can fetch the files, apply the required changes, and return the complete modified COBOL source code in the specified format.
+Unable to proceed: The provided input contains a placeholder ("<github-url>") instead of the actual GitHub repository URL. Please supply the real GitHub repository URL so I can fetch the impacted COBOL and copybook files, apply the required modifications, and generate the structured output as specified.
