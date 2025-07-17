@@ -1,5 +1,3 @@
-[File 1]
-
 **outputs/CodeLocator.txt**
 
 ---
@@ -129,4 +127,4 @@ All paths and files are strictly from the provided repository and are directly o
 
 ----------
 
-I am unable to proceed because the provided input does not include the actual GitHub repository URL (it only contains the placeholder "<github-url>"). To fetch, analyze, and modify the impacted COBOL and copybook files as required, I need the real GitHub repository URL or the owner and repository name. Please provide the correct repository URL so I can continue with the COBOL codebase enhancement process as specified in your instructions.
+The actual GitHub repository URL (codebase-github-url.value) is required to fetch and modify the impacted COBOL files. Please provide the specific GitHub URL so I can proceed with the precise, standards-compliant updates as per the Impact Analysis Report.
