@@ -129,4 +129,4 @@ All paths and files are strictly from the provided repository and are directly o
 
 ----------
 
-Unable to proceed: The provided input contains a placeholder ("<github-url>") instead of the actual GitHub repository URL. Please supply the real GitHub repository URL so I can fetch the impacted COBOL and copybook files, apply the required modifications, and generate the structured output as specified.
+I need the actual GitHub repository URL from codebase-github-url.value to proceed. Please provide the codebase-github-url so I can retrieve the impacted COBOL and copybook files, apply the required modifications, and deliver the complete, updated source code as specified.
