@@ -1,1 +1,5 @@
-Error: No valid GitHub URL or Impact Analysis Report was provided in the input. Please provide both a valid GitHub repository URL and the Impact Analysis Report so I can analyze the impacted files and apply the required COBOL modifications.
+Passing the extracted file content to the next agent as instructed.
+
+----------
+
+Unable to proceed because the actual GitHub repository URL was not provided in the input. Please supply the real GitHub repository URL so I can fetch the COBOL and copybook files, apply the required impact modifications, and return the updated source code as specified.
