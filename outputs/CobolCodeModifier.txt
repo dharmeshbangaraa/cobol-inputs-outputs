@@ -127,4 +127,4 @@ All paths and files are strictly from the provided repository and are directly o
 
 ----------
 
-The actual GitHub repository URL (codebase-github-url.value) is required to fetch and modify the impacted COBOL files. Please provide the specific GitHub URL so I can proceed with the precise, standards-compliant updates as per the Impact Analysis Report.
+The actual GitHub repository URL (codebase-github-url.value) is missing from the input, and only a placeholder ("<github-url>") is provided. To proceed with analyzing, modifying, and outputting the impacted COBOL files as required, I need the real GitHub repository URL. Please provide the correct repository URL so I can fetch the files, apply the required changes, and generate the structured output as specified.
