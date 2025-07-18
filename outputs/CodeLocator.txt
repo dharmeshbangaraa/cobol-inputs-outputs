@@ -1,20 +1,23 @@
+
+---
 **Summary**:
+
 User Story: Integrate real-time market price feed for dynamic portfolio valuation  
 - 6 impacted components identified (**High impact only**)  
-- High complexity change involving real-time data ingestion, DB2/VSAM updates, batch recalculation, CICS online refresh, and audit/error handling. Impacts core valuation, persistence, and display logic across batch, online, and database layers.
+- High complexity: Touches ingestion, valuation, online display, error/audit, and historical storage; requires changes to DB2, batch, CICS, and copybook layers.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                               | Impact | Nature   | Affected Paragraphs/Sections                 | Dependency Path                                      |
-|-------------------------------------------------|--------|----------|----------------------------------------------|------------------------------------------------------|
-| src/programs/batch/BCHVAL00.cbl                 | High   | Direct   | 1000-INIT, 2000-INGEST-PRICE, 3000-REVALUE, 4000-UPDATE-POS, 5000-STORE-PNL | Entry point for batch valuation and price ingestion   |
-| src/programs/online/CICSPRTF.cbl                | High   | Direct   | 1000-INIT, 2000-REFRESH-VAL, 3000-DISPLAY    | CICS screen for View Portfolio, triggers refresh     |
-| src/programs/batch/HISTLD00.cbl                 | High   | Direct   | 1000-INIT, 2000-LOAD-HIST, 3000-COMMIT       | Loads historical price feed into VSAM PRICEHIST      |
-| src/copybook/db2/PRICEDATA.cpy                  | High   | Direct   | PRICEDATA-RECORD, PRICEDATA-UPDATE           | DB2 table mapping for real-time price updates        |
-| src/copybook/common/AUDITLOG.cpy                | High   | Direct   | AUDIT-ENTRY, AUDIT-ERROR                     | Used for error/audit logging on feed failures        |
-| src/programs/common/AUDPROC.cbl                 | High   | Indirect | 2000-PROCESS-AUDIT, 3000-TERMINATE           | Called for audit logging from multiple programs      |
+| Program File Path                              | Impact | Nature  | Affected Paragraphs/Sections           | Dependency Path                                  |
+|------------------------------------------------|--------|---------|----------------------------------------|--------------------------------------------------|
+| `src/programs/batch/BCHVAL00.cbl`              | High   | Direct  | 1000-INIT, 2000-INGEST-PRICES, 3000-REVAL-POS, 4000-UPDATE-PNL | Entry point for batch valuation and price ingestion |
+| `src/programs/online/CICSPRTF.cbl`             | High   | Direct  | 1000-INIT, 2000-REFRESH-DISPLAY, 3000-ERROR-HANDLER | CICS program for View Portfolio screen display    |
+| `src/programs/batch/HISTLD00.cbl`              | High   | Direct  | 1000-INIT, 2000-LOAD-HIST, 3000-ERROR-HANDLER | Loads historical prices into VSAM PRICEHIST       |
+| `src/copybook/db2/PRICEDATA.cpy`               | High   | Direct  | PRICE-RECORD, PRICE-TIMESTAMP, DB2-MAPPING | DB2 table mapping for real-time prices            |
+| `src/copybook/common/AUDITLOG.cpy`             | High   | Direct  | AUDIT-ENTRY, AUDIT-ERROR, AUDIT-TIMESTAMP | Used for error/audit logging                     |
+| `src/programs/common/AUDPROC.cbl`              | High   | Indirect| 2000-PROCESS-AUDIT, 3000-TERMINATE     | Called for audit logging from error paths         |
 
 ---
 
@@ -29,77 +32,54 @@ User Story: Integrate real-time market price feed for dynamic portfolio valuatio
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [
-          "1000-INIT",
-          "2000-INGEST-PRICE",
-          "3000-REVALUE",
-          "4000-UPDATE-POS",
-          "5000-STORE-PNL"
-        ],
+        "affectedParagraphs": ["1000-INIT", "2000-INGEST-PRICES", "3000-REVAL-POS", "4000-UPDATE-PNL"],
         "dependencyPath": ["BCHVAL00"],
-        "rationale": "Main batch program for portfolio valuation; must ingest real-time prices, recalculate positions, and update DB2/VSAM."
+        "rationale": "Batch valuation engine must consume real-time prices, recalculate positions, and update P&L per user story."
       },
       {
         "programFilePath": "src/programs/online/CICSPRTF.cbl",
-        "impactScore": 0.97,
+        "impactScore": 0.96,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [
-          "1000-INIT",
-          "2000-REFRESH-VAL",
-          "3000-DISPLAY"
-        ],
+        "affectedParagraphs": ["1000-INIT", "2000-REFRESH-DISPLAY", "3000-ERROR-HANDLER"],
         "dependencyPath": ["CICSPRTF"],
-        "rationale": "CICS online screen for portfolio view; must refresh and display updated valuations within 10 seconds."
+        "rationale": "CICS online program responsible for View Portfolio screen; must refresh display with latest valuations."
       },
       {
         "programFilePath": "src/programs/batch/HISTLD00.cbl",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [
-          "1000-INIT",
-          "2000-LOAD-HIST",
-          "3000-COMMIT"
-        ],
+        "affectedParagraphs": ["1000-INIT", "2000-LOAD-HIST", "3000-ERROR-HANDLER"],
         "dependencyPath": ["HISTLD00"],
-        "rationale": "Loads historical price ticks into VSAM PRICEHIST for backtesting and audit."
+        "rationale": "Loads historical price ticks into VSAM PRICEHIST for backtesting and audit as per acceptance criteria."
       },
       {
         "programFilePath": "src/copybook/db2/PRICEDATA.cpy",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": [
-          "PRICEDATA-RECORD",
-          "PRICEDATA-UPDATE"
-        ],
-        "dependencyPath": ["BCHVAL00", "PRICEDATA"],
-        "rationale": "Defines DB2 table structure for real-time price data; must be updated to support new feed."
-      },
-      {
-        "programFilePath": "src/copybook/common/AUDITLOG.cpy",
         "impactScore": 0.93,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [
-          "AUDIT-ENTRY",
-          "AUDIT-ERROR"
-        ],
-        "dependencyPath": ["BCHVAL00", "CICSPRTF", "AUDPROC", "AUDITLOG"],
-        "rationale": "Audit log copybook; used for logging feed errors and stale data conditions."
+        "affectedParagraphs": ["PRICE-RECORD", "PRICE-TIMESTAMP", "DB2-MAPPING"],
+        "dependencyPath": ["PRICEDATA"],
+        "rationale": "Defines DB2 structure for real-time prices; must be updated for new ingestion and mapping logic."
+      },
+      {
+        "programFilePath": "src/copybook/common/AUDITLOG.cpy",
+        "impactScore": 0.92,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["AUDIT-ENTRY", "AUDIT-ERROR", "AUDIT-TIMESTAMP"],
+        "dependencyPath": ["AUDITLOG"],
+        "rationale": "Audit log copybook used for error and stale price handling; must support new alarm and persistence logic."
       },
       {
         "programFilePath": "src/programs/common/AUDPROC.cbl",
         "impactScore": 0.91,
         "impactLevel": "High",
         "impactType": "Indirect",
-        "affectedParagraphs": [
-          "2000-PROCESS-AUDIT",
-          "3000-TERMINATE"
-        ],
+        "affectedParagraphs": ["2000-PROCESS-AUDIT", "3000-TERMINATE"],
         "dependencyPath": ["BCHVAL00", "AUDPROC"],
-        "rationale": "Audit processing program; invoked for error and audit logging related to price feed and valuation."
+        "rationale": "Audit processor called from error handling and stale price detection paths for compliance and monitoring."
       }
     ]
   }
@@ -109,21 +89,40 @@ User Story: Integrate real-time market price feed for dynamic portfolio valuatio
 ---
 
 **Visualization**:
+
 ```mermaid
 graph TD
-  BCHVAL00["src/programs/batch/BCHVAL00.cbl (High)"] --> PRICEDATA["src/copybook/db2/PRICEDATA.cpy (High)"]
-  BCHVAL00 --> HISTLD00["src/programs/batch/HISTLD00.cbl (High)"]
-  BCHVAL00 --> AUDITLOG["src/copybook/common/AUDITLOG.cpy (High)"]
-  BCHVAL00 --> AUDPROC["src/programs/common/AUDPROC.cbl (High)"]
-  CICSPRTF["src/programs/online/CICSPRTF.cbl (High)"] --> AUDITLOG
+  BCHVAL00["src/programs/batch/BCHVAL00.cbl (High)"]:::high
+  CICSPRTF["src/programs/online/CICSPRTF.cbl (High)"]:::high
+  HISTLD00["src/programs/batch/HISTLD00.cbl (High)"]:::high
+  PRICEDATA["src/copybook/db2/PRICEDATA.cpy (High)"]:::high
+  AUDITLOG["src/copybook/common/AUDITLOG.cpy (High)"]:::high
+  AUDPROC["src/programs/common/AUDPROC.cbl (High)"]:::high
+
+  BCHVAL00 --> PRICEDATA
+  BCHVAL00 --> AUDITLOG
+  BCHVAL00 --> AUDPROC
+  CICSPRTF --> PRICEDATA
   HISTLD00 --> PRICEDATA
-  BCHVAL00 --> CICSPRTF
-  AUDPROC --> AUDITLOG
+  HISTLD00 --> AUDITLOG
+  BCHVAL00 --> HISTLD00
+
+  classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
 ```
 
 ---
 
-**Notes:**
-- Only files present in the repository and directly/indirectly impacted by the user story are included.
-- Impact scores reflect proximity to the change, business criticality, and dependency depth.
-- All components listed are essential for implementing real-time price ingestion, valuation, online refresh, and audit/error handling as per the user story and acceptance criteria.
+**Reasoning**:
+
+- `src/programs/batch/BCHVAL00.cbl` is the batch valuation engine, directly responsible for ingesting prices, recalculating positions, and updating P&L.
+- `src/programs/online/CICSPRTF.cbl` is the CICS program for online portfolio display, which must refresh using the latest valuations.
+- `src/programs/batch/HISTLD00.cbl` loads historical price data into the new VSAM KSDS for backtesting, as required.
+- `src/copybook/db2/PRICEDATA.cpy` defines the DB2 table structure for real-time price ingestion and mapping.
+- `src/copybook/common/AUDITLOG.cpy` is used for audit logging, error handling, and alarm raising when prices are stale or the feed fails.
+- `src/programs/common/AUDPROC.cbl` processes audit records and is invoked from error and alarm paths.
+
+All components listed are present in the repository and have a direct or indirect high-impact relationship with the user story. No extra or non-existent files are included.
+
+---
+
+**End of Report**
