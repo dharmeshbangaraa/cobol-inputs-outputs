@@ -1,1 +1,5 @@
-Unable to proceed—no valid GitHub URL was provided in "codelocator-github-url". Please supply a valid GitHub repository URL so I can extract and pass the complete file contents to the next agent.
+Error: No valid GitHub URL provided in "codelocator-github-url". Please supply a valid GitHub repository URL so I can read and extract the files as required.
+
+----------
+
+I am unable to proceed because the required GitHub repository URLs for both the COBOL codebase and the codelocator are missing or invalid. Please provide the correct and complete GitHub URLs for these repositories so I can access the necessary files, perform the impact analysis, and identify the COBOL files that need modification. Once you provide the URLs, I will be able to retrieve and analyze the files as needed.
