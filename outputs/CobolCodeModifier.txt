@@ -1,3 +1,1 @@
-[File 1]
-
-The Impact Analysis Report or its JSON metadata is missing from the provided context, and the actual GitHub repository URL for 'codelocator-github-url.value' is not specified. Without this critical information, I am unable to identify impacted files or apply any COBOL modifications as per the instructions. Please provide the Impact Analysis Report and the correct repository URL to proceed with the required COBOL codebase enhancements.
+Unable to proceed—no valid GitHub URL was provided in "codelocator-github-url". Please supply a valid GitHub repository URL so I can extract and pass the complete file contents to the next agent.
