@@ -47,7 +47,13 @@
            COPY DBPROC.
            COPY ERRHAND.
            COPY BCHCON.
-           
+
+*-- Change: Add working-storage for real-time market price feed integration
+       01  WS-MARKET-PRICE-FEED.
+           05  WS-REALTIME-PRICE      PIC S9(13)V9(4) COMP-3 VALUE 0.
+           05  WS-PRICE-FEED-STATUS   PIC X(2) VALUE '00'.
+*-- Change: End addition
+
        01  WS-FILE-STATUS.
            05  WS-TH-STATUS          PIC X(2).
            05  WS-BCT-STATUS         PIC X(2).
@@ -65,12 +71,11 @@
                88  END-OF-FILE         VALUE 'Y'.
                88  MORE-RECORDS        VALUE 'N'.
                
-       *-- Change: Added working-storage for real-time price feed integration
-       01  WS-REALTIME-PRICE         PIC S9(13)V9(2) COMP-3.  *-- Change: Holds real-time price from feed
-       01  WS-PRICE-FEED-STATUS      PIC X(01) VALUE 'N'.     *-- Change: 'Y' if price feed used, 'N' otherwise
-       
        PROCEDURE DIVISION.
        0000-MAIN.
+*-- Change: Initialize market price feed at program start
+           PERFORM 0050-INIT-MARKET-PRICE-FEED
+*-- Change: End addition
            PERFORM 1000-INITIALIZE
            
            PERFORM 2000-PROCESS
@@ -82,44 +87,45 @@
            MOVE WS-ERROR-COUNT TO RETURN-CODE
            GOBACK
            .
-           
+
+*-- Change: Add new paragraph for market price feed initialization
+       0050-INIT-MARKET-PRICE-FEED.
+           CALL 'MKTFEED' USING WS-REALTIME-PRICE WS-PRICE-FEED-STATUS
+           IF WS-PRICE-FEED-STATUS NOT = '00'
+               MOVE 'Market price feed unavailable' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+*-- Change: End addition
+
        1000-INITIALIZE.
            PERFORM 1100-OPEN-FILES
            PERFORM 1200-CONNECT-DB2
            PERFORM 1300-INIT-CHECKPOINTS
-           *-- Change: Initialize real-time price feed connection
-           PERFORM 1400-INIT-PRICE-FEED      *-- Change: New paragraph for price feed
-           .
-           
-       *-- Change: New paragraph for price feed initialization
-       1400-INIT-PRICE-FEED.
-           *-- Change: Placeholder for initializing price feed connection
-           DISPLAY 'Initializing real-time price feed connection.'   *-- Change: For traceability
            .
            
        2000-PROCESS.
            PERFORM 2100-READ-HISTORY
            
            IF MORE-RECORDS
-               *-- Change: Fetch real-time price for transaction
-               PERFORM 2150-FETCH-REALTIME-PRICE   *-- Change: New logic for price feed
+*-- Change: Fetch real-time price before loading to DB2
+               PERFORM 2150-FETCH-REALTIME-PRICE
+*-- Change: End addition
                PERFORM 2200-LOAD-TO-DB2
                PERFORM 2300-CHECK-COMMIT
            END-IF
            .
-       
-       *-- Change: New paragraph to fetch real-time price
+
+*-- Change: Add new paragraph to fetch real-time price for each record
        2150-FETCH-REALTIME-PRICE.
-           *-- Change: Simulate fetching real-time price for TH-SECURITY-ID
-           DISPLAY 'Fetching real-time price for: ' TH-SECURITY-ID
-           MOVE 0 TO WS-REALTIME-PRICE
-           *-- Change: Integration point for real-time price feed API
-           *-- Change: If price available, set WS-PRICE-FEED-STATUS to 'Y'
-           MOVE 'Y' TO WS-PRICE-FEED-STATUS
-           *-- Change: For now, copy TH-PRICE to WS-REALTIME-PRICE as placeholder
-           MOVE TH-PRICE TO WS-REALTIME-PRICE
+           CALL 'MKTFEED' USING TH-SECURITY-ID WS-REALTIME-PRICE WS-PRICE-FEED-STATUS
+           IF WS-PRICE-FEED-STATUS NOT = '00'
+               MOVE 'Real-time price fetch failed' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
            .
-       
+*-- Change: End addition
+
        3000-TERMINATE.
            PERFORM 3100-FINAL-COMMIT
            PERFORM 3200-CLOSE-FILES
@@ -178,13 +184,9 @@
            MOVE TH-TRANS-TYPE    TO PH-TRANS-TYPE
            MOVE TH-SECURITY-ID   TO PH-SECURITY-ID
            MOVE TH-QUANTITY      TO PH-QUANTITY
-           *-- Change: Use real-time price if available
-           IF WS-PRICE-FEED-STATUS = 'Y'
-               MOVE WS-REALTIME-PRICE TO PH-PRICE
-               *-- Change: Real-time price used for PH-PRICE
-           ELSE
-               MOVE TH-PRICE TO PH-PRICE
-           END-IF
+*-- Change: Use real-time price for PH-PRICE
+           MOVE WS-REALTIME-PRICE TO PH-PRICE
+*-- Change: End addition
            MOVE TH-AMOUNT        TO PH-AMOUNT
            MOVE TH-FEES          TO PH-FEES
            MOVE TH-TOTAL-AMOUNT  TO PH-TOTAL-AMOUNT
@@ -210,7 +212,9 @@
            
        2300-CHECK-COMMIT.
            ADD 1 TO WS-COMMIT-COUNT
-           
+*-- Change: Log commit checkpoint with real-time price context
+           DISPLAY 'Checkpoint: Real-time price used: ' WS-REALTIME-PRICE
+*-- Change: End addition
            IF WS-COMMIT-COUNT >= WS-COMMIT-THRESHOLD
                EXEC SQL
                    COMMIT WORK
@@ -225,7 +229,9 @@
        2310-UPDATE-CHECKPOINT.
            MOVE WS-RECORDS-READ TO BCT-RECORDS-READ
            MOVE WS-RECORDS-WRITTEN TO BCT-RECORDS-WRITTEN
-           
+*-- Change: Store last real-time price in checkpoint for traceability
+           MOVE WS-REALTIME-PRICE TO BCT-LAST-MARKET-PRICE
+*-- Change: End addition
            REWRITE BATCH-CONTROL-RECORD
                INVALID KEY
                    MOVE 'Error updating checkpoint' TO ERR-TEXT
@@ -267,10 +273,13 @@
            .
 
 [Summary Change Report]
-- Added working-storage for real-time price feed and status.
-- Added initialization and fetch logic for real-time price feed in affected paragraphs.
-- Modified 2200-LOAD-TO-DB2 to use real-time price if available.
-- All changes are marked with '*-- Change:' for traceability.
+- Added working-storage for real-time market price feed.
+- Initialized market price feed at program start.
+- Fetched real-time price for each transaction record before DB2 load.
+- Used real-time price in PH-PRICE field.
+- Logged real-time price at each commit checkpoint.
+- Stored last real-time price in checkpoint record for traceability.
+- All changes are marked with *-- Change: comments.
 
 [File 2] RPTPOS00.cbl src/programs/batch/RPTPOS00.cbl
 
@@ -320,6 +329,12 @@
            COPY RTNCODE.
            COPY ERRHAND.
 
+*-- Change: Add working-storage for real-time market price feed
+       01  WS-MARKET-PRICE-FEED.
+           05  WS-REALTIME-PRICE      PIC S9(13)V9(4) COMP-3 VALUE 0.
+           05  WS-PRICE-FEED-STATUS   PIC X(2) VALUE '00'.
+*-- Change: End addition
+
        01  WS-FILE-STATUS.
            05  WS-POSITION-STATUS    PIC XX.
            05  WS-TRAN-STATUS        PIC XX.
@@ -349,16 +364,26 @@
            05  FILLER               PIC X(2) VALUE SPACES.
            05  WS-POS-CHANGE-PCT    PIC +ZZ9.99.
            05  FILLER               PIC X(40) VALUE SPACES.
-       *-- Change: Add real-time market value and timestamp fields for reporting
-           05  WS-POS-REALTIME-VALUE PIC $$$$,$$$,$$9.99. *-- Change: Real-time value
-           05  WS-POS-REALTIME-TIME  PIC X(20).           *-- Change: Feed timestamp
 
        PROCEDURE DIVISION.
        0000-MAIN.
+*-- Change: Initialize market price feed at program start
+           PERFORM 0050-INIT-MARKET-PRICE-FEED
+*-- Change: End addition
            PERFORM 1000-INITIALIZE
            PERFORM 2000-PROCESS-REPORT
            PERFORM 3000-CLEANUP
            GOBACK.
+
+*-- Change: Add new paragraph for market price feed initialization
+       0050-INIT-MARKET-PRICE-FEED.
+           CALL 'MKTFEED' USING WS-REALTIME-PRICE WS-PRICE-FEED-STATUS
+           IF WS-PRICE-FEED-STATUS NOT = '00'
+               MOVE 'Market price feed unavailable' TO WS-ERROR-MESSAGE
+               PERFORM 9999-ERROR-HANDLER
+           END-IF
+           .
+*-- Change: End addition
 
        1000-INITIALIZE.
            PERFORM 1100-OPEN-FILES
@@ -403,23 +428,35 @@
            END-READ
            
            PERFORM UNTIL END-OF-POSITIONS
+*-- Change: Fetch real-time price for each position
+               PERFORM 2150-FETCH-REALTIME-PRICE
+*-- Change: End addition
                PERFORM 2110-FORMAT-POSITION
                READ POSITION-MASTER
                    AT END SET END-OF-POSITIONS TO TRUE
                END-READ
            END-PERFORM.
 
+*-- Change: Add new paragraph to fetch real-time price for each position
+       2150-FETCH-REALTIME-PRICE.
+           CALL 'MKTFEED' USING POS-INVESTMENT-ID WS-REALTIME-PRICE WS-PRICE-FEED-STATUS
+           IF WS-PRICE-FEED-STATUS NOT = '00'
+               MOVE 'Real-time price fetch failed' TO WS-ERROR-MESSAGE
+               PERFORM 9999-ERROR-HANDLER
+           END-IF
+           .
+*-- Change: End addition
+
        2110-FORMAT-POSITION.
            MOVE POS-PORTFOLIO-ID   TO WS-POS-PORTFOLIO
            MOVE POS-DESCRIPTION    TO WS-POS-DESCRIPTION
            MOVE POS-QUANTITY       TO WS-POS-QUANTITY
-           MOVE POS-CURRENT-VALUE  TO WS-POS-VALUE
+*-- Change: Use real-time price for WS-POS-VALUE
+           COMPUTE WS-POS-VALUE = POS-QUANTITY * WS-REALTIME-PRICE
+*-- Change: End addition
            COMPUTE WS-POS-CHANGE-PCT = 
                (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
                 POS-PREVIOUS-VALUE * 100
-           *-- Change: Add real-time value and timestamp to report line
-           MOVE POS-REALTIME-VALUE TO WS-POS-REALTIME-VALUE
-           MOVE POS-REALTIME-TIME  TO WS-POS-REALTIME-TIME
            WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
 
        2200-PROCESS-TRANSACTIONS.
@@ -442,9 +479,11 @@
            GOBACK.
 
 [Summary Change Report]
-- Added fields in WS-POSITION-DETAIL for real-time value and timestamp.
-- Modified 2110-FORMAT-POSITION to output real-time value and timestamp.
-- All changes are marked with '*-- Change:' for traceability.
+- Added working-storage for real-time market price feed.
+- Initialized market price feed at program start.
+- Fetched real-time price for each position record.
+- Used real-time price in position value calculation.
+- All changes are marked with *-- Change: comments.
 
 [File 3] BCHCTL00.cbl src/programs/batch/BCHCTL00.cbl
 
@@ -479,6 +518,10 @@
        WORKING-STORAGE SECTION.
            COPY BCHCON.
            COPY ERRHAND.
+
+*-- Change: Add working-storage for last real-time market price
+       01  WS-LAST-MARKET-PRICE      PIC S9(13)V9(4) COMP-3 VALUE 0.
+*-- Change: End addition
            
        01  WS-FILE-STATUS.
            05  WS-BCT-STATUS         PIC X(2).
@@ -493,9 +536,7 @@
                88  MODE-CHECK-PREREQ    VALUE 'C'.
                88  MODE-UPDATE-STATUS   VALUE 'U'.
                88  MODE-FINALIZE        VALUE 'F'.
-       *-- Change: Add field for real-time price feed status
-           05  WS-PRICE-FEED-STATUS   PIC X(01). *-- Change: 'Y' if feed active
-
+       
        LINKAGE SECTION.
        01  LS-CONTROL-REQUEST.
            05  LS-FUNCTION          PIC X(4).
@@ -537,8 +578,10 @@
            PERFORM 1200-READ-CONTROL-RECORD
            PERFORM 1300-VALIDATE-PROCESS
            PERFORM 1400-UPDATE-START-STATUS
-           *-- Change: Initialize price feed status
-           MOVE 'Y' TO WS-PRICE-FEED-STATUS *-- Change: Mark price feed as active
+*-- Change: Store initial market price in control record
+           MOVE WS-LAST-MARKET-PRICE TO BCT-LAST-MARKET-PRICE
+           PERFORM 3300-WRITE-CONTROL-RECORD
+*-- Change: End addition
            .
            
        2000-CHECK-PREREQUISITES.
@@ -554,8 +597,9 @@
        3000-UPDATE-STATUS.
            PERFORM 3100-READ-CONTROL-RECORD
            PERFORM 3200-UPDATE-PROCESS-STATUS
-           *-- Change: Update price feed status in control record
-           MOVE WS-PRICE-FEED-STATUS TO BCT-PRICE-FEED-STATUS *-- Change: Track feed status
+*-- Change: Update last market price in control record
+           MOVE WS-LAST-MARKET-PRICE TO BCT-LAST-MARKET-PRICE
+*-- Change: End addition
            PERFORM 3300-WRITE-CONTROL-RECORD
            .
            
@@ -583,9 +627,9 @@
       *================================================================*
 
 [Summary Change Report]
-- Added WS-PRICE-FEED-STATUS to working-storage.
-- Set and updated price feed status in initialization and update-status logic.
-- All changes are marked with '*-- Change:' for traceability.
+- Added working-storage for last real-time market price.
+- Stored initial and updated market price in control record during initialize and update status.
+- All changes are marked with *-- Change: comments.
 
 [File 4] AUDPROC.cbl src/programs/common/AUDPROC.cbl
 
@@ -620,8 +664,11 @@
        WORKING-STORAGE SECTION.
        01  WS-FILE-STATUS          PIC X(2).
        01  WS-FORMATTED-TIME       PIC X(26).
-       *-- Change: Add field for price feed error code
-       01  WS-PRICE-FEED-ERROR     PIC X(04). *-- Change: Feed error code for audit
+
+*-- Change: Add working-storage for real-time market price
+       01  WS-REALTIME-PRICE       PIC S9(13)V9(4) COMP-3 VALUE 0.
+       01  WS-PRICE-FEED-STATUS    PIC X(2) VALUE '00'.
+*-- Change: End addition
            
        LINKAGE SECTION.
        01  LS-AUDIT-REQUEST.
@@ -673,11 +720,13 @@
            MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
            MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
            MOVE LS-MESSAGE         TO AUD-MESSAGE
-           *-- Change: Log price feed error code if present
-           IF LS-TYPE = 'FEED'
-               MOVE WS-PRICE-FEED-ERROR TO AUD-STATUS
-               *-- Change: Audit log for feed error/alarm
+*-- Change: Fetch and log real-time price in audit record
+           CALL 'MKTFEED' USING LS-PORT-ID WS-REALTIME-PRICE WS-PRICE-FEED-STATUS
+           IF WS-PRICE-FEED-STATUS = '00'
+               STRING 'Market price: ' WS-REALTIME-PRICE DELIMITED BY SIZE
+                   INTO AUD-MESSAGE
            END-IF
+*-- Change: End addition
            
            WRITE AUDIT-RECORD
            
@@ -694,9 +743,9 @@
            .
 
 [Summary Change Report]
-- Added WS-PRICE-FEED-ERROR for audit of feed errors/alarms.
-- In 2000-PROCESS-AUDIT, log feed error code if LS-TYPE='FEED'.
-- All changes are marked with '*-- Change:' for traceability.
+- Added working-storage for real-time market price.
+- Fetched real-time price and logged it in the audit message.
+- All changes are marked with *-- Change: comments.
 
 [File 5] AUDITLOG.cpy src/copybook/common/AUDITLOG.cpy
 
@@ -717,7 +766,6 @@
                88  AUD-TRANSACTION     VALUE 'TRAN'.
                88  AUD-USER-ACTION     VALUE 'USER'.
                88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-               88  AUD-FEED-ERROR      VALUE 'FEED'. *-- Change: For feed error/audit
            05  AUD-ACTION           PIC X(8).
                88  AUD-CREATE         VALUE 'CREATE  '.
                88  AUD-UPDATE         VALUE 'UPDATE  '.
@@ -731,17 +779,19 @@
                88  AUD-SUCCESS        VALUE 'SUCC'.
                88  AUD-FAILURE        VALUE 'FAIL'.
                88  AUD-WARNING        VALUE 'WARN'.
-               88  AUD-FEED-ALARM     VALUE 'ALRM'. *-- Change: For feed alarm
            05  AUD-KEY-INFO.
                10  AUD-PORTFOLIO-ID  PIC X(8).
                10  AUD-ACCOUNT-NO    PIC X(10).
            05  AUD-BEFORE-IMAGE     PIC X(100).
            05  AUD-AFTER-IMAGE      PIC X(100).
+*-- Change: Add field for last real-time market price
+           05  AUD-MARKET-PRICE     PIC S9(13)V9(4) COMP-3 VALUE 0.
+*-- Change: End addition
            05  AUD-MESSAGE          PIC X(100).
 
 [Summary Change Report]
-- Added 88-levels for AUD-FEED-ERROR and AUD-FEED-ALARM to support feed error/audit.
-- All changes are marked with '*-- Change:' for traceability.
+- Added AUD-MARKET-PRICE field to record structure for real-time price traceability.
+- All changes are marked with *-- Change: comments.
 
 [File 6] POSREC.cpy src/copybook/common/POSREC.cpy
 
@@ -758,6 +808,9 @@
            05  POS-DATA.
                10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
                10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
+*-- Change: Add field for real-time market price
+               10  POS-REALTIME-PRICE PIC S9(13)V9(4) COMP-3 VALUE 0.
+*-- Change: End addition
                10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
                10  POS-CURRENCY       PIC X(03).
                10  POS-STATUS         PIC X(01).
@@ -767,9 +820,6 @@
            05  POS-AUDIT.
                10  POS-LAST-MAINT-DATE   PIC X(26).
                10  POS-LAST-MAINT-USER   PIC X(08).
-           *-- Change: Add fields for real-time value and timestamp
-           05  POS-REALTIME-VALUE        PIC S9(13)V9(2) COMP-3. *-- Change: Real-time market value
-           05  POS-REALTIME-TIME         PIC X(20).              *-- Change: Feed timestamp
            05  POS-FILLER               PIC X(50).
       *****************************************************************
       * FIELD DESCRIPTIONS:
@@ -778,13 +828,11 @@
       * POS-INVESTMENT-ID: INVESTMENT IDENTIFIER
       * POS-QUANTITY     : HOLDING QUANTITY
       * POS-COST-BASIS   : TOTAL COST BASIS
+      * POS-REALTIME-PRICE: REAL-TIME MARKET PRICE *-- Change: Added
       * POS-MARKET-VALUE : CURRENT MARKET VALUE
-      * POS-REALTIME-VALUE: REAL-TIME MARKET VALUE *-- Change: Added
-      * POS-REALTIME-TIME : FEED TIMESTAMP        *-- Change: Added
       * POS-STATUS       : A=ACTIVE, C=CLOSED, P=PENDING
       ***************************************************************** 
 
 [Summary Change Report]
-- Added POS-REALTIME-VALUE and POS-REALTIME-TIME fields to support real-time market price feed.
-- Updated field descriptions accordingly.
-- All changes are marked with '*-- Change:' for traceability.
+- Added POS-REALTIME-PRICE field to position record structure for real-time price traceability.
+- All changes are marked with *-- Change: comments.
