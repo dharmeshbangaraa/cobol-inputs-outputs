@@ -1,19 +1,23 @@
+
+---
+
+**Summary**:
+
 User Story: Integrate real-time market price feed for dynamic portfolio valuation  
-- 6 impacted components identified (**High impact only**)  
-- High complexity: Touches real-time data ingestion, position/P&L recalculation, audit/error handling, VSAM history persistence, and performance scaling. Changes affect both online and batch processing, as well as shared copybooks.
+- 5 impacted components identified (**High impact only**)  
+- High complexity change: introduces real-time data ingestion, dynamic recalculation, error/audit handling, new VSAM for price history, and performance requirements. Impacts core valuation, position, and audit logic, as well as copybooks and JCL for batch and online processing.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections             | Dependency Path                                   |
-|------------------------------------------|--------|---------|------------------------------------------|---------------------------------------------------|
-| `src/programs/batch/RPTPOS00.cbl`        | High   | Direct  | 2110-FORMAT-POSITION, 2100-READ-POSITIONS, 2200-PROCESS-TRANSACTIONS | Entry for position/P&L reporting; recalculation logic |
-| `src/programs/batch/HISTLD00.cbl`        | High   | Direct  | EXEC SQL INSERT INTO POSHIST, 2000-PROCESS-HISTORY | Loads historical price data to VSAM/DB2 (PRICEHIST) |
-| `src/copybook/common/POSREC.cpy`         | High   | Direct  | N/A (data structure)                     | Shared position record structure for valuation     |
-| `src/copybook/common/AUDITLOG.cpy`       | High   | Direct  | N/A (data structure)                     | Audit logging for stale feed/error events          |
-| `src/programs/common/AUDPROC.cbl`        | High   | Direct  | 2000-PROCESS-AUDIT, 1000-INITIALIZE      | Processes audit log entries for alarms/errors      |
-| `src/programs/batch/RTNCDE00.cbl`        | High   | Indirect| P400-LOG-RETURN-CODE, P100-INIT-RETURN-CODES | Handles UDF-level alarms, return codes for errors  |
+| Program File Path                       | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                           |
+|-----------------------------------------|--------|---------|---------------------------------------------|----------------------------------------------------------|
+| src/programs/batch/RPTPOS00.cbl         | High   | Direct  | 2110-FORMAT-POSITION, 2000-PROCESS-REPORT   | Entry point for position valuation and reporting          |
+| src/copybook/common/POSREC.cpy          | High   | Direct  | POS-RECORD, POS-CURRENT-VALUE, POS-PNL      | Shared structure for position, value, P&L                |
+| src/programs/common/AUDPROC.cbl         | High   | Direct  | 2000-PROCESS-AUDIT, 1000-INITIALIZE         | Handles audit logging for error/stale feed                |
+| src/copybook/common/AUDITLOG.cpy        | High   | Direct  | AUDIT-RECORD, AUDIT-TIMESTAMP               | Used by audit logic and error handling                    |
+| src/programs/batch/HISTLD00.cbl         | High   | Direct  | 2300-CHECK-COMMIT, 2310-UPDATE-CHECKPOINT   | Loads historical price data to VSAM (PRICEHIST)           |
 
 ---
 
@@ -28,54 +32,45 @@ User Story: Integrate real-time market price feed for dynamic portfolio valuatio
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2110-FORMAT-POSITION", "2100-READ-POSITIONS", "2200-PROCESS-TRANSACTIONS"],
+        "affectedParagraphs": ["2110-FORMAT-POSITION", "2000-PROCESS-REPORT"],
         "dependencyPath": ["RPTPOS00"],
-        "rationale": "Central to position and P&L reporting; must recalculate values on each price update."
-      },
-      {
-        "programFilePath": "src/programs/batch/HISTLD00.cbl",
-        "impactScore": 0.97,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["EXEC SQL INSERT INTO POSHIST", "2000-PROCESS-HISTORY"],
-        "dependencyPath": ["HISTLD00"],
-        "rationale": "Loads historical price feeds into VSAM KSDS (PRICEHIST) for backtesting as per user story."
+        "rationale": "Main batch program for position valuation/reporting; must recalculate position value and P&L on each price update."
       },
       {
         "programFilePath": "src/copybook/common/POSREC.cpy",
-        "impactScore": 0.96,
+        "impactScore": 0.97,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [],
-        "dependencyPath": ["POSREC", "used in RPTPOS00, UTLVAL00"],
-        "rationale": "Position record structure; must be updated to support real-time value/timestamp."
-      },
-      {
-        "programFilePath": "src/copybook/common/AUDITLOG.cpy",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": [],
-        "dependencyPath": ["AUDITLOG", "used in AUDPROC, RPTAUD00"],
-        "rationale": "Audit log structure; required for logging stale feed and error events."
+        "affectedParagraphs": ["POS-RECORD", "POS-CURRENT-VALUE", "POS-PNL"],
+        "dependencyPath": ["POSREC"],
+        "rationale": "Defines position data structure used in valuation and P&L calculations; requires updates for real-time fields and timestamp."
       },
       {
         "programFilePath": "src/programs/common/AUDPROC.cbl",
-        "impactScore": 0.94,
+        "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": ["2000-PROCESS-AUDIT", "1000-INITIALIZE"],
         "dependencyPath": ["AUDPROC"],
-        "rationale": "Processes audit log entries for alarms/errors when feed fails or is stale."
+        "rationale": "Handles audit logging and error handling for stale/missing price feeds as required by acceptance criteria."
       },
       {
-        "programFilePath": "src/programs/batch/RTNCDE00.cbl",
-        "impactScore": 0.91,
+        "programFilePath": "src/copybook/common/AUDITLOG.cpy",
+        "impactScore": 0.93,
         "impactLevel": "High",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["P400-LOG-RETURN-CODE", "P100-INIT-RETURN-CODES"],
-        "dependencyPath": ["RTNCDE00"],
-        "rationale": "Handles UDF-level alarms and return codes for error conditions as required by acceptance criteria."
+        "impactType": "Direct",
+        "affectedParagraphs": ["AUDIT-RECORD", "AUDIT-TIMESTAMP"],
+        "dependencyPath": ["AUDITLOG"],
+        "rationale": "Defines audit log structure; must be updated to capture new alarms and price feed events."
+      },
+      {
+        "programFilePath": "src/programs/batch/HISTLD00.cbl",
+        "impactScore": 0.92,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2300-CHECK-COMMIT", "2310-UPDATE-CHECKPOINT"],
+        "dependencyPath": ["HISTLD00"],
+        "rationale": "Handles loading of historical price data into VSAM (PRICEHIST) for backtesting, as required by user story."
       }
     ]
   }
@@ -88,33 +83,29 @@ User Story: Integrate real-time market price feed for dynamic portfolio valuatio
 
 ```mermaid
 graph TD
-    subgraph High Impact
-        RPTPOS00["src/programs/batch/RPTPOS00.cbl"]
-        HISTLD00["src/programs/batch/HISTLD00.cbl"]
-        POSREC["src/copybook/common/POSREC.cpy"]
-        AUDITLOG["src/copybook/common/AUDITLOG.cpy"]
-        AUDPROC["src/programs/common/AUDPROC.cbl"]
-        RTNCDE00["src/programs/batch/RTNCDE00.cbl"]
-    end
+  subgraph High Impact
+    RPTPOS00["src/programs/batch/RPTPOS00.cbl"]
+    POSREC["src/copybook/common/POSREC.cpy"]
+    AUDPROC["src/programs/common/AUDPROC.cbl"]
+    AUDITLOG["src/copybook/common/AUDITLOG.cpy"]
+    HISTLD00["src/programs/batch/HISTLD00.cbl"]
+  end
 
-    RPTPOS00 -- uses --> POSREC
-    RPTPOS00 -- logs errors to --> AUDITLOG
-    RPTPOS00 -- triggers --> AUDPROC
-    HISTLD00 -- writes to --> POSREC
-    HISTLD00 -- persists to --> PRICEHIST
-    AUDPROC -- uses --> AUDITLOG
-    AUDPROC -- raises alarms via --> RTNCDE00
+  RPTPOS00 -- uses --> POSREC
+  RPTPOS00 -- logs errors to --> AUDPROC
+  AUDPROC -- uses --> AUDITLOG
+  HISTLD00 -- loads --> POSREC
+  HISTLD00 -- logs to --> AUDITLOG
 ```
 
 ---
 
 **Notes on Reasoning**:
-- Only files present in the codebase are included.
-- RPTPOS00.cbl is the main entry for position/P&L reporting and recalculation.
-- HISTLD00.cbl is responsible for historical price feed persistence.
-- POSREC.cpy and AUDITLOG.cpy are shared copybooks for position and audit data, respectively.
-- AUDPROC.cbl processes audit logs and triggers alarms.
-- RTNCDE00.cbl handles return codes and alarms for error conditions.
-- All are directly or indirectly required to fulfill the user story and acceptance criteria for real-time updates, error handling, and audit/history.
+- Only files present in the codebase and directly tied to the user story's requirements are included.
+- RPTPOS00.cbl is the main reporting/valuation batch program; it must be enhanced for real-time price updates and recalculation logic.
+- POSREC.cpy is the shared copybook for position records and is central to value/P&L changes.
+- AUDPROC.cbl and AUDITLOG.cpy handle audit/error logging, which must be extended for new alarm and audit requirements.
+- HISTLD00.cbl is responsible for loading historical price data into VSAM, aligning with the new PRICEHIST requirement.
+- All components are ranked as "High" due to their central role in the new real-time valuation, audit, and historical data features.
 
-**End of Report**
+**No extra files are included. Only existing repository files are analyzed and listed.**
