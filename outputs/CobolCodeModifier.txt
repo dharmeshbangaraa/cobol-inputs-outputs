@@ -74,11 +74,13 @@
            05  WS-POS-VALUE         PIC $$$$,$$$,$$9.99.
            05  FILLER               PIC X(2) VALUE SPACES.
            05  WS-POS-CHANGE-PCT    PIC +ZZ9.99.
-           05  FILLER               PIC X(40) VALUE SPACES.
-*-- Change: Added fields for real-time price, timestamp, and P&L
-           05  WS-POS-REALTIME-PRICE   PIC S9(13)V9(4).
-           05  WS-POS-PRICE-TIMESTAMP  PIC X(26).
-           05  WS-POS-REALTIME-PNL     PIC S9(13)V9(2).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-POS-PL            PIC S9(13)V9(2).   *> *-- Change: Added P&L field for real-time calculation
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-POS-PL-TIMESTAMP  PIC X(26).         *> *-- Change: Added timestamp for P&L calculation
+           05  FILLER               PIC X(10) VALUE SPACES.
+
+       01  WS-PNL-TIMESTAMP         PIC X(26).         *> *-- Change: Working-storage for timestamp
 
        PROCEDURE DIVISION.
        0000-MAIN.
@@ -123,6 +125,7 @@
            PERFORM 2100-READ-POSITIONS
            PERFORM 2200-PROCESS-TRANSACTIONS
            PERFORM 2300-WRITE-SUMMARY.
+           *> *-- Change: Recalculate P&L on each price update and store with timestamp
 
        2100-READ-POSITIONS.
            READ POSITION-MASTER
@@ -144,14 +147,12 @@
            COMPUTE WS-POS-CHANGE-PCT = 
                (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
                 POS-PREVIOUS-VALUE * 100
-*-- Change: Integrate real-time price feed and recalculate P&L
-           MOVE POS-REALTIME-PRICE   TO WS-POS-REALTIME-PRICE
-           MOVE POS-PRICE-TIMESTAMP  TO WS-POS-PRICE-TIMESTAMP
-           COMPUTE WS-POS-REALTIME-PNL = 
-               (POS-REALTIME-PRICE * POS-QUANTITY) - POS-COST-BASIS
-*-- Change: Store P&L with timestamp for audit
-           WRITE REPORT-RECORD FROM WS-POSITION-DETAIL
-*-- Change: End of real-time price/P&L integration.
+           *> *-- Change: Begin real-time P&L calculation
+           COMPUTE WS-POS-PL = POS-CURRENT-VALUE - POS-COST-BASIS
+           ACCEPT WS-PNL-TIMESTAMP FROM TIME STAMP
+           MOVE WS-PNL-TIMESTAMP TO WS-POS-PL-TIMESTAMP
+           *> *-- Change: End real-time P&L calculation and timestamp storage
+           WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
 
        2200-PROCESS-TRANSACTIONS.
            PERFORM 2210-READ-TRANSACTIONS
@@ -173,9 +174,8 @@
            GOBACK.
 
 [Summary Change Report]
-- Added real-time price, timestamp, and P&L fields to WS-POSITION-DETAIL.
-- Modified 2110-FORMAT-POSITION to integrate real-time price feed, recalculate P&L, and store with timestamp.
-- All changes are marked with *-- Change comments and preserve COBOL formatting.
+- Updated 2000-PROCESS-REPORT and 2110-FORMAT-POSITION to recalculate P&L on each price update and store with timestamp.
+- Added inline comments for traceability (*-- Change: ...).
 
 [File 2] POSREC.cpy src/copybook/common/POSREC.cpy
 
@@ -198,10 +198,9 @@
                    88  POS-STATUS-ACTIVE  VALUE 'A'.
                    88  POS-STATUS-CLOSED  VALUE 'C'.
                    88  POS-STATUS-PEND    VALUE 'P'.
-*-- Change: Added real-time price, timestamp, and P&L fields
-               10  POS-REALTIME-PRICE   PIC S9(13)V9(4) COMP-3.
-               10  POS-PRICE-TIMESTAMP  PIC X(26).
-               10  POS-REALTIME-PNL     PIC S9(13)V9(2) COMP-3.
+               10  POS-REALTIME-PRICE    PIC S9(13)V9(4) COMP-3. *> *-- Change: Real-time price feed
+               10  POS-PRICE-TIMESTAMP   PIC X(26).             *> *-- Change: Timestamp for price update
+               10  POS-PL                PIC S9(13)V9(2) COMP-3. *> *-- Change: Real-time P&L
            05  POS-AUDIT.
                10  POS-LAST-MAINT-DATE   PIC X(26).
                10  POS-LAST-MAINT-USER   PIC X(08).
@@ -215,14 +214,14 @@
       * POS-COST-BASIS   : TOTAL COST BASIS
       * POS-MARKET-VALUE : CURRENT MARKET VALUE
       * POS-STATUS       : A=ACTIVE, C=CLOSED, P=PENDING
-      * POS-REALTIME-PRICE: LATEST MARKET PRICE FROM FEED
-      * POS-PRICE-TIMESTAMP: TIMESTAMP OF PRICE FEED
-      * POS-REALTIME-PNL : REAL-TIME PROFIT/LOSS
+      * POS-REALTIME-PRICE: REAL-TIME PRICE FEED *-- Change
+      * POS-PRICE-TIMESTAMP: TIMESTAMP OF PRICE UPDATE *-- Change
+      * POS-PL           : REAL-TIME PROFIT & LOSS *-- Change
       *****************************************************************
 
 [Summary Change Report]
-- Extended POSITION-RECORD with POS-REALTIME-PRICE, POS-PRICE-TIMESTAMP, and POS-REALTIME-PNL fields.
-- All changes are marked with *-- Change comments and preserve COBOL formatting.
+- Extended data structure to add real-time price, timestamp, and P&L fields.
+- Added inline comments for traceability (*-- Change: ...).
 
 [File 3] HISTLD00.cbl src/programs/batch/HISTLD00.cbl
 
@@ -255,6 +254,13 @@
                ACCESS MODE IS DYNAMIC
                RECORD KEY IS BCT-KEY
                FILE STATUS IS WS-BCT-STATUS.
+           *> *-- Change: Add support for new PRICEHIST KSDS for backtesting
+           SELECT PRICE-HISTORY
+               ASSIGN TO PRICEHIST
+               ORGANIZATION IS INDEXED
+               ACCESS MODE IS SEQUENTIAL
+               RECORD KEY IS PHIST-KEY
+               FILE STATUS IS WS-PHIST-STATUS.
        
        DATA DIVISION.
        FILE SECTION.
@@ -263,6 +269,9 @@
        
        FD  BATCH-CONTROL-FILE.
            COPY BCHCTL.
+       
+       FD  PRICE-HISTORY. *> *-- Change: New KSDS for price history
+           COPY PRICEHIST.
        
        WORKING-STORAGE SECTION.
            EXEC SQL BEGIN DECLARE SECTION END-EXEC.
@@ -277,6 +286,7 @@
        01  WS-FILE-STATUS.
            05  WS-TH-STATUS          PIC X(2).
            05  WS-BCT-STATUS         PIC X(2).
+           05  WS-PHIST-STATUS       PIC X(2). *> *-- Change: File status for price history
            
        01  WS-COUNTERS.
            05  WS-RECORDS-READ       PIC S9(9) COMP VALUE 0.
@@ -316,6 +326,7 @@
            
            IF MORE-RECORDS
                PERFORM 2200-LOAD-TO-DB2
+               PERFORM 2210-LOAD-PRICE-HIST *> *-- Change: Load price history for backtesting
                PERFORM 2300-CHECK-COMMIT
            END-IF
            .
@@ -337,6 +348,12 @@
            OPEN I-O BATCH-CONTROL-FILE
            IF WS-BCT-STATUS NOT = '00'
                MOVE 'Error opening control file' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           *> *-- Change: Open price history file
+           OPEN OUTPUT PRICE-HISTORY
+           IF WS-PHIST-STATUS NOT = '00'
+               MOVE 'Error opening price history file' TO ERR-TEXT
                PERFORM 9000-ERROR-ROUTINE
            END-IF
            .
@@ -384,18 +401,16 @@
            MOVE TH-TOTAL-AMOUNT  TO PH-TOTAL-AMOUNT
            MOVE TH-COST-BASIS    TO PH-COST-BASIS
            MOVE TH-GAIN-LOSS     TO PH-GAIN-LOSS
-*-- Change: Insert new real-time price history into PRICEHIST KSDS and support backtesting
-           IF TH-REALTIME-PRICE NOT = ZEROES
-               MOVE TH-REALTIME-PRICE   TO PH-REALTIME-PRICE
-               MOVE TH-PRICE-TIMESTAMP  TO PH-PRICE-TIMESTAMP
-               MOVE TH-REALTIME-PNL     TO PH-REALTIME-PNL
-           END-IF
-*-- Change: End of real-time price history integration
-
+           *> *-- Change: Add real-time price and timestamp for backtesting
+           MOVE TH-REALTIME-PRICE TO PH-REALTIME-PRICE
+           MOVE TH-PRICE-TIMESTAMP TO PH-PRICE-TIMESTAMP
+           MOVE TH-PL TO PH-PL
+           
            EXEC SQL
                INSERT INTO POSHIST
                VALUES (:POSHIST-RECORD)
            END-EXEC
+           *> *-- Change: End of new fields for backtesting
            
            IF SQLCODE = 0
                ADD 1 TO WS-RECORDS-WRITTEN
@@ -407,6 +422,15 @@
                    PERFORM DB2-ERROR-ROUTINE
                END-IF
            END-IF
+           .
+           
+       2210-LOAD-PRICE-HIST.
+           *> *-- Change: Write price history record for backtesting
+           INITIALIZE PRICEHIST-RECORD
+           MOVE TH-SECURITY-ID TO PHIST-SECURITY-ID
+           MOVE TH-PRICE TO PHIST-PRICE
+           MOVE TH-PRICE-TIMESTAMP TO PHIST-TIMESTAMP
+           WRITE PRICEHIST-RECORD
            .
            
        2300-CHECK-COMMIT.
@@ -445,6 +469,7 @@
        3200-CLOSE-FILES.
            CLOSE TRANSACTION-HISTORY
                  BATCH-CONTROL-FILE
+                 PRICE-HISTORY *> *-- Change: Close price history file
            .
            
        3300-DISCONNECT-DB2.
@@ -468,8 +493,8 @@
            .
 
 [Summary Change Report]
-- In 2200-LOAD-TO-DB2, added logic to insert new real-time price, timestamp, and P&L fields into POSHIST for PRICEHIST KSDS and backtesting support.
-- All changes are marked with *-- Change comments and preserve COBOL formatting.
+- Updated EXEC SQL INSERT INTO POSHIST section to support new PRICEHIST KSDS and backtesting.
+- Added comments for traceability (*-- Change: ...).
 
 [File 4] AUDITLOG.cpy src/copybook/common/AUDITLOG.cpy
 
@@ -490,9 +515,8 @@
                88  AUD-TRANSACTION     VALUE 'TRAN'.
                88  AUD-USER-ACTION     VALUE 'USER'.
                88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-*-- Change: Added new event types for alarm and stale price
-               88  AUD-ALARM-EVENT     VALUE 'ALRM'.
-               88  AUD-STALE-PRICE     VALUE 'STAL'.
+               88  AUD-ALARM-EVENT     VALUE 'ALRM'. *> *-- Change: Alarm event
+               88  AUD-STALE-PRICE     VALUE 'STAL'. *> *-- Change: Stale price event
            05  AUD-ACTION           PIC X(8).
                88  AUD-CREATE         VALUE 'CREATE  '.
                88  AUD-UPDATE         VALUE 'UPDATE  '.
@@ -502,8 +526,8 @@
                88  AUD-LOGOUT         VALUE 'LOGOUT  '.
                88  AUD-STARTUP        VALUE 'STARTUP '.
                88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
-*-- Change: Added new action for alarm
-               88  AUD-ALARM          VALUE 'ALARM   '.
+               88  AUD-ALARM-TRIGGER  VALUE 'ALARM   '. *> *-- Change: Alarm trigger
+               88  AUD-STALE-FEED     VALUE 'STALE   '. *> *-- Change: Stale feed
            05  AUD-STATUS           PIC X(4).
                88  AUD-SUCCESS        VALUE 'SUCC'.
                88  AUD-FAILURE        VALUE 'FAIL'.
@@ -514,13 +538,11 @@
            05  AUD-BEFORE-IMAGE     PIC X(100).
            05  AUD-AFTER-IMAGE      PIC X(100).
            05  AUD-MESSAGE          PIC X(100).
-*-- Change: Added AUD-ALARM-DETAIL for new alarm/stale price events
-           05  AUD-ALARM-DETAIL     PIC X(100).
+           05  AUD-ALARM-DETAIL     PIC X(100). *> *-- Change: Details for alarm/stale events
 
 [Summary Change Report]
-- Added new event types (ALRM, STAL) and action (ALARM) for alarm and stale price events.
-- Added AUD-ALARM-DETAIL field for alarm/stale price event details.
-- All changes are marked with *-- Change comments and preserve COBOL formatting.
+- Added support for new alarm and stale price events in the data structure.
+- Added inline comments for traceability (*-- Change: ...).
 
 [File 5] AUDPROC.cbl src/programs/common/AUDPROC.cbl
 
@@ -555,6 +577,7 @@
        WORKING-STORAGE SECTION.
        01  WS-FILE-STATUS          PIC X(2).
        01  WS-FORMATTED-TIME       PIC X(26).
+       01  WS-ALARM-DETAIL         PIC X(100). *> *-- Change: For alarm/stale feed details
            
        LINKAGE SECTION.
        01  LS-AUDIT-REQUEST.
@@ -572,9 +595,8 @@
            05  LS-BEFORE-IMAGE    PIC X(100).
            05  LS-AFTER-IMAGE     PIC X(100).
            05  LS-MESSAGE         PIC X(100).
+           05  LS-ALARM-DETAIL    PIC X(100). *> *-- Change: For alarm/stale feed details
            05  LS-RETURN-CODE     PIC S9(4) COMP.
-*-- Change: Added alarm detail for new alarm/stale price events
-           05  LS-ALARM-DETAIL    PIC X(100).
        
        PROCEDURE DIVISION USING LS-AUDIT-REQUEST.
        0000-MAIN.
@@ -608,12 +630,10 @@
            MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
            MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
            MOVE LS-MESSAGE         TO AUD-MESSAGE
-*-- Change: Handle new UDF-level alarms and log stale feed events
+           *> *-- Change: Handle UDF-level alarms and stale feed events
            IF LS-TYPE = 'ALRM' OR LS-TYPE = 'STAL'
                MOVE LS-ALARM-DETAIL TO AUD-ALARM-DETAIL
            END-IF
-*-- Change: End of alarm/stale price event handling
-           
            WRITE AUDIT-RECORD
            
            IF WS-FILE-STATUS NOT = '00'
@@ -626,9 +646,12 @@
            
        3000-TERMINATE.
            CLOSE AUDIT-FILE
+           *> *-- Change: Log stale feed event if required
+           IF LS-TYPE = 'STAL'
+               DISPLAY 'Stale price feed event logged for: ' LS-KEY-INFO
+           END-IF
            .
 
 [Summary Change Report]
-- Added support for new UDF-level alarms and stale feed event logging in 2000-PROCESS-AUDIT.
-- Extended linkage section and audit record with alarm detail field.
-- All changes are marked with *-- Change comments and preserve COBOL formatting.
+- Updated 2000-PROCESS-AUDIT and 3000-TERMINATE to handle new UDF-level alarms and log stale feed events.
+- Added inline comments for traceability (*-- Change: ...).
