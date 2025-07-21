@@ -1,21 +1,19 @@
-
 **Summary**:
-
 User Story: Integrate real-time market price feed for dynamic portfolio valuation  
 - 5 impacted components identified (**High impact only**)  
-- High complexity change affecting data ingestion, valuation engine, error handling, audit, and historical price persistence across batch and DB2 programs, as well as copybooks and JCL.
+- High complexity: Real-time data ingestion, dynamic recalculation of portfolio/position values, error handling, audit logging, and historical price persistence require significant changes across batch and online COBOL programs, copybooks, and JCL.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                           | Impact | Nature  | Affected Paragraphs/Sections                          | Dependency Path                              |
-|---------------------------------------------|--------|---------|------------------------------------------------------|----------------------------------------------|
-| src/programs/batch/BCHVAL00.cbl            | High   | Direct  | 0000-MAIN, 2000-PRICE-UPDATE, 2100-REVALUE-POSITIONS | Entry point for batch valuation, core logic  |
-| src/programs/batch/HISTLD00.cbl            | High   | Direct  | 2000-LOAD-HIST, 2100-INSERT-HIST                     | Called for historical price persistence      |
-| src/copybook/common/AUDITLOG.cpy           | High   | Direct  | AUDIT-ENTRY, AUDIT-ERROR                             | Used for audit trail and error logging       |
-| src/programs/common/AUDPROC.cbl            | High   | Direct  | 2000-PROCESS-AUDIT                                   | Handles audit logging for price feed errors  |
-| src/programs/batch/BCHCTL00.cbl            | High   | Indirect| 1000-PROCESS-INITIALIZE, 3000-UPDATE-STATUS          | Batch control, triggers valuation batch      |
+| Program File Path                              | Impact | Nature  | Affected Paragraphs/Sections              | Dependency Path                                 |
+|------------------------------------------------|--------|---------|-------------------------------------------|-------------------------------------------------|
+| `src/programs/batch/RPTPOS00.cbl`              | High   | Direct  | 2110-FORMAT-POSITION, 2200-PROCESS-TRANSACTIONS | Portfolio valuation and position reporting logic |
+| `src/programs/batch/HISTLD00.cbl`              | High   | Direct  | 2300-CHECK-COMMIT, 2310-UPDATE-CHECKPOINT | Loads historical price data into VSAM/DB2        |
+| `src/copybook/common/POSREC.cpy`               | High   | Direct  | N/A (data structure)                      | Shared position record structure for valuation   |
+| `src/copybook/common/AUDITLOG.cpy`             | High   | Direct  | N/A (data structure)                      | Audit logging for price feed events/errors       |
+| `src/programs/common/AUDPROC.cbl`              | High   | Indirect| 2000-PROCESS-AUDIT                        | Processes audit log writes for alarms/errors     |
 
 ---
 
@@ -26,49 +24,49 @@ User Story: Integrate real-time market price feed for dynamic portfolio valuatio
     "userStory": "Integrate real-time market price feed for dynamic portfolio valuation",
     "impactedComponents": [
       {
-        "programFilePath": "src/programs/batch/BCHVAL00.cbl",
+        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["0000-MAIN", "2000-PRICE-UPDATE", "2100-REVALUE-POSITIONS"],
-        "dependencyPath": ["BCHVAL00"],
-        "rationale": "Core batch valuation program; must ingest real-time prices, recalculate P&L, and update positions on each feed."
+        "affectedParagraphs": ["2110-FORMAT-POSITION", "2200-PROCESS-TRANSACTIONS"],
+        "dependencyPath": ["RPTPOS00"],
+        "rationale": "Core reporting program for positions/portfolio; must recalculate and display values using real-time prices."
       },
       {
         "programFilePath": "src/programs/batch/HISTLD00.cbl",
-        "impactScore": 0.95,
+        "impactScore": 0.97,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-LOAD-HIST", "2100-INSERT-HIST"],
-        "dependencyPath": ["BCHVAL00", "HISTLD00"],
-        "rationale": "Handles persistence of historical price feeds in VSAM KSDS PRICEHIST for backtesting, as required by the user story."
+        "affectedParagraphs": ["2300-CHECK-COMMIT", "2310-UPDATE-CHECKPOINT"],
+        "dependencyPath": ["HISTLD00"],
+        "rationale": "Handles loading of historical price data into VSAM/DB2 (PRICEHIST); must persist new feed data for backtesting."
+      },
+      {
+        "programFilePath": "src/copybook/common/POSREC.cpy",
+        "impactScore": 0.96,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [],
+        "dependencyPath": ["POSREC"],
+        "rationale": "Position record structure must be updated to store real-time price, recalculated P&L, and timestamp."
       },
       {
         "programFilePath": "src/copybook/common/AUDITLOG.cpy",
-        "impactScore": 0.93,
+        "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["AUDIT-ENTRY", "AUDIT-ERROR"],
-        "dependencyPath": ["BCHVAL00", "AUDPROC", "AUDITLOG.cpy"],
-        "rationale": "Copybook used for audit logging; required for error and stale feed handling."
+        "affectedParagraphs": [],
+        "dependencyPath": ["AUDITLOG"],
+        "rationale": "Audit log structure must support new alarm/error entries for feed failures and staleness."
       },
       {
         "programFilePath": "src/programs/common/AUDPROC.cbl",
         "impactScore": 0.92,
         "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS-AUDIT"],
-        "dependencyPath": ["BCHVAL00", "AUDPROC"],
-        "rationale": "Program responsible for writing audit records, invoked on feed errors or stale data."
-      },
-      {
-        "programFilePath": "src/programs/batch/BCHCTL00.cbl",
-        "impactScore": 0.90,
-        "impactLevel": "High",
         "impactType": "Indirect",
-        "affectedParagraphs": ["1000-PROCESS-INITIALIZE", "3000-UPDATE-STATUS"],
-        "dependencyPath": ["BCHCTL00", "BCHVAL00"],
-        "rationale": "Batch control program that manages batch job lifecycle, indirectly impacted by new valuation and feed processes."
+        "affectedParagraphs": ["2000-PROCESS-AUDIT"],
+        "dependencyPath": ["AUDPROC"],
+        "rationale": "Processes audit log entries; must handle new types of alarms and error events from market feed logic."
       }
     ]
   }
@@ -81,28 +79,24 @@ User Story: Integrate real-time market price feed for dynamic portfolio valuatio
 
 ```mermaid
 graph TD
-  A[src/programs/batch/BCHCTL00.cbl] -- triggers --> B[src/programs/batch/BCHVAL00.cbl]
-  B -- writes audit --> C[src/programs/common/AUDPROC.cbl]
-  B -- uses --> D[src/copybook/common/AUDITLOG.cpy]
-  B -- persists history --> E[src/programs/batch/HISTLD00.cbl]
+  subgraph High Impact
+    RPTPOS00["src/programs/batch/RPTPOS00.cbl"]
+    HISTLD00["src/programs/batch/HISTLD00.cbl"]
+    POSREC["src/copybook/common/POSREC.cpy"]
+    AUDITLOG["src/copybook/common/AUDITLOG.cpy"]
+    AUDPROC["src/programs/common/AUDPROC.cbl"]
+  end
 
-  style A fill:#ffcccc,stroke:#333,stroke-width:2px
-  style B fill:#ffcccc,stroke:#333,stroke-width:2px
-  style C fill:#ffcccc,stroke:#333,stroke-width:2px
-  style D fill:#ffcccc,stroke:#333,stroke-width:2px
-  style E fill:#ffcccc,stroke:#333,stroke-width:2px
+  RPTPOS00 -- uses --> POSREC
+  RPTPOS00 -- logs to --> AUDITLOG
+  HISTLD00 -- writes to --> POSREC
+  HISTLD00 -- persists to --> AUDITLOG
+  AUDPROC -- processes --> AUDITLOG
 ```
 
 ---
 
-**Notes on Reasoning**:
-
-- **BCHVAL00.cbl** (assumed as the main valuation batch program based on naming and typical COBOL conventions) is the central component for valuation logic and must be modified for real-time price ingestion, recalculation, and update.
-- **HISTLD00.cbl** is the historical loader for price data, directly required for the new VSAM KSDS PRICEHIST persistence.
-- **AUDITLOG.cpy** and **AUDPROC.cbl** are critical for error and audit logging, as required by the acceptance criteria for stale feeds and alarms.
-- **BCHCTL00.cbl** is the batch control program, which orchestrates batch jobs and is indirectly impacted by the new feed and valuation requirements.
-- Only components present in the repository and with direct or critical indirect impact are included, strictly following the high-impact filter.
-
----
-
-**End of Report**
+**Key Notes**:
+- Only files present in the codebase are included.
+- All components listed are directly or indirectly critical for the user story: ingesting, recalculating, persisting, and auditing real-time price data.
+- No medium/low impact or extraneous files included.
