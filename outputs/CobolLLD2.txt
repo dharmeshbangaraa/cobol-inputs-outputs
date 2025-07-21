@@ -1,176 +1,364 @@
+
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document details the recent structural and logic changes made to the COBOL application modules and copybooks related to transaction processing. The primary focus is the introduction of the `CHANNEL-CODE` field for channel identification within transaction records, along with necessary adjustments to maintain record integrity and traceability. This document serves as a reference for developers, testers, and maintainers to understand the impact and rationale behind these changes.
+This document details the recent enhancements made to the COBOL-based position reporting and audit infrastructure. The changes introduce real-time price feed support, dynamic valuation, and enhanced audit logging for alarms and stale price events. The purpose of this document is to provide a clear understanding of the modifications, their rationale, and their impact on the system, supporting maintainability and future enhancements.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The COBOL application processes financial transactions by reading, validating, and updating transaction records. The core logic involves extracting transaction details, applying business rules, and generating reports or outputs based on transaction status and type.
+The application suite processes portfolio positions, transaction histories, and audit trails. Key modules include:
+- **RPTPOS00**: Generates daily position reports, summarizing portfolio positions, transaction activity, and exceptions.
+- **HISTLD00**: Loads position history into DB2, supporting backtesting and historical analysis.
+- **AUDPROC**: Handles audit trail logging for all significant events.
 
 ### 2.2 Detailed Logic  
-- **Transaction Record Structure:**  
-  - Each transaction is represented by a structured record containing key identifiers (date, time, portfolio, sequence), transaction data (type, quantity, price, amount, currency, status), audit information, and filler for record length consistency.
-- **Processing Flow:**  
-  - Transaction records are read from input sources.
-  - Validation routines ensure data integrity.
-  - Business logic is applied based on transaction type and status.
-  - Output is generated for reporting or further processing.
+#### RPTPOS00 (Daily Position Report Generator)
+- **Initialization**: Opens master and transaction files, writes report headers (Lines 10-50).
+- **Processing**: Reads positions, formats details, integrates real-time price feed, and writes to report (Lines 51-150).
+- **Termination**: Closes files and handles errors (Lines 151-200).
+
+#### POSREC (Position Record Copybook)
+- Defines the structure for position records, now including real-time price, timestamp, and P&L fields.
+
+#### HISTLD00 (Position History Loader)
+- **Initialization**: Opens files, connects to DB2, initializes checkpoints.
+- **Processing**: Reads transaction history, loads records into DB2, now including real-time price data.
+- **Termination**: Commits, closes files, disconnects from DB2, displays stats.
+
+#### AUDITLOG & AUDPROC (Audit Logging)
+- Defines and processes audit records, now supporting new event types (alarm, stale price) and associated fields.
 
 #### Flowchart:  
 ```
 flowchart TD
     Start(["Start"])
-    ReadRecord["Read
-Transaction
-Record"]
-    ValidateRecord["Validate
-Record"]
-    ApplyBusinessLogic["Apply
-Business
-Logic"]
-    UpdateStatus["Update
-Status"]
-    GenerateOutput["Generate
-Output/Report"]
+    Init["Initialize
+(Open Files, Headers)"]
+    ReadPos["Read
+Positions"]
+    FormatPos["Format
+Position Details"]
+    RealTimeCheck["Check
+Real-Time Price"]
+    WriteReport["Write
+Report Record"]
+    ReadTrans["Read
+Transactions"]
+    Summarize["Summarize
+Activity"]
+    WriteSummary["Write
+Summary"]
+    AuditEvent["Audit
+Event Logging"]
     End(["End"])
 
-    Start --> ReadRecord
-    ReadRecord --> ValidateRecord
-    ValidateRecord --> ApplyBusinessLogic
-    ApplyBusinessLogic --> UpdateStatus
-    UpdateStatus --> GenerateOutput
-    GenerateOutput --> End
+    Start --> Init
+    Init --> ReadPos
+    ReadPos --> FormatPos
+    FormatPos --> RealTimeCheck
+    RealTimeCheck --> WriteReport
+    WriteReport --> ReadTrans
+    ReadTrans --> Summarize
+    Summarize --> WriteSummary
+    WriteSummary --> AuditEvent
+    AuditEvent --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-To enhance transaction traceability and support multi-channel processing, a new field `CHANNEL-CODE` (PIC X(04)) has been added to the transaction record structure. This enables identification of the originating channel for each transaction (e.g., online, branch, mobile). The change required structural updates to the copybook and corresponding adjustments in all programs referencing the transaction record.
+Enhance the position reporting and audit modules to support real-time price feeds, dynamic P&L calculation, and improved audit logging for alarms and stale price events. This enables more accurate reporting, backtesting, and compliance with audit requirements.
 
 ### 3.2 Impacted Code Changes Summary:
 
 #### 3.2.1 Impacted Sections and Files:
-- **src/copybook/common/TRNREC.cpy**
-- **src/programs/batch/RPTPOS00.cbl**
-- **src/programs/utility/UTLVAL00.cbl**
-- **src/programs/test/TSTGEN00.cbl**
-- **src/programs/test/TSTVAL00.cbl**
+- **src/programs/batch/RPTPOS00.cbl** (RPTPOS00)
+- **src/copybook/common/POSREC.cpy** (POSREC)
+- **src/programs/batch/HISTLD00.cbl** (HISTLD00)
+- **src/copybook/common/AUDITLOG.cpy** (AUDITLOG)
+- **src/programs/common/AUDPROC.cbl** (AUDPROC)
 
-  - **Purpose of Changes:**  
-    To introduce the `CHANNEL-CODE` field for channel identification in transaction records, ensuring all related programs can access and utilize this new field. The filler size was reduced to maintain the overall record length.
-  
-  - **Impact:**  
-    - All programs using the transaction record structure now have access to the `CHANNEL-CODE` field.
-    - Record layouts and field mappings are updated, requiring corresponding changes in data handling logic.
-    - Backward compatibility is maintained by adjusting the filler field.
-    - Enhanced reporting and validation capabilities based on transaction channel.
+**Purpose of Changes:**  
+- Integrate real-time price and P&L fields for dynamic valuation and reporting.
+- Support historical price feed and backtesting in position history loader.
+- Enhance audit logging to capture alarm and stale price events for compliance and monitoring.
+
+**Impact:**  
+- Enables real-time and historical analytics.
+- Improves auditability and traceability of critical events.
+- Requires downstream consumers to handle new fields in records.
 
 ### 3.3 Insertion Points  
-- **TRNREC.CPY (src/copybook/common/TRNREC.cpy):**
-  - `CHANNEL-CODE` added to the `TRN-KEY` group (after `TRN-SEQUENCE-NO`).
-  - `TRN-FILLER` reduced from `X(50)` to `X(46)` to accommodate the new field.
-  - Field descriptions updated to document `CHANNEL-CODE`.
-- **All referencing programs (RPTPOS00.cbl, UTLVAL00.cbl, TSTGEN00.cbl, TSTVAL00.cbl):**
-  - Any logic referencing the transaction key structure now includes `CHANNEL-CODE`.
-  - Data movement, validation, and reporting logic updated to handle the new field where applicable.
-  - Inline comments added for traceability.
+- **RPTPOS00.cbl**:  
+  - *WS-POSITION-DETAIL* structure: Added fields for real-time price, timestamp, and P&L.
+  - *2110-FORMAT-POSITION* paragraph: Logic to populate new fields and compute real-time P&L.
+- **POSREC.cpy**:  
+  - Added new fields to the position record structure.
+- **HISTLD00.cbl**:  
+  - *2200-LOAD-TO-DB2* paragraph: Logic to load new real-time fields into the DB2 history table.
+- **AUDITLOG.cpy**:  
+  - Added new event types and fields for alarm and stale price events.
+- **AUDPROC.cbl**:  
+  - *LINKAGE SECTION*: Added new fields for alarms and stale price events.
+  - *2000-PROCESS-AUDIT* paragraph: Logic to map new fields based on event type.
 
 ### 3.4 Structured Diffs  
 
-#### **src/copybook/common/TRNREC.cpy**
-
+#### **RPTPOS00.cbl**
 **Before:**
 ```cobol
-     05  TRN-KEY.
-         10  TRN-DATE           PIC X(08).
-         10  TRN-TIME           PIC X(06).
-         10  TRN-PORTFOLIO-ID   PIC X(08).
-         10  TRN-SEQUENCE-NO    PIC X(06).
-     05  TRN-DATA.
-         ...
-     05  TRN-FILLER           PIC X(50).
-```
-
-**After:**
-```cobol
-     05  TRN-KEY.
-         10  TRN-DATE           PIC X(08).
-         10  TRN-TIME           PIC X(06).
-         10  TRN-PORTFOLIO-ID   PIC X(08).
-         10  TRN-SEQUENCE-NO    PIC X(06).
-         10  CHANNEL-CODE       PIC X(04).   *-- Change: Added CHANNEL-CODE for channel identification
-     05  TRN-DATA.
-         ...
-     05  TRN-FILLER           PIC X(46).     *-- Change: Reduced filler by 4 to accommodate CHANNEL-CODE
-```
-
-**Field Descriptions (Updated):**
-```cobol
-* CHANNEL-CODE    : CHANNEL IDENTIFICATION CODE (NEW)
-```
-
-#### **src/programs/batch/RPTPOS00.cbl**  
-**Before:**
-```cobol
-COPY 'src/copybook/common/TRNREC.cpy'.
-* ... logic referencing TRN-KEY fields ...
+01  WS-POSITION-DETAIL.
+    05  WS-POS-PORTFOLIO     PIC X(10).
+    05  FILLER               PIC X(2) VALUE SPACES.
+    05  WS-POS-DESCRIPTION   PIC X(30).
+    05  FILLER               PIC X(2) VALUE SPACES.
+    05  WS-POS-QUANTITY      PIC ZZZ,ZZZ,ZZ9.99.
+    05  FILLER               PIC X(2) VALUE SPACES.
+    05  WS-POS-VALUE         PIC $$$$,$$$,$$9.99.
+    05  FILLER               PIC X(2) VALUE SPACES.
+    05  WS-POS-CHANGE-PCT    PIC +ZZ9.99.
+    05  FILLER               PIC X(2) VALUE SPACES.
 ```
 **After:**
 ```cobol
-COPY 'src/copybook/common/TRNREC.cpy'.
-* ... logic referencing TRN-KEY fields, now includes CHANNEL-CODE ...
-* Example:
-    MOVE TRANSACTION-RECORD-CHANNEL-CODE TO WS-CHANNEL-CODE
-    *-- Change: Added logic to handle CHANNEL-CODE for reporting
+01  WS-POSITION-DETAIL.
+    05  WS-POS-PORTFOLIO     PIC X(10).
+    05  FILLER               PIC X(2) VALUE SPACES.
+    05  WS-POS-DESCRIPTION   PIC X(30).
+    05  FILLER               PIC X(2) VALUE SPACES.
+    05  WS-POS-QUANTITY      PIC ZZZ,ZZZ,ZZ9.99.
+    05  FILLER               PIC X(2) VALUE SPACES.
+    05  WS-POS-VALUE         PIC $$$$,$$$,$$9.99.
+    05  FILLER               PIC X(2) VALUE SPACES.
+    05  WS-POS-CHANGE-PCT    PIC +ZZ9.99.
+    05  FILLER               PIC X(2) VALUE SPACES.
+    05  WS-POS-REALTIME-PRICE   PIC S9(13)V9(2) COMP-3. *-- Change: Added real-time price field for dynamic valuation
+    05  WS-POS-PRICE-TIMESTAMP  PIC X(26).               *-- Change: Added timestamp for real-time price
+    05  WS-POS-REALTIME-PNL     PIC S9(13)V9(2) COMP-3. *-- Change: Added real-time P&L field
 ```
 
-#### **src/programs/utility/UTLVAL00.cbl**  
-**Before:**
+**Before (2110-FORMAT-POSITION):**
 ```cobol
-COPY 'src/copybook/common/TRNREC.cpy'.
-* ... validation logic ...
+2110-FORMAT-POSITION.
+    MOVE POS-PORTFOLIO-ID   TO WS-POS-PORTFOLIO
+    MOVE POS-DESCRIPTION    TO WS-POS-DESCRIPTION
+    MOVE POS-QUANTITY       TO WS-POS-QUANTITY
+    MOVE POS-MARKET-VALUE   TO WS-POS-VALUE
+    COMPUTE WS-POS-CHANGE-PCT = 
+        (POS-MARKET-VALUE - POS-COST-BASIS) /
+         POS-COST-BASIS * 100
+    WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
 ```
 **After:**
 ```cobol
-COPY 'src/copybook/common/TRNREC.cpy'.
-* ... validation logic updated to include CHANNEL-CODE ...
-* Example:
-    IF CHANNEL-CODE = SPACES
-        MOVE 'MISSING CHANNEL' TO ERROR-MSG
+2110-FORMAT-POSITION.
+    MOVE POS-PORTFOLIO-ID   TO WS-POS-PORTFOLIO
+    MOVE POS-DESCRIPTION    TO WS-POS-DESCRIPTION
+    MOVE POS-QUANTITY       TO WS-POS-QUANTITY
+    MOVE POS-MARKET-VALUE   TO WS-POS-VALUE
+    COMPUTE WS-POS-CHANGE-PCT = 
+        (POS-MARKET-VALUE - POS-COST-BASIS) /
+         POS-COST-BASIS * 100
+    *-- Change: Integrate real-time price feed for valuation
+    IF POS-REALTIME-PRICE NOT = ZERO
+        MOVE POS-REALTIME-PRICE TO WS-POS-REALTIME-PRICE
+        MOVE POS-PRICE-TIMESTAMP TO WS-POS-PRICE-TIMESTAMP
+        COMPUTE WS-POS-REALTIME-PNL = 
+            (POS-REALTIME-PRICE - POS-COST-BASIS) * POS-QUANTITY
+        *-- Change: Real-time P&L calculation based on latest price feed
+    ELSE
+        MOVE POS-MARKET-VALUE TO WS-POS-REALTIME-PRICE
+        MOVE SPACES TO WS-POS-PRICE-TIMESTAMP
+        MOVE ZERO TO WS-POS-REALTIME-PNL
     END-IF
-    *-- Change: Added validation for CHANNEL-CODE
+    WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
 ```
 
-#### **src/programs/test/TSTGEN00.cbl**  
+#### **POSREC.cpy**
 **Before:**
 ```cobol
-COPY 'src/copybook/common/TRNREC.cpy'.
-* ... test data generation ...
+10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
+10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
+10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
+10  POS-CURRENCY       PIC X(03).
+10  POS-STATUS         PIC X(01).
 ```
 **After:**
 ```cobol
-COPY 'src/copybook/common/TRNREC.cpy'.
-* ... test data generation includes CHANNEL-CODE ...
-* Example:
-    MOVE 'ONLN' TO CHANNEL-CODE
-    *-- Change: Test data now sets CHANNEL-CODE
+10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
+10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
+10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
+10  POS-REALTIME-PRICE PIC S9(13)V9(2) COMP-3.   *-- Change: Added real-time price field
+10  POS-PRICE-TIMESTAMP PIC X(26).               *-- Change: Added timestamp for real-time price
+10  POS-REALTIME-PNL   PIC S9(13)V9(2) COMP-3.   *-- Change: Added real-time P&L field
+10  POS-CURRENCY       PIC X(03).
+10  POS-STATUS         PIC X(01).
 ```
 
-#### **src/programs/test/TSTVAL00.cbl**  
-**Before:**
+#### **HISTLD00.cbl**
+**Before (2200-LOAD-TO-DB2):**
 ```cobol
-COPY 'src/copybook/common/TRNREC.cpy'.
-* ... test validation logic ...
+MOVE TH-ACCOUNT-NO    TO PH-ACCOUNT-NO
+MOVE TH-PORTFOLIO-ID  TO PH-PORTFOLIO-ID
+MOVE TH-TRANS-DATE    TO PH-TRANS-DATE
+MOVE TH-TRANS-TIME    TO PH-TRANS-TIME
+MOVE TH-TRANS-TYPE    TO PH-TRANS-TYPE
+MOVE TH-SECURITY-ID   TO PH-SECURITY-ID
+MOVE TH-QUANTITY      TO PH-QUANTITY
+MOVE TH-PRICE         TO PH-PRICE
+MOVE TH-AMOUNT        TO PH-AMOUNT
+MOVE TH-FEES          TO PH-FEES
+MOVE TH-TOTAL-AMOUNT  TO PH-TOTAL-AMOUNT
+MOVE TH-COST-BASIS    TO PH-COST-BASIS
+MOVE TH-GAIN-LOSS     TO PH-GAIN-LOSS
+EXEC SQL
+    INSERT INTO POSHIST
+    VALUES (:POSHIST-RECORD)
+END-EXEC
 ```
 **After:**
 ```cobol
-COPY 'src/copybook/common/TRNREC.cpy'.
-* ... test validation logic includes CHANNEL-CODE ...
-* Example:
-    IF CHANNEL-CODE NOT = 'ONLN'
-        MOVE 'INVALID CHANNEL' TO TEST-ERROR-MSG
+MOVE TH-ACCOUNT-NO    TO PH-ACCOUNT-NO
+MOVE TH-PORTFOLIO-ID  TO PH-PORTFOLIO-ID
+MOVE TH-TRANS-DATE    TO PH-TRANS-DATE
+MOVE TH-TRANS-TIME    TO PH-TRANS-TIME
+MOVE TH-TRANS-TYPE    TO PH-TRANS-TYPE
+MOVE TH-SECURITY-ID   TO PH-SECURITY-ID
+MOVE TH-QUANTITY      TO PH-QUANTITY
+MOVE TH-PRICE         TO PH-PRICE
+MOVE TH-AMOUNT        TO PH-AMOUNT
+MOVE TH-FEES          TO PH-FEES
+MOVE TH-TOTAL-AMOUNT  TO PH-TOTAL-AMOUNT
+MOVE TH-COST-BASIS    TO PH-COST-BASIS
+MOVE TH-GAIN-LOSS     TO PH-GAIN-LOSS
+*-- Change: Support for new PRICEHIST KSDS and backtesting
+IF TH-REALTIME-PRICE NOT = ZERO
+    MOVE TH-REALTIME-PRICE TO PH-REALTIME-PRICE
+    MOVE TH-PRICE_TIMESTAMP TO PH-PRICE_TIMESTAMP
+    MOVE TH-REALTIME_PNL TO PH-REALTIME_PNL
+    *-- Change: Load real-time price, timestamp, and P&L to POSHIST
+END-IF
+EXEC SQL
+    INSERT INTO POSHIST
+    VALUES (:POSHIST-RECORD)
+END-EXEC
+```
+
+#### **AUDITLOG.cpy**
+**Before:**
+```cobol
+05  AUD-TYPE             PIC X(4).
+    88  AUD-TRANSACTION     VALUE 'TRAN'.
+    88  AUD-USER-ACTION     VALUE 'USER'.
+    88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
+05  AUD-ACTION           PIC X(8).
+05  AUD-STATUS           PIC X(4).
+05  AUD-KEY-INFO.
+    10  AUD-PORTFOLIO-ID  PIC X(8).
+    10  AUD-ACCOUNT-NO    PIC X(10).
+05  AUD-BEFORE-IMAGE     PIC X(100).
+05  AUD-AFTER-IMAGE      PIC X(100).
+05  AUD-MESSAGE          PIC X(100).
+```
+**After:**
+```cobol
+05  AUD-TYPE             PIC X(4).
+    88  AUD-TRANSACTION     VALUE 'TRAN'.
+    88  AUD-USER-ACTION     VALUE 'USER'.
+    88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
+    88  AUD-ALARM-EVENT     VALUE 'ALRM'.      *-- Change: Added alarm event type
+    88  AUD-STALE-PRICE     VALUE 'STAL'.      *-- Change: Added stale price event type
+05  AUD-ACTION           PIC X(8).
+05  AUD-STATUS           PIC X(4).
+05  AUD-KEY-INFO.
+    10  AUD-PORTFOLIO-ID  PIC X(8).
+    10  AUD-ACCOUNT-NO    PIC X(10).
+05  AUD-BEFORE-IMAGE     PIC X(100).
+05  AUD-AFTER-IMAGE      PIC X(100).
+05  AUD-MESSAGE          PIC X(100).
+05  AUD-ALARM-CODE       PIC X(8).            *-- Change: Added alarm code for new events
+05  AUD-STALE-PRICE-TS   PIC X(26).           *-- Change: Timestamp for stale price event
+```
+
+#### **AUDPROC.cbl**
+**Before (LINKAGE SECTION):**
+```cobol
+01  LS-AUDIT-REQUEST.
+    05  LS-SYSTEM-INFO.
+        10  LS-SYSTEM-ID    PIC X(8).
+        10  LS-USER-ID      PIC X(8).
+        10  LS-PROGRAM      PIC X(8).
+        10  LS-TERMINAL     PIC X(8).
+    05  LS-TYPE            PIC X(4).
+    05  LS-ACTION          PIC X(8).
+    05  LS-STATUS          PIC X(4).
+    05  LS-KEY-INFO.
+        10  LS-PORT-ID     PIC X(8).
+        10  LS-ACCT-NO     PIC X(10).
+    05  LS-BEFORE-IMAGE    PIC X(100).
+    05  LS-AFTER-IMAGE     PIC X(100).
+    05  LS-MESSAGE         PIC X(100).
+    05  LS-RETURN-CODE     PIC S9(4) COMP.
+```
+**After:**
+```cobol
+01  LS-AUDIT-REQUEST.
+    05  LS-SYSTEM-INFO.
+        10  LS-SYSTEM-ID    PIC X(8).
+        10  LS-USER-ID      PIC X(8).
+        10  LS-PROGRAM      PIC X(8).
+        10  LS-TERMINAL     PIC X(8).
+    05  LS-TYPE            PIC X(4).
+    05  LS-ACTION          PIC X(8).
+    05  LS-STATUS          PIC X(4).
+    05  LS-KEY-INFO.
+        10  LS-PORT-ID     PIC X(8).
+        10  LS-ACCT-NO     PIC X(10).
+    05  LS-BEFORE-IMAGE    PIC X(100).
+    05  LS-AFTER-IMAGE     PIC X(100).
+    05  LS-MESSAGE         PIC X(100).
+    05  LS-ALARM-CODE      PIC X(8).      *-- Change: Added for UDF-level alarms
+    05  LS-STALE-PRICE-TS  PIC X(26).     *-- Change: Added for stale price events
+    05  LS-RETURN-CODE     PIC S9(4) COMP.
+```
+
+**Before (2000-PROCESS-AUDIT):**
+```cobol
+2000-PROCESS-AUDIT.
+    INITIALIZE AUDIT-RECORD
+    MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
+    MOVE LS-SYSTEM-INFO     TO AUD-HEADER
+    MOVE LS-TYPE            TO AUD-TYPE
+    MOVE LS-ACTION          TO AUD-ACTION
+    MOVE LS-STATUS          TO AUD-STATUS
+    MOVE LS-KEY-INFO        TO AUD-KEY-INFO
+    MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
+    MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
+    MOVE LS-MESSAGE         TO AUD-MESSAGE
+    WRITE AUDIT-RECORD
+```
+**After:**
+```cobol
+2000-PROCESS-AUDIT.
+    INITIALIZE AUDIT-RECORD
+    MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
+    MOVE LS-SYSTEM-INFO     TO AUD-HEADER
+    MOVE LS-TYPE            TO AUD-TYPE
+    MOVE LS-ACTION          TO AUD-ACTION
+    MOVE LS-STATUS          TO AUD-STATUS
+    MOVE LS-KEY-INFO        TO AUD-KEY-INFO
+    MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
+    MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
+    MOVE LS-MESSAGE         TO AUD-MESSAGE
+    *-- Change: Support for new UDF-level alarms and stale feed events
+    IF LS-TYPE = 'ALRM'
+        MOVE LS-ALARM-CODE TO AUD-ALARM-CODE
     END-IF
-    *-- Change: Test validation now checks CHANNEL-CODE
+    IF LS-TYPE = 'STAL'
+        MOVE LS-STALE-PRICE-TS TO AUD-STALE-PRICE-TS
+    END-IF
+    WRITE AUDIT-RECORD
 ```
 
 ## 4. Conclusion  
-The introduction of the `CHANNEL-CODE` field enhances the application's ability to track and process transactions by channel, supporting future business requirements for channel-based reporting and validation. All impacted modules and copybooks have been updated to ensure consistency and maintainability. The changes are backward-compatible and fully traceable through inline comments and updated documentation.
+The implemented changes enable real-time and historical analytics by integrating real-time price feeds and dynamic P&L calculations into position reporting and history loading. Enhanced audit logging now captures alarm and stale price events, improving compliance and operational monitoring. These enhancements position the system for greater accuracy, transparency, and auditability, supporting both business and regulatory requirements.
+```
