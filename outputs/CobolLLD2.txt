@@ -1,258 +1,163 @@
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document details the recent enhancements and logic changes made to the COBOL batch control and audit trail modules, specifically for improved handling and auditing of real-time market price feed prerequisites in batch processing. The purpose is to provide a clear, structured overview of the changes, their rationale, and their impact on the system, supporting future maintenance and onboarding.
+This document details the technical changes and low-level design (LLD) for the COBOL application modules impacted by the addition of the `CHANNEL-CODE` field to the transaction record structure. The purpose is to provide a comprehensive overview of the modifications, their rationale, and the expected impact on the system, ensuring clarity for developers, testers, and maintainers.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The batch control processor (`BCHCTL00`) orchestrates batch job execution, managing initialization, prerequisite checks, status updates, and termination. It interacts with the audit trail processor (`AUDPROC`) to log significant events and errors, including new requirements for real-time feed validation.
+The COBOL application processes financial transactions, maintains transaction records, and generates reports. The core logic revolves around reading transaction data, processing it according to business rules, and outputting results for downstream systems or reporting.
 
 ### 2.2 Detailed Logic  
-- **Initialization:** Opens files, reads control records, validates process, and updates start status.
-- **Prerequisite Check:** Reads control records, checks dependencies (now including real-time market price feed), and sets return codes. If prerequisites fail, logs an audit record for the feed issue.
-- **Status Update:** Reads control records, updates process status (with new logic for valuation batch scheduling), and writes updated records.
-- **Termination:** Updates completion status and closes files.
-- **Audit Logging:** The audit processor records events, including new types for feed errors/alarms, and displays alarms for failed feeds.
+- **Transaction Record Structure:**  
+  The transaction record (`TRANSACTION-RECORD`) is defined in the copybook `TRNREC.CPY`. It contains key fields such as date, time, portfolio ID, sequence number, and now, the newly added `CHANNEL-CODE` for channel identification.
+- **Processing Flow:**  
+  1. **Input:** Transaction records are read from input files.
+  2. **Validation:** Each record is validated for correctness and completeness.
+  3. **Processing:** Business logic is applied, including transaction type handling and status updates.
+  4. **Output:** Processed records are written to output files or used for reporting.
 
 #### Flowchart:  
 ```
 flowchart TD
     Start(["Start"])
-    Init["Initialization:
-Open Files
-Read Control Record
-Validate Process
-Update Start Status"]
-    Prereq["Check Prerequisites:
-Read Control Record
-Check Dependencies
-Check Market Feed"]
-    PrereqOK{"Prerequisites
-Satisfied?"}
-    AuditLog["Log Audit:
-Feed Unavailable/Stale"]
-    StatusUpdate["Update Status:
-Read Control Record
-Update Process Status
-Write Control Record"]
-    Terminate["Termination:
-Update Completion
-Close Files"]
+    ReadInput["Read
+Transaction
+Records"]
+    Validate["Validate
+Records"]
+    Process["Apply
+Business
+Logic"]
+    Output["Write
+Output/
+Generate
+Reports"]
     End(["End"])
 
-    Start --> Init
-    Init --> Prereq
-    Prereq --> PrereqOK
-    PrereqOK -- Yes --> StatusUpdate
-    PrereqOK -- No --> AuditLog
-    AuditLog --> StatusUpdate
-    StatusUpdate --> Terminate
-    Terminate --> End
+    Start --> ReadInput
+    ReadInput --> Validate
+    Validate --> Process
+    Process --> Output
+    Output --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-Enhance batch control to ensure real-time market price feed availability and freshness before batch valuation. If the feed is unavailable or stale, log an audit record and display an alarm. Update audit trail definitions and logic to support new feed error/alarm records.
+**User Story:**  
+As a system integrator, I need to capture the channel through which each transaction is initiated, so that downstream reporting and analytics can segment transactions by channel (e.g., online, branch, mobile).
 
 ### 3.2 Impacted Code Changes Summary:
 
 #### 3.2.1 Impacted Sections and Files:
-- **src/programs/batch/BCHCTL00.cbl**
+- **src/copybook/common/TRNREC.cpy**  
   - **Purpose of Changes:**  
-    - Enforce real-time market price feed checks as a prerequisite for batch processing.
-    - Log audit records for feed failures/staleness.
-    - Update status logic for new valuation batch scheduling.
+    Added `CHANNEL-CODE` (PIC X(04)) to the transaction key structure to enable channel identification for each transaction. Adjusted the filler to maintain record length.
   - **Impact:**  
-    - Prevents batch jobs from running with stale or missing market data.
-    - Provides traceable audit records for feed issues, supporting compliance and troubleshooting.
-    - Ensures batch scheduling logic aligns with new business requirements.
+    All programs using this copybook now have access to the `CHANNEL-CODE` field. This enables channel-based reporting and analytics, and requires updates to any logic that reads, writes, or manipulates transaction records.
 
-- **src/programs/common/AUDPROC.cbl**
+- **src/programs/batch/RPTPOS00.cbl**  
   - **Purpose of Changes:**  
-    - Support new audit types and statuses for feed errors/alarms.
-    - Display alarms for failed feed events.
+    To support the new `CHANNEL-CODE` field in transaction processing and reporting.
   - **Impact:**  
-    - Enables detailed tracking and alerting for feed-related issues.
-    - Improves operational visibility and error handling.
+    The program can now process and report transactions by channel, enhancing reporting granularity.
 
-- **src/copybook/common/AUDITLOG.cpy**
+- **src/programs/utility/UTLVAL00.cbl**  
   - **Purpose of Changes:**  
-    - Add new 88-level values for feed alarm types and stale feed status.
+    To validate the presence and correctness of the new `CHANNEL-CODE` field.
   - **Impact:**  
-    - Allows audit records to distinguish feed-related errors and alarms from other events.
+    Ensures data integrity for the new field, preventing invalid channel codes from entering the system.
+
+- **src/programs/test/TSTGEN00.cbl**  
+  - **Purpose of Changes:**  
+    To generate test data that includes the `CHANNEL-CODE` field.
+  - **Impact:**  
+    Enables comprehensive testing of the new functionality.
+
+- **src/programs/test/TSTVAL00.cbl**  
+  - **Purpose of Changes:**  
+    To validate test data, including the new `CHANNEL-CODE` field.
+  - **Impact:**  
+    Ensures test data integrity and supports testing of channel-based logic.
 
 ### 3.3 Insertion Points  
-- **BCHCTL00.cbl**
-  - **2000-CHECK-PREREQUISITES** (Lines within the procedure):  
-    - Enhanced logic to check for real-time price feed availability and freshness.
-    - If prerequisites are not met, calls `AUDPROC` to log an audit record for the feed issue.
-    - Example insertion:
-      ```cobol
-      *-- Change: Enhanced prerequisite check for real-time price feed integration (Impact Analysis: must ensure market feed is available and fresh before batch valuation)
-      ...
-      *-- Change: If prerequisites not met, log audit for stale/missing feed (Impact Analysis: error/audit handling for new feed)
-      CALL 'AUDPROC' USING
-          LS-JOB-NAME
-          'FEED'
-          'CHECK'
-          'FAIL'
-          SPACES
-          SPACES
-          SPACES
-          'Market price feed unavailable or stale'
-          LS-RETURN-CODE
-      ```
-  - **3000-UPDATE-STATUS**:  
-    - Clarified logic for new valuation batch scheduling.
+- **TRNREC.CPY (src/copybook/common/TRNREC.cpy):**  
+  - **Insertion Point:**  
+    After `TRN-SEQUENCE-NO` in the `TRN-KEY` group, the following line is added:
+    ```cobol
+    10  CHANNEL-CODE       PIC X(04).   *-- Change: Added CHANNEL-CODE for channel identification
+    ```
+    - **Rationale:**  
+      To uniquely identify the channel for each transaction.
+    - **Expected Outcome:**  
+      All transaction records now include channel information.
 
-- **AUDPROC.cbl**
-  - **2000-PROCESS-AUDIT**:  
-    - Added logic to display an alarm when a feed error is logged.
-    - Example insertion:
-      ```cobol
-      *-- Change: Support for new error and alarm records for stale/failed feeds (Impact Analysis: audit logging for feed errors/alarms)
-      IF LS-TYPE = 'FEED'
-          IF LS-STATUS = 'FAIL'
-              DISPLAY 'ALARM: Market price feed error - ' LS-MESSAGE
-          END-IF
-      END-IF
-      ```
+  - **Filler Adjustment:**  
+    The filler is reduced from `PIC X(50)` to `PIC X(46)` to maintain the overall record length after adding the 4-byte `CHANNEL-CODE`.
 
-- **AUDITLOG.cpy**
-  - **AUD-TYPE**:  
-    - Added `AUD-FEED-ALARM` value 'FEED'.
-  - **AUD-STATUS**:  
-    - Added `AUD-STALE-FEED` value 'STAL'.
+- **All Programs Using TRNREC.CPY:**  
+  - **Insertion Point:**  
+    Any logic referencing the transaction record structure must now handle the `CHANNEL-CODE` field. This includes reading, writing, and validating the field in all impacted programs.
 
 ### 3.4 Structured Diffs  
 
-**src/programs/batch/BCHCTL00.cbl**
+#### **TRNREC.CPY (src/copybook/common/TRNREC.cpy)**
 
-_Before:_
+**Before:**  
 ```cobol
-2000-CHECK-PREREQUISITES.
-    PERFORM 2100-READ-CONTROL-RECORD
-    PERFORM 2200-CHECK-DEPENDENCIES
-    IF PREREQS-SATISFIED
-        MOVE BCT-RC-SUCCESS TO LS-RETURN-CODE
-    ELSE
-        MOVE BCT-RC-WARNING TO LS-RETURN-CODE
-    END-IF
-    .
+     05  TRN-KEY.
+         10  TRN-DATE           PIC X(08).
+         10  TRN-TIME           PIC X(06).
+         10  TRN-PORTFOLIO-ID   PIC X(08).
+         10  TRN-SEQUENCE-NO    PIC X(06).
+     05  TRN-FILLER           PIC X(50).
 ```
 
-_After:_
+**After:**  
 ```cobol
-2000-CHECK-PREREQUISITES.
-    PERFORM 2100-READ-CONTROL-RECORD
-    PERFORM 2200-CHECK-DEPENDENCIES
-*-- Change: Enhanced prerequisite check for real-time price feed integration (Impact Analysis: must ensure market feed is available and fresh before batch valuation)
-    IF PREREQS-SATISFIED
-        MOVE BCT-RC-SUCCESS TO LS-RETURN-CODE
-    ELSE
-        MOVE BCT-RC-WARNING TO LS-RETURN-CODE
-*-- Change: If prerequisites not met, log audit for stale/missing feed (Impact Analysis: error/audit handling for new feed)
-        CALL 'AUDPROC' USING
-            LS-JOB-NAME
-            'FEED'
-            'CHECK'
-            'FAIL'
-            SPACES
-            SPACES
-            SPACES
-            'Market price feed unavailable or stale'
-            LS-RETURN-CODE
-    END-IF
-    .
+     05  TRN-KEY.
+         10  TRN-DATE           PIC X(08).
+         10  TRN-TIME           PIC X(06).
+         10  TRN-PORTFOLIO-ID   PIC X(08).
+         10  TRN-SEQUENCE-NO    PIC X(06).
+         10  CHANNEL-CODE       PIC X(04).   *-- Change: Added CHANNEL-CODE for channel identification
+     05  TRN-FILLER           PIC X(46).     *-- Change: Reduced filler by 4 to accommodate CHANNEL-CODE
 ```
 
-**src/programs/common/AUDPROC.cbl**
+**Field Descriptions Update:**  
+- **Before:**  
+  ```
+  * FIELD DESCRIPTIONS:
+  * TRN-DATE        : TRANSACTION DATE (YYYYMMDD)
+  * TRN-TIME        : TRANSACTION TIME (HHMMSS)
+  * TRN-PORTFOLIO-ID: PORTFOLIO IDENTIFIER
+  * TRN-SEQUENCE-NO : SEQUENCE NUMBER FOR MULTIPLE TRANS
+  * TRN-TYPE        : BU=BUY, SL=SELL, TR=TRANSFER, FE=FEE
+  * TRN-STATUS      : P=PENDING, D=DONE, F=FAILED, R=REVERSED
+  ```
+- **After:**  
+  ```
+  * FIELD DESCRIPTIONS:
+  * TRN-DATE        : TRANSACTION DATE (YYYYMMDD)
+  * TRN-TIME        : TRANSACTION TIME (HHMMSS)
+  * TRN-PORTFOLIO-ID: PORTFOLIO IDENTIFIER
+  * TRN-SEQUENCE-NO : SEQUENCE NUMBER FOR MULTIPLE TRANS
+  * CHANNEL-CODE    : CHANNEL IDENTIFICATION CODE (NEW)
+  * TRN-TYPE        : BU=BUY, SL=SELL, TR=TRANSFER, FE=FEE
+  * TRN-STATUS      : P=PENDING, D=DONE, F=FAILED, R=REVERSED
+  ```
 
-_Before:_
+#### **Other Impacted Programs (Generalized Example):**
+
+**Before:**  
 ```cobol
-2000-PROCESS-AUDIT.
-    INITIALIZE AUDIT-RECORD
-
-    MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
-    MOVE LS-SYSTEM-INFO     TO AUD-HEADER
-    MOVE LS-TYPE            TO AUD-TYPE
-    MOVE LS-ACTION          TO AUD-ACTION
-    MOVE LS-STATUS          TO AUD-STATUS
-    MOVE LS-KEY-INFO        TO AUD-KEY-INFO
-    MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
-    MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
-    MOVE LS-MESSAGE         TO AUD-MESSAGE
-    WRITE AUDIT-RECORD
-
-    IF WS-FILE-STATUS NOT = '00'
-        DISPLAY 'Error writing audit record: ' WS-FILE-STATUS
-        MOVE 8 TO LS-RETURN-CODE
-    ELSE
-        MOVE 0 TO LS-RETURN-CODE
-    END-IF
-    .
+MOVE TRN-PORTFOLIO-ID OF TRANSACTION-RECORD TO WS-PORTFOLIO-ID.
 ```
 
-_After:_
+**After:**  
 ```cobol
-2000-PROCESS-AUDIT.
-    INITIALIZE AUDIT-RECORD
-
-    MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
-    MOVE LS-SYSTEM-INFO     TO AUD-HEADER
-    MOVE LS-TYPE            TO AUD-TYPE
-    MOVE LS-ACTION          TO AUD-ACTION
-    MOVE LS-STATUS          TO AUD-STATUS
-    MOVE LS-KEY-INFO        TO AUD-KEY-INFO
-    MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
-    MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
-    MOVE LS-MESSAGE         TO AUD-MESSAGE
-*-- Change: Support for new error and alarm records for stale/failed feeds (Impact Analysis: audit logging for feed errors/alarms)
-    IF LS-TYPE = 'FEED'
-        IF LS-STATUS = 'FAIL'
-            DISPLAY 'ALARM: Market price feed error - ' LS-MESSAGE
-        END-IF
-    END-IF
-    WRITE AUDIT-RECORD
-
-    IF WS-FILE-STATUS NOT = '00'
-        DISPLAY 'Error writing audit record: ' WS-FILE-STATUS
-        MOVE 8 TO LS-RETURN-CODE
-    ELSE
-        MOVE 0 TO LS-RETURN-CODE
-    END-IF
-    .
-```
-
-**src/copybook/common/AUDITLOG.cpy**
-
-_Before:_
-```cobol
-05  AUD-TYPE             PIC X(4).
-    88  AUD-TRANSACTION     VALUE 'TRAN'.
-    88  AUD-USER-ACTION     VALUE 'USER'.
-    88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-05  AUD-STATUS           PIC X(4).
-    88  AUD-SUCCESS        VALUE 'SUCC'.
-    88  AUD-FAILURE        VALUE 'FAIL'.
-    88  AUD-WARNING        VALUE 'WARN'.
-```
-
-_After:_
-```cobol
-05  AUD-TYPE             PIC X(4).
-    88  AUD-TRANSACTION     VALUE 'TRAN'.
-    88  AUD-USER-ACTION     VALUE 'USER'.
-    88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-*-- Change: New type for feed error/alarm (Impact Analysis: support for feed error/alarm records)
-    88  AUD-FEED-ALARM      VALUE 'FEED'.
-05  AUD-STATUS           PIC X(4).
-    88  AUD-SUCCESS        VALUE 'SUCC'.
-    88  AUD-FAILURE        VALUE 'FAIL'.
-    88  AUD-WARNING        VALUE 'WARN'.
-*-- Change: New status for stale feed (Impact Analysis: support for feed error/alarm records)
-    88  AUD-STALE-FEED     VALUE 'STAL'.
+MOVE TRN-PORTFOLIO-ID OF TRANSACTION-RECORD TO WS-PORTFOLIO-ID.
+MOVE CHANNEL-CODE OF TRANSACTION-RECORD TO WS-CHANNEL-CODE.
 ```
 
 ## 4. Conclusion  
-The implemented changes ensure that batch processing is contingent on the availability and freshness of real-time market price feeds, with robust audit logging and alarm capabilities for any feed-related issues. These enhancements improve operational reliability, traceability, and compliance, and provide a clear audit trail for troubleshooting and regulatory review.
+The addition of the `CHANNEL-CODE` field to the transaction record structure enables the COBOL application to capture and process the channel of each transaction. This change supports enhanced reporting and analytics, allowing segmentation by channel. All impacted programs and copybooks have been updated to accommodate the new field, with adjustments made to maintain record length and ensure data integrity. The changes are backward-compatible and traceable via inline comments, supporting maintainability and future enhancements.
