@@ -1,19 +1,24 @@
-User Story: Integrate real-time market price feed for dynamic portfolio valuation  
-- 6 impacted components identified (**High impact only**)  
-- High complexity: Impacts real-time data ingestion, batch valuation, CICS display, error/audit handling, and historical price persistence. Changes span batch, online, and infrastructure layers.
+
+---
+
+**Summary**:
+
+User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting
+
+- **Total impacted components (High impact only): 5**
+- **High-level assessment:** This is a high-complexity, cross-cutting change affecting the core transaction data structure, file layouts, batch processing, reporting, and all programs that read/write or report on transaction data. It requires coordinated updates to copybooks, batch programs, validation utilities, and reporting modules.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                            | Impact | Nature  | Affected Paragraphs/Sections        | Dependency Path                                      |
-|----------------------------------------------|--------|---------|-------------------------------------|------------------------------------------------------|
-| src/programs/batch/BCHVAL00.cbl             | High   | Direct  | 1000-INIT, 2000-INGEST-PRICES, 3000-RECALC-PORTFOLIO, 4000-UPDATE-PNL | BCHVAL00 (Valuation engine for portfolio updates)     |
-| src/programs/batch/BCHCTL00.cbl             | High   | Indirect| 2000-CHECK-PREREQUISITES, 3000-UPDATE-STATUS         | BCHVAL00 → BCHCTL00 (Batch control for valuation jobs)|
-| src/programs/online/CICSPRTF.cbl            | High   | Direct  | 1000-INIT, 2000-REFRESH-SCREEN, 3000-DISPLAY-PORTFOLIO | CICSPRTF (CICS "View Portfolio" screen)              |
-| src/programs/common/AUDPROC.cbl             | High   | Direct  | 2000-PROCESS-AUDIT, 3000-TERMINATE                   | BCHVAL00/CICSPRTF → AUDPROC (Audit logging)          |
-| src/copybook/common/AUDITLOG.cpy            | High   | Direct  | AUDITLOG record structure                            | Used by AUDPROC, BCHVAL00, CICSPRTF                  |
-| src/copybook/common/PRICEHIST.cpy           | High   | Direct  | PRICEHIST VSAM KSDS definition                       | Used by BCHVAL00 for price history persistence        |
+| Program File Path                                 | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                  |
+|---------------------------------------------------|--------|---------|---------------------------------------------|--------------------------------------------------|
+| src/copybook/common/TRNREC.cpy                    | High   | Direct  | CHANNEL-CODE field definition               | Used by all transaction-processing programs      |
+| src/programs/batch/RPTPOS00.cbl                   | High   | Direct  | 1100-OPEN-FILES, 2200-PROCESS-TRANSACTIONS | Reads/writes transaction file via TRNREC         |
+| src/programs/utility/UTLVAL00.cbl                 | High   | Direct  | 1100-OPEN-FILES, 2400-CHECK-FORMAT         | Validates transaction file via TRNREC            |
+| src/programs/test/TSTGEN00.cbl                    | High   | Direct  | 2300-GEN-TRANSACTION, 2320-WRITE-TRAN-RECORD| Generates test transaction files                 |
+| src/programs/test/TSTVAL00.cbl                    | High   | Direct  | 1100-OPEN-FILES, 2100-EXECUTE-TEST         | Reads test transaction files for validation      |
 
 ---
 
@@ -21,61 +26,52 @@ User Story: Integrate real-time market price feed for dynamic portfolio valuatio
 ```json
 {
   "impactAnalysis": {
-    "userStory": "Integrate real-time market price feed for dynamic portfolio valuation",
+    "userStory": "Add CHANNEL-CODE Field to Transaction File for Channel Identification in Batch Processing and Reporting",
     "impactedComponents": [
       {
-        "programFilePath": "src/programs/batch/BCHVAL00.cbl",
-        "impactScore": 0.98,
+        "programFilePath": "src/copybook/common/TRNREC.cpy",
+        "impactScore": 0.99,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1000-INIT", "2000-INGEST-PRICES", "3000-RECALC-PORTFOLIO", "4000-UPDATE-PNL"],
-        "dependencyPath": ["BCHVAL00"],
-        "rationale": "Core valuation engine: must consume real-time prices, trigger recalculation, update P&L and persist price history."
+        "affectedParagraphs": ["CHANNEL-CODE field definition"],
+        "dependencyPath": ["All programs using TRNREC"],
+        "rationale": "Central copybook for transaction record structure; adding CHANNEL-CODE here propagates to all transaction-processing programs."
       },
       {
-        "programFilePath": "src/programs/batch/BCHCTL00.cbl",
-        "impactScore": 0.92,
+        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
+        "impactScore": 0.97,
         "impactLevel": "High",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["2000-CHECK-PREREQUISITES", "3000-UPDATE-STATUS"],
-        "dependencyPath": ["BCHVAL00", "BCHCTL00"],
-        "rationale": "Batch control program orchestrates valuation batch jobs; must be updated for new scheduling and error handling."
+        "impactType": "Direct",
+        "affectedParagraphs": ["1100-OPEN-FILES", "2200-PROCESS-TRANSACTIONS"],
+        "dependencyPath": ["RPTPOS00", "TRNREC"],
+        "rationale": "Batch report program that reads/writes transaction files and outputs transaction details; must include CHANNEL-CODE in reports."
       },
       {
-        "programFilePath": "src/programs/online/CICSPRTF.cbl",
+        "programFilePath": "src/programs/utility/UTLVAL00.cbl",
+        "impactScore": 0.96,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["1100-OPEN-FILES", "2400-CHECK-FORMAT"],
+        "dependencyPath": ["UTLVAL00", "TRNREC"],
+        "rationale": "Utility program for validating transaction file structure and content; must validate new CHANNEL-CODE field."
+      },
+      {
+        "programFilePath": "src/programs/test/TSTGEN00.cbl",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1000-INIT", "2000-REFRESH-SCREEN", "3000-DISPLAY-PORTFOLIO"],
-        "dependencyPath": ["CICSPRTF"],
-        "rationale": "CICS screen for 'View Portfolio' must refresh and display updated valuations within 10 seconds of price update."
+        "affectedParagraphs": ["2300-GEN-TRANSACTION", "2320-WRITE-TRAN-RECORD"],
+        "dependencyPath": ["TSTGEN00", "TRNREC"],
+        "rationale": "Test data generator for transaction files; must generate valid CHANNEL-CODE values in test records."
       },
       {
-        "programFilePath": "src/programs/common/AUDPROC.cbl",
-        "impactScore": 0.90,
+        "programFilePath": "src/programs/test/TSTVAL00.cbl",
+        "impactScore": 0.94,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS-AUDIT", "3000-TERMINATE"],
-        "dependencyPath": ["BCHVAL00", "CICSPRTF", "AUDPROC"],
-        "rationale": "Handles audit logging for stale feeds, errors, and UDF-level alarms as required by new error handling criteria."
-      },
-      {
-        "programFilePath": "src/copybook/common/AUDITLOG.cpy",
-        "impactScore": 0.89,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["AUDITLOG record structure"],
-        "dependencyPath": ["AUDPROC", "BCHVAL00", "CICSPRTF", "AUDITLOG.cpy"],
-        "rationale": "Audit log copybook structure must support new error and alarm records for stale/failed feeds."
-      },
-      {
-        "programFilePath": "src/copybook/common/PRICEHIST.cpy",
-        "impactScore": 0.87,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["PRICEHIST VSAM KSDS definition"],
-        "dependencyPath": ["BCHVAL00", "PRICEHIST.cpy"],
-        "rationale": "Defines the new VSAM KSDS for historical price feeds required for backtesting and persistence."
+        "affectedParagraphs": ["1100-OPEN-FILES", "2100-EXECUTE-TEST"],
+        "dependencyPath": ["TSTVAL00", "TRNREC"],
+        "rationale": "Test validation program that reads test transaction files and validates content; must validate new CHANNEL-CODE field."
       }
     ]
   }
@@ -85,30 +81,28 @@ User Story: Integrate real-time market price feed for dynamic portfolio valuatio
 ---
 
 **Visualization**:
+
 ```mermaid
 graph TD
-  A[BCHVAL00.cbl<br/>(Valuation Engine)]:::high
-  B[BCHCTL00.cbl<br/>(Batch Control)]:::high
-  C[CICSPRTF.cbl<br/>(CICS Portfolio Screen)]:::high
-  D[AUDPROC.cbl<br/>(Audit Processing)]:::high
-  E[AUDITLOG.cpy<br/>(Audit Log Copybook)]:::high
-  F[PRICEHIST.cpy<br/>(Price History Copybook)]:::high
+    A[src/copybook/common/TRNREC.cpy]:::highimpact
+    B[src/programs/batch/RPTPOS00.cbl]:::highimpact
+    C[src/programs/utility/UTLVAL00.cbl]:::highimpact
+    D[src/programs/test/TSTGEN00.cbl]:::highimpact
+    E[src/programs/test/TSTVAL00.cbl]:::highimpact
 
-  A -->|uses| F
-  A -->|calls| D
-  A -->|uses| E
-  B -->|controls| A
-  C -->|calls| D
-  C -->|uses| E
-  D -->|uses| E
+    B --> A
+    C --> A
+    D --> A
+    E --> A
 
-  classDef high fill:#ffdddd,stroke:#d33,stroke-width:2px;
+    classDef highimpact fill:#ffcccc,stroke:#b22222,stroke-width:2px;
 ```
 
 ---
 
-**Notes**:
-- Only files present in the codebase are included.
-- Impact scores are relative and based on proximity to the user story, role in the architecture, and business criticality.
-- All identified components are essential for the real-time price feed integration, valuation recalculation, error/audit handling, and historical price persistence as per the user story and acceptance criteria.
-- No medium/low impact or extraneous files are included. All paths are as per the repository structure.
+**Key Notes**:
+
+- Only files present in the repository and directly impacted by the user story are included.
+- All listed programs either directly define, read, write, validate, or report on the transaction file structure, and thus must be updated to handle the new `CHANNEL-CODE` field.
+- The central copybook (`TRNREC.cpy`) is the primary propagation point for this change.
+- No unrelated or non-existent files are included; all paths are as per the repository structure.
