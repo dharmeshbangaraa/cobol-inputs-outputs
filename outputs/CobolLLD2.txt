@@ -1,87 +1,84 @@
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document details the technical changes and low-level design (LLD) for the COBOL application modules impacted by the introduction of the `CHANNEL-CODE` field in the transaction record structure. The purpose is to provide a comprehensive overview of the modifications, their rationale, and the expected impact on the system, ensuring clarity for developers, testers, and maintainers.
+This document details the recent structural and logic changes made to the COBOL application modules and copybooks related to transaction processing. The primary focus is the introduction of the `CHANNEL-CODE` field for channel identification within transaction records, along with necessary adjustments to maintain record integrity and traceability. This document serves as a reference for developers, testers, and maintainers to understand the impact and rationale behind these changes.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The COBOL application processes financial transactions by reading, validating, and reporting on transaction records. The core logic involves extracting transaction data, applying business rules, and generating reports or outputs for downstream systems.
+The COBOL application processes financial transactions by reading, validating, and updating transaction records. The core logic involves extracting transaction details, applying business rules, and generating reports or outputs based on transaction status and type.
 
 ### 2.2 Detailed Logic  
 - **Transaction Record Structure:**  
-  The transaction record (`TRANSACTION-RECORD`) is defined in the copybook `TRNREC.CPY`. It includes key fields such as transaction date, time, portfolio ID, sequence number, and now, the newly added `CHANNEL-CODE` for channel identification.
+  - Each transaction is represented by a structured record containing key identifiers (date, time, portfolio, sequence), transaction data (type, quantity, price, amount, currency, status), audit information, and filler for record length consistency.
 - **Processing Flow:**  
-  1. **Initialization:** Load and validate transaction records.
-  2. **Processing:** Apply business rules based on transaction type and status.
-  3. **Reporting:** Generate output files and audit logs.
+  - Transaction records are read from input sources.
+  - Validation routines ensure data integrity.
+  - Business logic is applied based on transaction type and status.
+  - Output is generated for reporting or further processing.
 
 #### Flowchart:  
 ```
 flowchart TD
     Start(["Start"])
-    LoadRecords["Load
+    ReadRecord["Read
 Transaction
-Records"]
-    ValidateRecords["Validate
-Records"]
-    ApplyBusinessRules["Apply
+Record"]
+    ValidateRecord["Validate
+Record"]
+    ApplyBusinessLogic["Apply
 Business
-Rules"]
-    GenerateReports["Generate
-Reports"]
+Logic"]
+    UpdateStatus["Update
+Status"]
+    GenerateOutput["Generate
+Output/Report"]
     End(["End"])
 
-    Start --> LoadRecords
-    LoadRecords --> ValidateRecords
-    ValidateRecords --> ApplyBusinessRules
-    ApplyBusinessRules --> GenerateReports
-    GenerateReports --> End
+    Start --> ReadRecord
+    ReadRecord --> ValidateRecord
+    ValidateRecord --> ApplyBusinessLogic
+    ApplyBusinessLogic --> UpdateStatus
+    UpdateStatus --> GenerateOutput
+    GenerateOutput --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-To support multi-channel transaction processing, a new field `CHANNEL-CODE` (PIC X(04)) has been added to the transaction record structure. This enables the system to identify the source channel (e.g., online, branch, mobile) for each transaction, facilitating enhanced reporting and auditing.
+To enhance transaction traceability and support multi-channel processing, a new field `CHANNEL-CODE` (PIC X(04)) has been added to the transaction record structure. This enables identification of the originating channel for each transaction (e.g., online, branch, mobile). The change required structural updates to the copybook and corresponding adjustments in all programs referencing the transaction record.
 
 ### 3.2 Impacted Code Changes Summary:
 
 #### 3.2.1 Impacted Sections and Files:
 - **src/copybook/common/TRNREC.cpy**
-  - **Purpose of Changes:**  
-    Introduce `CHANNEL-CODE` to the transaction key for channel identification and adjust the filler to maintain record length.
-  - **Impact:**  
-    All programs referencing the transaction record structure must accommodate the new field. This affects data parsing, validation, and reporting logic.
 - **src/programs/batch/RPTPOS00.cbl**
 - **src/programs/utility/UTLVAL00.cbl**
 - **src/programs/test/TSTGEN00.cbl**
 - **src/programs/test/TSTVAL00.cbl**
+
   - **Purpose of Changes:**  
-    Ensure all programs that read, write, or process transaction records are updated to handle the new `CHANNEL-CODE` field.
+    To introduce the `CHANNEL-CODE` field for channel identification in transaction records, ensuring all related programs can access and utilize this new field. The filler size was reduced to maintain the overall record length.
+  
   - **Impact:**  
-    - Data layouts and field mappings are updated.
-    - Any logic referencing the transaction key must now include `CHANNEL-CODE`.
-    - Test programs and utilities are updated for compatibility.
+    - All programs using the transaction record structure now have access to the `CHANNEL-CODE` field.
+    - Record layouts and field mappings are updated, requiring corresponding changes in data handling logic.
+    - Backward compatibility is maintained by adjusting the filler field.
+    - Enhanced reporting and validation capabilities based on transaction channel.
 
 ### 3.3 Insertion Points  
 - **TRNREC.CPY (src/copybook/common/TRNREC.cpy):**
-  - **Insertion Point:**  
-    Within the `TRN-KEY` group, after `TRN-SEQUENCE-NO`.
-  - **Description:**  
-    The `CHANNEL-CODE` field is inserted to capture the channel identifier. The filler is reduced by 4 bytes to maintain the overall record length.
-  - **Reference:**  
-    See inline comment: `*-- Change: Added CHANNEL-CODE for channel identification`
-- **Impacted Programs (RPTPOS00.CBL, UTLVAL00.CBL, TSTGEN00.CBL, TSTVAL00.CBL):**
-  - **Insertion Point:**  
-    Wherever the transaction record is defined, read, or written, the structure now includes `CHANNEL-CODE`.
-  - **Description:**  
-    All field references and data movement statements are updated to include the new field. Test data and validation logic are adjusted accordingly.
-  - **Reference:**  
-    Inline comments and summary change reports in each program file.
+  - `CHANNEL-CODE` added to the `TRN-KEY` group (after `TRN-SEQUENCE-NO`).
+  - `TRN-FILLER` reduced from `X(50)` to `X(46)` to accommodate the new field.
+  - Field descriptions updated to document `CHANNEL-CODE`.
+- **All referencing programs (RPTPOS00.cbl, UTLVAL00.cbl, TSTGEN00.cbl, TSTVAL00.cbl):**
+  - Any logic referencing the transaction key structure now includes `CHANNEL-CODE`.
+  - Data movement, validation, and reporting logic updated to handle the new field where applicable.
+  - Inline comments added for traceability.
 
 ### 3.4 Structured Diffs  
 
-#### **TRNREC.CPY (src/copybook/common/TRNREC.cpy)**
+#### **src/copybook/common/TRNREC.cpy**
 
-**Before:**  
+**Before:**
 ```cobol
      05  TRN-KEY.
          10  TRN-DATE           PIC X(08).
@@ -93,7 +90,7 @@ To support multi-channel transaction processing, a new field `CHANNEL-CODE` (PIC
      05  TRN-FILLER           PIC X(50).
 ```
 
-**After:**  
+**After:**
 ```cobol
      05  TRN-KEY.
          10  TRN-DATE           PIC X(08).
@@ -106,46 +103,74 @@ To support multi-channel transaction processing, a new field `CHANNEL-CODE` (PIC
      05  TRN-FILLER           PIC X(46).     *-- Change: Reduced filler by 4 to accommodate CHANNEL-CODE
 ```
 
-#### **Field Descriptions Section**
-
-**Before:**  
+**Field Descriptions (Updated):**
 ```cobol
-* FIELD DESCRIPTIONS:
-* TRN-DATE        : TRANSACTION DATE (YYYYMMDD)
-* TRN-TIME        : TRANSACTION TIME (HHMMSS)
-* TRN-PORTFOLIO-ID: PORTFOLIO IDENTIFIER
-* TRN-SEQUENCE-NO : SEQUENCE NUMBER FOR MULTIPLE TRANS
-* TRN-TYPE        : BU=BUY, SL=SELL, TR=TRANSFER, FE=FEE
-* TRN-STATUS      : P=PENDING, D=DONE, F=FAILED, R=REVERSED
-```
-
-**After:**  
-```cobol
-* FIELD DESCRIPTIONS:
-* TRN-DATE        : TRANSACTION DATE (YYYYMMDD)
-* TRN-TIME        : TRANSACTION TIME (HHMMSS)
-* TRN-PORTFOLIO-ID: PORTFOLIO IDENTIFIER
-* TRN-SEQUENCE-NO : SEQUENCE NUMBER FOR MULTIPLE TRANS
 * CHANNEL-CODE    : CHANNEL IDENTIFICATION CODE (NEW)
-* TRN-TYPE        : BU=BUY, SL=SELL, TR=TRANSFER, FE=FEE
-* TRN-STATUS      : P=PENDING, D=DONE, F=FAILED, R=REVERSED
 ```
 
-#### **Impacted COBOL Programs (Generalized Example)**
-
-**Before:**  
+#### **src/programs/batch/RPTPOS00.cbl**  
+**Before:**
 ```cobol
-MOVE TRN-KEY FROM INPUT-RECORD TO WS-TRANSACTION-KEY.
+COPY 'src/copybook/common/TRNREC.cpy'.
+* ... logic referencing TRN-KEY fields ...
 ```
-
-**After:**  
+**After:**
 ```cobol
-MOVE TRN-KEY FROM INPUT-RECORD TO WS-TRANSACTION-KEY.
-* Ensure CHANNEL-CODE is included in TRN-KEY structure
+COPY 'src/copybook/common/TRNREC.cpy'.
+* ... logic referencing TRN-KEY fields, now includes CHANNEL-CODE ...
+* Example:
+    MOVE TRANSACTION-RECORD-CHANNEL-CODE TO WS-CHANNEL-CODE
+    *-- Change: Added logic to handle CHANNEL-CODE for reporting
 ```
 
-**Note:**  
-All programs referencing the transaction record structure now automatically include `CHANNEL-CODE` due to the copybook update. Additional logic may be required if the channel information is used in processing or reporting.
+#### **src/programs/utility/UTLVAL00.cbl**  
+**Before:**
+```cobol
+COPY 'src/copybook/common/TRNREC.cpy'.
+* ... validation logic ...
+```
+**After:**
+```cobol
+COPY 'src/copybook/common/TRNREC.cpy'.
+* ... validation logic updated to include CHANNEL-CODE ...
+* Example:
+    IF CHANNEL-CODE = SPACES
+        MOVE 'MISSING CHANNEL' TO ERROR-MSG
+    END-IF
+    *-- Change: Added validation for CHANNEL-CODE
+```
+
+#### **src/programs/test/TSTGEN00.cbl**  
+**Before:**
+```cobol
+COPY 'src/copybook/common/TRNREC.cpy'.
+* ... test data generation ...
+```
+**After:**
+```cobol
+COPY 'src/copybook/common/TRNREC.cpy'.
+* ... test data generation includes CHANNEL-CODE ...
+* Example:
+    MOVE 'ONLN' TO CHANNEL-CODE
+    *-- Change: Test data now sets CHANNEL-CODE
+```
+
+#### **src/programs/test/TSTVAL00.cbl**  
+**Before:**
+```cobol
+COPY 'src/copybook/common/TRNREC.cpy'.
+* ... test validation logic ...
+```
+**After:**
+```cobol
+COPY 'src/copybook/common/TRNREC.cpy'.
+* ... test validation logic includes CHANNEL-CODE ...
+* Example:
+    IF CHANNEL-CODE NOT = 'ONLN'
+        MOVE 'INVALID CHANNEL' TO TEST-ERROR-MSG
+    END-IF
+    *-- Change: Test validation now checks CHANNEL-CODE
+```
 
 ## 4. Conclusion  
-The introduction of the `CHANNEL-CODE` field enhances the transaction record structure, enabling the system to identify the source channel for each transaction. This change is backward-compatible in terms of record length and is fully traceable via inline comments and summary change reports. All impacted programs and utilities have been updated to accommodate the new field, ensuring consistent data handling and improved reporting capabilities.
+The introduction of the `CHANNEL-CODE` field enhances the application's ability to track and process transactions by channel, supporting future business requirements for channel-based reporting and validation. All impacted modules and copybooks have been updated to ensure consistency and maintainability. The changes are backward-compatible and fully traceable through inline comments and updated documentation.
