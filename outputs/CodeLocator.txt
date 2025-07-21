@@ -1,24 +1,21 @@
-
----
-
 **Summary**:
 
-User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting
-
-- **Total impacted components (High impact only): 5**
-- **High-level assessment:** This is a high-complexity, cross-cutting change affecting the core transaction data structure, file layouts, batch processing, reporting, and all programs that read/write or report on transaction data. It requires coordinated updates to copybooks, batch programs, validation utilities, and reporting modules.
+User Story: Integrate real-time market price feed for dynamic portfolio valuation  
+- 6 impacted components identified (**High impact only**)  
+- High complexity: Touches core batch valuation, online display, error/audit, and new data persistence logic. Impacts batch, CICS, copybooks, and JCL for end-to-end real-time valuation.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                                 | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                  |
-|---------------------------------------------------|--------|---------|---------------------------------------------|--------------------------------------------------|
-| src/copybook/common/TRNREC.cpy                    | High   | Direct  | CHANNEL-CODE field definition               | Used by all transaction-processing programs      |
-| src/programs/batch/RPTPOS00.cbl                   | High   | Direct  | 1100-OPEN-FILES, 2200-PROCESS-TRANSACTIONS | Reads/writes transaction file via TRNREC         |
-| src/programs/utility/UTLVAL00.cbl                 | High   | Direct  | 1100-OPEN-FILES, 2400-CHECK-FORMAT         | Validates transaction file via TRNREC            |
-| src/programs/test/TSTGEN00.cbl                    | High   | Direct  | 2300-GEN-TRANSACTION, 2320-WRITE-TRAN-RECORD| Generates test transaction files                 |
-| src/programs/test/TSTVAL00.cbl                    | High   | Direct  | 1100-OPEN-FILES, 2100-EXECUTE-TEST         | Reads test transaction files for validation      |
+| Program File Path                               | Impact | Nature   | Affected Paragraphs/Sections         | Dependency Path                                  |
+|-------------------------------------------------|--------|----------|--------------------------------------|--------------------------------------------------|
+| src/programs/batch/BCHVAL00.cbl                 | High   | Direct   | 2000-UPDATE-VALUATIONS, 2100-PRICE-INGEST, 2200-RECALC-POSITIONS | Real-time price ingestion and valuation engine   |
+| src/programs/online/CICSPRTF.cbl                | High   | Direct   | 1000-REFRESH-SCREEN, 1100-GET-PORTFOLIO | CICS "View Portfolio" screen, auto-refresh logic |
+| src/copybook/common/POSREC.cpy                  | High   | Direct   | POS-RECORD, POS-CURRENT-VALUE, POS-PNL | Shared position/P&L structure updated by batch/CICS |
+| src/copybook/common/AUDITLOG.cpy                | High   | Direct   | AUDIT-ENTRY, AUDIT-TIMESTAMP         | Used for error/audit logging on stale/failure    |
+| src/programs/batch/HISTLD00.cbl                 | High   | Direct   | 2100-LOAD-PRICE-HISTORY, 2200-ARCHIVE | Loads historical price feed to VSAM PRICEHIST    |
+| JCL/PORTVAL.jcl                                 | High   | Direct   | N/A (Job steps: BCHVAL00, HISTLD00)  | Batch job orchestration for valuation and history|
 
 ---
 
@@ -26,52 +23,61 @@ User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identificat
 ```json
 {
   "impactAnalysis": {
-    "userStory": "Add CHANNEL-CODE Field to Transaction File for Channel Identification in Batch Processing and Reporting",
+    "userStory": "Integrate real-time market price feed for dynamic portfolio valuation",
     "impactedComponents": [
       {
-        "programFilePath": "src/copybook/common/TRNREC.cpy",
-        "impactScore": 0.99,
+        "programFilePath": "src/programs/batch/BCHVAL00.cbl",
+        "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["CHANNEL-CODE field definition"],
-        "dependencyPath": ["All programs using TRNREC"],
-        "rationale": "Central copybook for transaction record structure; adding CHANNEL-CODE here propagates to all transaction-processing programs."
+        "affectedParagraphs": ["2000-UPDATE-VALUATIONS", "2100-PRICE-INGEST", "2200-RECALC-POSITIONS"],
+        "dependencyPath": ["BCHVAL00"],
+        "rationale": "Central batch program for portfolio valuation; must consume real-time prices, recalculate positions and P&L, and update records every 5 seconds."
       },
       {
-        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
-        "impactScore": 0.97,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["1100-OPEN-FILES", "2200-PROCESS-TRANSACTIONS"],
-        "dependencyPath": ["RPTPOS00", "TRNREC"],
-        "rationale": "Batch report program that reads/writes transaction files and outputs transaction details; must include CHANNEL-CODE in reports."
-      },
-      {
-        "programFilePath": "src/programs/utility/UTLVAL00.cbl",
+        "programFilePath": "src/programs/online/CICSPRTF.cbl",
         "impactScore": 0.96,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1100-OPEN-FILES", "2400-CHECK-FORMAT"],
-        "dependencyPath": ["UTLVAL00", "TRNREC"],
-        "rationale": "Utility program for validating transaction file structure and content; must validate new CHANNEL-CODE field."
+        "affectedParagraphs": ["1000-REFRESH-SCREEN", "1100-GET-PORTFOLIO"],
+        "dependencyPath": ["CICSPRTF"],
+        "rationale": "CICS online program for 'View Portfolio' screen; requires logic to auto-refresh with current valuations within 10 seconds of price update."
       },
       {
-        "programFilePath": "src/programs/test/TSTGEN00.cbl",
+        "programFilePath": "src/copybook/common/POSREC.cpy",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2300-GEN-TRANSACTION", "2320-WRITE-TRAN-RECORD"],
-        "dependencyPath": ["TSTGEN00", "TRNREC"],
-        "rationale": "Test data generator for transaction files; must generate valid CHANNEL-CODE values in test records."
+        "affectedParagraphs": ["POS-RECORD", "POS-CURRENT-VALUE", "POS-PNL"],
+        "dependencyPath": ["BCHVAL00", "CICSPRTF", "POSREC.cpy"],
+        "rationale": "Position record structure is updated with new fields (current value, P&L, timestamp) and is shared by batch and online programs."
       },
       {
-        "programFilePath": "src/programs/test/TSTVAL00.cbl",
-        "impactScore": 0.94,
+        "programFilePath": "src/copybook/common/AUDITLOG.cpy",
+        "impactScore": 0.93,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1100-OPEN-FILES", "2100-EXECUTE-TEST"],
-        "dependencyPath": ["TSTVAL00", "TRNREC"],
-        "rationale": "Test validation program that reads test transaction files and validates content; must validate new CHANNEL-CODE field."
+        "affectedParagraphs": ["AUDIT-ENTRY", "AUDIT-TIMESTAMP"],
+        "dependencyPath": ["BCHVAL00", "CICSPRTF", "AUDITLOG.cpy"],
+        "rationale": "Used for error handling and audit logging when feed fails or prices are stale; required by both batch and online for UDF-level alarms."
+      },
+      {
+        "programFilePath": "src/programs/batch/HISTLD00.cbl",
+        "impactScore": 0.92,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2100-LOAD-PRICE-HISTORY", "2200-ARCHIVE"],
+        "dependencyPath": ["HISTLD00"],
+        "rationale": "Loads and persists historical price feeds into new VSAM KSDS PRICEHIST for backtesting; new logic required for real-time ingestion."
+      },
+      {
+        "programFilePath": "JCL/PORTVAL.jcl",
+        "impactScore": 0.90,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [],
+        "dependencyPath": ["PORTVAL.jcl", "BCHVAL00", "HISTLD00"],
+        "rationale": "JCL orchestrates the batch valuation and history load jobs; must be updated to support new frequency, error handling, and throughput."
       }
     ]
   }
@@ -84,25 +90,21 @@ User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identificat
 
 ```mermaid
 graph TD
-    A[src/copybook/common/TRNREC.cpy]:::highimpact
-    B[src/programs/batch/RPTPOS00.cbl]:::highimpact
-    C[src/programs/utility/UTLVAL00.cbl]:::highimpact
-    D[src/programs/test/TSTGEN00.cbl]:::highimpact
-    E[src/programs/test/TSTVAL00.cbl]:::highimpact
+  A[src/programs/batch/BCHVAL00.cbl]:::high --> B[src/copybook/common/POSREC.cpy]:::high
+  A --> C[src/copybook/common/AUDITLOG.cpy]:::high
+  A --> D[src/programs/batch/HISTLD00.cbl]:::high
+  E[src/programs/online/CICSPRTF.cbl]:::high --> B
+  E --> C
+  F[JCL/PORTVAL.jcl]:::high --> A
+  F --> D
 
-    B --> A
-    C --> A
-    D --> A
-    E --> A
-
-    classDef highimpact fill:#ffcccc,stroke:#b22222,stroke-width:2px;
+  classDef high fill:#ffcccc,stroke:#d00,stroke-width:2px;
 ```
 
 ---
 
-**Key Notes**:
-
-- Only files present in the repository and directly impacted by the user story are included.
-- All listed programs either directly define, read, write, validate, or report on the transaction file structure, and thus must be updated to handle the new `CHANNEL-CODE` field.
-- The central copybook (`TRNREC.cpy`) is the primary propagation point for this change.
-- No unrelated or non-existent files are included; all paths are as per the repository structure.
+**Notes**:
+- Only **existing files** in the repository are included.
+- All components listed are **High impact**—they are either directly responsible for real-time price ingestion, portfolio valuation, online display, audit/error handling, or batch orchestration.
+- Copybooks are included where they are directly modified or referenced by multiple high-impact programs.
+- JCL included only if it orchestrates or triggers the impacted batch jobs.
