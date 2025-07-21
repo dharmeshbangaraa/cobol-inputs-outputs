@@ -8,7 +8,7 @@ so that my portfolio valuations and risk metrics are always up-to-date, enabling
 Acceptance Criteria:
 	1. Data Ingestion: The application connects to the external market-data API via MQ or REST every 5 seconds.
 	2. On each price update, create a method to recaluclate the position value in a correspoding cobol file
-	Position P&L is recalculated and stored with a timestamp. Dont create a new file add the logic in exisiting cobol file only
+	Position P&L is recalculated and stored with a timestamp.
 	3. Error Handling & Audit: If the feed fails or prices are stale for more than 30 seconds, the system raises a UDF-level alarm and writes to AUDITLOG.
 	Historical price feeds are persisted in a new VSAM KSDS PRICEHIST for backtesting.
 	4. Performance & Scalability: System sustains up to 1,000 price updates per second without impacting batch-window SLAs.
