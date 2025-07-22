@@ -1,187 +1,4 @@
-[File 1] RPTPOS00.cbl src/programs/batch/RPTPOS00.cbl
-
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. RPTPOS00.
-       AUTHOR. CLAUDE.
-       DATE-WRITTEN. 2024-04-09.
-      *****************************************************************
-      * Daily Position Report Generator                                 *
-      *                                                               *
-      * This program generates the daily position report including:    *
-      * - Portfolio position summary                                   *
-      * - Transaction activity                                         *
-      * - Exception reporting                                          *
-      * - Performance metrics                                          *
-      *****************************************************************
-       ENVIRONMENT DIVISION.
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT POSITION-MASTER ASSIGN TO POSMSTRE
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS SEQUENTIAL
-               RECORD KEY IS POS-KEY
-               FILE STATUS IS WS-POSITION-STATUS.
-
-           SELECT TRANSACTION-HISTORY ASSIGN TO TRANHIST
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS SEQUENTIAL
-               RECORD KEY IS TRAN-KEY
-               FILE STATUS IS WS-TRAN-STATUS.
-
-           SELECT REPORT-FILE ASSIGN TO RPTFILE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-REPORT-STATUS.
-
-       DATA DIVISION.
-       FILE SECTION.
-           COPY POSREC.
-           COPY TRNREC.
-           
-       FD  REPORT-FILE
-           RECORDING MODE IS F
-           BLOCK CONTAINS 0 RECORDS.
-       01  REPORT-RECORD             PIC X(132).
-
-       WORKING-STORAGE SECTION.
-           COPY RTNCODE.
-           COPY ERRHAND.
-
-       01  WS-FILE-STATUS.
-           05  WS-POSITION-STATUS    PIC XX.
-           05  WS-TRAN-STATUS        PIC XX.
-           05  WS-REPORT-STATUS      PIC XX.
-
-       01  WS-REPORT-HEADERS.
-           05  WS-HEADER1.
-               10  FILLER            PIC X(132) VALUE ALL '*'.
-           05  WS-HEADER2.
-               10  FILLER            PIC X(40) VALUE SPACES.
-               10  FILLER            PIC X(52) 
-                   VALUE 'DAILY POSITION REPORT'.
-               10  FILLER            PIC X(40) VALUE SPACES.
-           05  WS-HEADER3.
-               10  FILLER            PIC X(15) VALUE 'REPORT DATE:'.
-               10  WS-REPORT-DATE    PIC X(10).
-               10  FILLER            PIC X(107) VALUE SPACES.
-
-       01  WS-POSITION-DETAIL.
-           05  WS-POS-PORTFOLIO     PIC X(10).
-           05  FILLER               PIC X(2) VALUE SPACES.
-           05  WS-POS-DESCRIPTION   PIC X(30).
-           05  FILLER               PIC X(2) VALUE SPACES.
-           05  WS-POS-QUANTITY      PIC ZZZ,ZZZ,ZZ9.99.
-           05  FILLER               PIC X(2) VALUE SPACES.
-           05  WS-POS-VALUE         PIC $$$$,$$$,$$9.99.
-           05  FILLER               PIC X(2) VALUE SPACES.
-           05  WS-POS-CHANGE-PCT    PIC +ZZ9.99.
-           05  FILLER               PIC X(2) VALUE SPACES.
-           05  WS-POS-REALTIME-PRICE   PIC S9(13)V9(2) COMP-3. *-- Change: Added real-time price field for dynamic valuation
-           05  WS-POS-PRICE-TIMESTAMP  PIC X(26).               *-- Change: Added timestamp for real-time price
-           05  WS-POS-REALTIME-PNL     PIC S9(13)V9(2) COMP-3. *-- Change: Added real-time P&L field
-
-       PROCEDURE DIVISION.
-       0000-MAIN.
-           PERFORM 1000-INITIALIZE
-           PERFORM 2000-PROCESS-REPORT
-           PERFORM 3000-CLEANUP
-           GOBACK.
-
-       1000-INITIALIZE.
-           PERFORM 1100-OPEN-FILES
-           PERFORM 1200-WRITE-HEADERS.
-
-       1100-OPEN-FILES.
-           OPEN INPUT POSITION-MASTER
-           IF WS-POSITION-STATUS NOT = '00'
-               MOVE 'ERROR OPENING POSITION MASTER'
-                 TO WS-ERROR-MESSAGE
-               PERFORM 9999-ERROR-HANDLER
-           END-IF
-
-           OPEN INPUT TRANSACTION-HISTORY
-           IF WS-TRAN-STATUS NOT = '00'
-               MOVE 'ERROR OPENING TRANSACTION HISTORY'
-                 TO WS-ERROR-MESSAGE
-               PERFORM 9999-ERROR-HANDLER
-           END-IF
-
-           OPEN OUTPUT REPORT-FILE
-           IF WS-REPORT-STATUS NOT = '00'
-               MOVE 'ERROR OPENING REPORT FILE'
-                 TO WS-ERROR-MESSAGE
-               PERFORM 9999-ERROR-HANDLER
-           END-IF.
-
-       1200-WRITE-HEADERS.
-           ACCEPT WS-REPORT-DATE FROM DATE
-           WRITE REPORT-RECORD FROM WS-HEADER1
-           WRITE REPORT-RECORD FROM WS-HEADER2
-           WRITE REPORT-RECORD FROM WS-HEADER3.
-
-       2000-PROCESS-REPORT.
-           PERFORM 2100-READ-POSITIONS
-           PERFORM 2200-PROCESS-TRANSACTIONS
-           PERFORM 2300-WRITE-SUMMARY.
-
-       2100-READ-POSITIONS.
-           READ POSITION-MASTER
-               AT END SET END-OF-POSITIONS TO TRUE
-           END-READ
-           
-           PERFORM UNTIL END-OF-POSITIONS
-               PERFORM 2110-FORMAT-POSITION
-               READ POSITION-MASTER
-                   AT END SET END-OF-POSITIONS TO TRUE
-               END-READ
-           END-PERFORM.
-
-       2110-FORMAT-POSITION.
-           MOVE POS-PORTFOLIO-ID   TO WS-POS-PORTFOLIO
-           MOVE POS-DESCRIPTION    TO WS-POS-DESCRIPTION
-           MOVE POS-QUANTITY       TO WS-POS-QUANTITY
-           MOVE POS-MARKET-VALUE   TO WS-POS-VALUE
-           COMPUTE WS-POS-CHANGE-PCT = 
-               (POS-MARKET-VALUE - POS-COST-BASIS) /
-                POS-COST-BASIS * 100
-           *-- Change: Integrate real-time price feed for valuation
-           IF POS-REALTIME-PRICE NOT = ZERO
-               MOVE POS-REALTIME-PRICE TO WS-POS-REALTIME-PRICE
-               MOVE POS-PRICE-TIMESTAMP TO WS-POS-PRICE-TIMESTAMP
-               COMPUTE WS-POS-REALTIME-PNL = 
-                   (POS-REALTIME-PRICE - POS-COST-BASIS) * POS-QUANTITY
-               *-- Change: Real-time P&L calculation based on latest price feed
-           ELSE
-               MOVE POS-MARKET-VALUE TO WS-POS-REALTIME-PRICE
-               MOVE SPACES TO WS-POS-PRICE-TIMESTAMP
-               MOVE ZERO TO WS-POS-REALTIME-PNL
-           END-IF
-           WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
-
-       2200-PROCESS-TRANSACTIONS.
-           PERFORM 2210-READ-TRANSACTIONS
-           PERFORM 2220-SUMMARIZE-ACTIVITY.
-
-       2300-WRITE-SUMMARY.
-           PERFORM 2310-WRITE-TOTALS
-           PERFORM 2320-WRITE-EXCEPTIONS
-           PERFORM 2330-WRITE-METRICS.
-
-       3000-CLEANUP.
-           CLOSE POSITION-MASTER
-                TRANSACTION-HISTORY
-                REPORT-FILE.
-
-       9999-ERROR-HANDLER.
-           DISPLAY WS-ERROR-MESSAGE
-           MOVE 12 TO RETURN-CODE
-           GOBACK.
-
-[Summary Change Report]
-- Added fields for real-time price, timestamp, and real-time P&L to WS-POSITION-DETAIL.
-- Updated 2110-FORMAT-POSITION paragraph to recalculate P&L on each price update and store with timestamp.
-- All changes are inline-commented for traceability and preserve COBOL formatting.
-
-[File 2] POSREC.cpy src/copybook/common/POSREC.cpy
+[File 1] POSREC.CPY src/copybook/common/POSREC.cpy
 
       *****************************************************************
       * POSITION RECORD STRUCTURE
@@ -197,9 +14,8 @@
                10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
                10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
                10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
-               10  POS-REALTIME-PRICE PIC S9(13)V9(2) COMP-3.   *-- Change: Added real-time price field
-               10  POS-PRICE-TIMESTAMP PIC X(26).               *-- Change: Added timestamp for real-time price
-               10  POS-REALTIME-PNL   PIC S9(13)V9(2) COMP-3.   *-- Change: Added real-time P&L field
+               10  POS-REALTIME-PRICE PIC S9(13)V9(4) COMP-3.   *-- Change: Added for real-time price feed
+               10  POS-PNL            PIC S9(13)V9(2) COMP-3.   *-- Change: Added for real-time P&L calculation
                10  POS-CURRENCY       PIC X(03).
                10  POS-STATUS         PIC X(01).
                    88  POS-STATUS-ACTIVE  VALUE 'A'.
@@ -208,7 +24,8 @@
            05  POS-AUDIT.
                10  POS-LAST-MAINT-DATE   PIC X(26).
                10  POS-LAST-MAINT-USER   PIC X(08).
-           05  POS-FILLER               PIC X(50).
+               10  POS-PRICE-TIMESTAMP   PIC X(26).             *-- Change: Added to store timestamp of real-time price
+           05  POS-FILLER               PIC X(30).              *-- Change: Reduced filler size due to new fields
       *****************************************************************
       * FIELD DESCRIPTIONS:
       * POS-PORTFOLIO-ID : PORTFOLIO IDENTIFIER
@@ -217,266 +34,19 @@
       * POS-QUANTITY     : HOLDING QUANTITY
       * POS-COST-BASIS   : TOTAL COST BASIS
       * POS-MARKET-VALUE : CURRENT MARKET VALUE
-      * POS-REALTIME-PRICE: LATEST MARKET PRICE (REAL-TIME FEED) *-- Change
-      * POS-PRICE-TIMESTAMP: PRICE FEED TIMESTAMP (YYYY-MM-DD HH:MM:SS) *-- Change
-      * POS-REALTIME-PNL : REAL-TIME PROFIT & LOSS *-- Change
+      * POS-REALTIME-PRICE: LATEST MARKET PRICE FROM FEED
+      * POS-PNL          : PROFIT & LOSS BASED ON REAL-TIME PRICE
+      * POS-PRICE-TIMESTAMP: TIMESTAMP OF REAL-TIME PRICE
       * POS-STATUS       : A=ACTIVE, C=CLOSED, P=PENDING
       *****************************************************************
 
 [Summary Change Report]
-- Added POS-REALTIME-PRICE, POS-PRICE-TIMESTAMP, and POS-REALTIME-PNL fields to support real-time price feed and dynamic valuation.
-- Updated copybook comments to reflect new fields.
-- COBOL formatting and field order preserved.
+- Added POS-REALTIME-PRICE and POS-PNL fields to support dynamic valuation.
+- Added POS-PRICE-TIMESTAMP to record the time of the real-time price.
+- Reduced POS-FILLER to accommodate new fields.
+- All changes are inline-commented for traceability.
 
-[File 3] HISTLD00.cbl src/programs/batch/HISTLD00.cbl
-
-       *================================================================*
-      * Program Name: HISTLD00
-      * Description: Position History DB2 Load Program
-      * Version: 1.1
-      * Date: 2024
-      *================================================================*
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. HISTLD00.
-       
-       ENVIRONMENT DIVISION.
-       CONFIGURATION SECTION.
-       SOURCE-COMPUTER. IBM-ZOS.
-       OBJECT-COMPUTER. IBM-ZOS.
-       
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT TRANSACTION-HISTORY
-               ASSIGN TO TRANHIST
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS SEQUENTIAL
-               RECORD KEY IS TH-KEY
-               FILE STATUS IS WS-TH-STATUS.
-               
-           SELECT BATCH-CONTROL-FILE
-               ASSIGN TO BCHCTL
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS DYNAMIC
-               RECORD KEY IS BCT-KEY
-               FILE STATUS IS WS-BCT-STATUS.
-       
-       DATA DIVISION.
-       FILE SECTION.
-       FD  TRANSACTION-HISTORY.
-           COPY HISTREC.
-       
-       FD  BATCH-CONTROL-FILE.
-           COPY BCHCTL.
-       
-       WORKING-STORAGE SECTION.
-           EXEC SQL BEGIN DECLARE SECTION END-EXEC.
-           COPY DBTBLS.
-           EXEC SQL END DECLARE SECTION END-EXEC.
-           
-           COPY SQLCA.
-           COPY DBPROC.
-           COPY ERRHAND.
-           COPY BCHCON.
-           
-       01  WS-FILE-STATUS.
-           05  WS-TH-STATUS          PIC X(2).
-           05  WS-BCT-STATUS         PIC X(2).
-           
-       01  WS-COUNTERS.
-           05  WS-RECORDS-READ       PIC S9(9) COMP VALUE 0.
-           05  WS-RECORDS-WRITTEN    PIC S9(9) COMP VALUE 0.
-           05  WS-ERROR-COUNT        PIC S9(9) COMP VALUE 0.
-           05  WS-COMMIT-COUNT       PIC S9(4) COMP VALUE 0.
-           
-       01  WS-COMMIT-THRESHOLD       PIC S9(4) COMP VALUE 1000.
-       
-       01  WS-SWITCHES.
-           05  WS-END-OF-FILE-SW     PIC X(1) VALUE 'N'.
-               88  END-OF-FILE         VALUE 'Y'.
-               88  MORE-RECORDS        VALUE 'N'.
-               
-       PROCEDURE DIVISION.
-       0000-MAIN.
-           PERFORM 1000-INITIALIZE
-           
-           PERFORM 2000-PROCESS
-               UNTIL END-OF-FILE
-               OR WS-ERROR-COUNT > 100
-           
-           PERFORM 3000-TERMINATE
-           
-           MOVE WS-ERROR-COUNT TO RETURN-CODE
-           GOBACK
-           .
-           
-       1000-INITIALIZE.
-           PERFORM 1100-OPEN-FILES
-           PERFORM 1200-CONNECT-DB2
-           PERFORM 1300-INIT-CHECKPOINTS
-           .
-           
-       2000-PROCESS.
-           PERFORM 2100-READ-HISTORY
-           
-           IF MORE-RECORDS
-               PERFORM 2200-LOAD-TO-DB2
-               PERFORM 2300-CHECK-COMMIT
-           END-IF
-           .
-           
-       3000-TERMINATE.
-           PERFORM 3100-FINAL-COMMIT
-           PERFORM 3200-CLOSE-FILES
-           PERFORM 3300-DISCONNECT-DB2
-           PERFORM 3400-DISPLAY-STATS
-           .
-           
-       1100-OPEN-FILES.
-           OPEN INPUT TRANSACTION-HISTORY
-           IF WS-TH-STATUS NOT = '00'
-               MOVE 'Error opening history file' TO ERR-TEXT
-               PERFORM 9000-ERROR-ROUTINE
-           END-IF
-           
-           OPEN I-O BATCH-CONTROL-FILE
-           IF WS-BCT-STATUS NOT = '00'
-               MOVE 'Error opening control file' TO ERR-TEXT
-               PERFORM 9000-ERROR-ROUTINE
-           END-IF
-           .
-           
-       1200-CONNECT-DB2.
-           PERFORM CONNECT-TO-DB2
-           .
-           
-       1300-INIT-CHECKPOINTS.
-           MOVE SPACES TO BCT-KEY
-           MOVE 'HISTLD00' TO BCT-JOB-NAME
-           
-           READ BATCH-CONTROL-FILE
-               INVALID KEY
-                   MOVE 'Control record not found' TO ERR-TEXT
-                   PERFORM 9000-ERROR-ROUTINE
-           END-READ
-           
-           MOVE BCT-STAT-ACTIVE TO BCT-STATUS
-           REWRITE BATCH-CONTROL-RECORD
-           .
-           
-       2100-READ-HISTORY.
-           READ TRANSACTION-HISTORY
-               AT END
-                   SET END-OF-FILE TO TRUE
-               NOT AT END
-                   ADD 1 TO WS-RECORDS-READ
-           END-READ
-           .
-           
-       2200-LOAD-TO-DB2.
-           INITIALIZE POSHIST-RECORD
-           
-           MOVE TH-ACCOUNT-NO    TO PH-ACCOUNT-NO
-           MOVE TH-PORTFOLIO-ID  TO PH-PORTFOLIO-ID
-           MOVE TH-TRANS-DATE    TO PH-TRANS-DATE
-           MOVE TH-TRANS-TIME    TO PH-TRANS-TIME
-           MOVE TH-TRANS-TYPE    TO PH-TRANS-TYPE
-           MOVE TH-SECURITY-ID   TO PH-SECURITY-ID
-           MOVE TH-QUANTITY      TO PH-QUANTITY
-           MOVE TH-PRICE         TO PH-PRICE
-           MOVE TH-AMOUNT        TO PH-AMOUNT
-           MOVE TH-FEES          TO PH-FEES
-           MOVE TH-TOTAL-AMOUNT  TO PH-TOTAL-AMOUNT
-           MOVE TH-COST-BASIS    TO PH-COST-BASIS
-           MOVE TH-GAIN-LOSS     TO PH-GAIN-LOSS
-           *-- Change: Support for new PRICEHIST KSDS and backtesting
-           IF TH-REALTIME-PRICE NOT = ZERO
-               MOVE TH-REALTIME-PRICE TO PH-REALTIME-PRICE
-               MOVE TH-PRICE_TIMESTAMP TO PH-PRICE_TIMESTAMP
-               MOVE TH-REALTIME_PNL TO PH-REALTIME_PNL
-               *-- Change: Load real-time price, timestamp, and P&L to POSHIST
-           END-IF
-           
-           EXEC SQL
-               INSERT INTO POSHIST
-               VALUES (:POSHIST-RECORD)
-           END-EXEC
-           
-           IF SQLCODE = 0
-               ADD 1 TO WS-RECORDS-WRITTEN
-           ELSE
-               IF SQLCODE = -803
-                   CONTINUE
-               ELSE
-                   ADD 1 TO WS-ERROR-COUNT
-                   PERFORM DB2-ERROR-ROUTINE
-               END-IF
-           END-IF
-           .
-           
-       2300-CHECK-COMMIT.
-           ADD 1 TO WS-COMMIT-COUNT
-           
-           IF WS-COMMIT-COUNT >= WS-COMMIT-THRESHOLD
-               EXEC SQL
-                   COMMIT WORK
-               END-EXEC
-               
-               MOVE 0 TO WS-COMMIT-COUNT
-               
-               PERFORM 2310-UPDATE-CHECKPOINT
-           END-IF
-           .
-           
-       2310-UPDATE-CHECKPOINT.
-           MOVE WS-RECORDS-READ TO BCT-RECORDS-READ
-           MOVE WS-RECORDS-WRITTEN TO BCT-RECORDS-WRITTEN
-           
-           REWRITE BATCH-CONTROL-RECORD
-               INVALID KEY
-                   MOVE 'Error updating checkpoint' TO ERR-TEXT
-                   PERFORM 9000-ERROR-ROUTINE
-           END-REWRITE
-           .
-           
-       3100-FINAL-COMMIT.
-           EXEC SQL
-               COMMIT WORK
-           END-EXEC
-           
-           PERFORM 2310-UPDATE-CHECKPOINT
-           .
-           
-       3200-CLOSE-FILES.
-           CLOSE TRANSACTION-HISTORY
-                 BATCH-CONTROL-FILE
-           .
-           
-       3300-DISCONNECT-DB2.
-           PERFORM DISCONNECT-FROM-DB2
-           .
-           
-       3400-DISPLAY-STATS.
-           DISPLAY 'HISTLD00 Processing Statistics:'
-           DISPLAY '  Records Read:    ' WS-RECORDS-READ
-           DISPLAY '  Records Written: ' WS-RECORDS-WRITTEN
-           DISPLAY '  Errors:         ' WS-ERROR-COUNT
-           .
-           
-       9000-ERROR-ROUTINE.
-           MOVE 'HISTLD00' TO ERR-PROGRAM
-           CALL 'ERRPROC' USING ERR-MESSAGE
-           
-           EXEC SQL
-               ROLLBACK WORK
-           END-EXEC
-           .
-
-[Summary Change Report]
-- Added logic in 2200-LOAD-TO-DB2 to handle new PRICEHIST KSDS fields: real-time price, timestamp, and P&L.
-- Ensured new fields are loaded into POSHIST for backtesting and historical price feed support.
-- All changes are inline-commented and preserve original formatting.
-
-[File 4] AUDITLOG.cpy src/copybook/common/AUDITLOG.cpy
+[File 2] AUDITLOG.CPY src/copybook/common/AUDITLOG.cpy
 
       *================================================================*
       * Copybook Name: AUDITLOG
@@ -495,8 +65,7 @@
                88  AUD-TRANSACTION     VALUE 'TRAN'.
                88  AUD-USER-ACTION     VALUE 'USER'.
                88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-               88  AUD-ALARM-EVENT     VALUE 'ALRM'.      *-- Change: Added alarm event type
-               88  AUD-STALE-PRICE     VALUE 'STAL'.      *-- Change: Added stale price event type
+               88  AUD-PRICE-FEED      VALUE 'FEED'.           *-- Change: Added for real-time feed events
            05  AUD-ACTION           PIC X(8).
                88  AUD-CREATE         VALUE 'CREATE  '.
                88  AUD-UPDATE         VALUE 'UPDATE  '.
@@ -506,25 +75,28 @@
                88  AUD-LOGOUT         VALUE 'LOGOUT  '.
                88  AUD-STARTUP        VALUE 'STARTUP '.
                88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
+               88  AUD-FEED-FAIL      VALUE 'FEEDFAIL'.        *-- Change: Added for feed failure events
+               88  AUD-FEED-STALE     VALUE 'STALE   '.        *-- Change: Added for stale price events
            05  AUD-STATUS           PIC X(4).
                88  AUD-SUCCESS        VALUE 'SUCC'.
                88  AUD-FAILURE        VALUE 'FAIL'.
                88  AUD-WARNING        VALUE 'WARN'.
+               88  AUD-ALARM          VALUE 'ALRM'.            *-- Change: Added for feed alarm/alert
            05  AUD-KEY-INFO.
                10  AUD-PORTFOLIO-ID  PIC X(8).
                10  AUD-ACCOUNT-NO    PIC X(10).
            05  AUD-BEFORE-IMAGE     PIC X(100).
            05  AUD-AFTER-IMAGE      PIC X(100).
            05  AUD-MESSAGE          PIC X(100).
-           05  AUD-ALARM-CODE       PIC X(8).            *-- Change: Added alarm code for new events
-           05  AUD-STALE-PRICE-TS   PIC X(26).           *-- Change: Timestamp for stale price event
+           05  AUD-FEED-ERROR-CODE  PIC X(10).                *-- Change: Added for feed error code
+           05  AUD-FEED-DETAIL      PIC X(50).                *-- Change: Added for feed error/detail message
 
 [Summary Change Report]
-- Added 88-level values for alarm and stale price events to AUD-TYPE.
-- Added AUD-ALARM-CODE and AUD-STALE-PRICE-TS fields to support new alarm and stale price event logging.
-- COBOL formatting and field order preserved.
+- Added AUD-PRICE-FEED type, AUD-FEED-FAIL and AUD-FEED-STALE actions, and AUD-ALARM status for enhanced feed event logging.
+- Added AUD-FEED-ERROR-CODE and AUD-FEED-DETAIL fields for error/alert capture.
+- All changes are inline-commented for traceability.
 
-[File 5] AUDPROC.cbl src/programs/common/AUDPROC.cbl
+[File 3] AUDPROC.CBL src/programs/common/AUDPROC.cbl
 
       *================================================================*
       * Program Name: AUDPROC
@@ -557,6 +129,9 @@
        WORKING-STORAGE SECTION.
        01  WS-FILE-STATUS          PIC X(2).
        01  WS-FORMATTED-TIME       PIC X(26).
+       01  WS-FEED-ALARM-MSG       PIC X(100).                *-- Change: Added for feed alarm message handling
+       01  WS-FEED-ERROR-CODE      PIC X(10).                 *-- Change: Added for feed error code handling
+       01  WS-FEED-DETAIL          PIC X(50).                 *-- Change: Added for feed error/detail handling
            
        LINKAGE SECTION.
        01  LS-AUDIT-REQUEST.
@@ -574,9 +149,9 @@
            05  LS-BEFORE-IMAGE    PIC X(100).
            05  LS-AFTER-IMAGE     PIC X(100).
            05  LS-MESSAGE         PIC X(100).
-           05  LS-ALARM-CODE      PIC X(8).      *-- Change: Added for UDF-level alarms
-           05  LS-STALE-PRICE-TS  PIC X(26).     *-- Change: Added for stale price events
            05  LS-RETURN-CODE     PIC S9(4) COMP.
+           05  LS-FEED-ERROR-CODE PIC X(10).                 *-- Change: Added for feed error code
+           05  LS-FEED-DETAIL     PIC X(50).                 *-- Change: Added for feed error/detail
        
        PROCEDURE DIVISION USING LS-AUDIT-REQUEST.
        0000-MAIN.
@@ -610,13 +185,14 @@
            MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
            MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
            MOVE LS-MESSAGE         TO AUD-MESSAGE
-           *-- Change: Support for new UDF-level alarms and stale feed events
-           IF LS-TYPE = 'ALRM'
-               MOVE LS-ALARM-CODE TO AUD-ALARM-CODE
+           MOVE LS-FEED-ERROR-CODE TO AUD-FEED-ERROR-CODE     *-- Change: Capture feed error code if present
+           MOVE LS-FEED-DETAIL     TO AUD-FEED-DETAIL         *-- Change: Capture feed error/detail if present
+
+           IF LS-TYPE = 'FEED' OR LS-ACTION = 'FEEDFAIL' OR LS-ACTION = 'STALE   '
+               DISPLAY 'Feed event: ' LS-ACTION ' Code:' LS-FEED-ERROR-CODE
+               MOVE 'ALRM' TO AUD-STATUS                      *-- Change: Set alarm status for feed events
            END-IF
-           IF LS-TYPE = 'STAL'
-               MOVE LS-STALE-PRICE-TS TO AUD-STALE-PRICE-TS
-           END-IF
+
            WRITE AUDIT-RECORD
            
            IF WS-FILE-STATUS NOT = '00'
@@ -632,6 +208,173 @@
            .
 
 [Summary Change Report]
-- Added support for new UDF-level alarms and stale feed events in audit logging.
-- Mapped new fields from linkage section to AUDIT-RECORD for alarm and stale price events.
-- All changes are inline-commented and preserve COBOL formatting.
+- Enhanced linkage and working-storage for feed error/alarm handling.
+- Added logic to capture and log feed error codes and details.
+- Set ALARM status for feed failure/stale events.
+- All changes are inline-commented for traceability.
+
+[File 4] POSUPDT.CBL src/programs/batch/POSUPDT.cbl
+
+      *================================================================*
+      * Program Name: POSUPDT
+      * Description: Batch Position Update Program
+      * Author: [Author name]
+      * Date Written: 2024-03-20
+      *================================================================*
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. POSUPDT.
+
+       ENVIRONMENT DIVISION.
+       CONFIGURATION SECTION.
+       SOURCE-COMPUTER. IBM-ZOS.
+       OBJECT-COMPUTER. IBM-ZOS.
+
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT POSITION-FILE
+               ASSIGN TO POSFILE
+               ORGANIZATION IS SEQUENTIAL
+               FILE STATUS IS WS-POS-STATUS.
+           SELECT PRICE-FEED-FILE
+               ASSIGN TO PRCFILE
+               ORGANIZATION IS SEQUENTIAL
+               FILE STATUS IS WS-PRC-STATUS.           *-- Change: Added for real-time price feed
+
+       DATA DIVISION.
+       FILE SECTION.
+       FD  POSITION-FILE
+           RECORDING MODE IS F
+           BLOCK CONTAINS 0 RECORDS.
+           COPY POSREC.
+       FD  PRICE-FEED-FILE
+           RECORDING MODE IS F
+           BLOCK CONTAINS 0 RECORDS.
+       01  PRICE-FEED-RECORD.
+           05  PRC-INVESTMENT-ID  PIC X(10).
+           05  PRC-PRICE          PIC S9(13)V9(4) COMP-3.
+           05  PRC-TIMESTAMP      PIC X(26).
+
+       WORKING-STORAGE SECTION.
+       01  WS-POS-STATUS          PIC X(2).
+       01  WS-PRC-STATUS          PIC X(2).
+       01  WS-END-OF-POS          PIC X VALUE 'N'.
+       01  WS-END-OF-PRC          PIC X VALUE 'N'.
+       01  WS-FOUND-PRICE         PIC X VALUE 'N'.
+       01  WS-PNL                 PIC S9(13)V9(2) COMP-3.      *-- Change: For real-time P&L calculation
+       01  WS-ERROR-CODE          PIC X(10).                   *-- Change: For feed error handling
+       01  WS-ERROR-DETAIL        PIC X(50).                   *-- Change: For feed error handling
+
+       COPY AUDITLOG.
+
+       PROCEDURE DIVISION.
+       MAIN-LOGIC.
+           PERFORM 1000-INITIALIZE
+           PERFORM 2000-PROCESS-POSITIONS UNTIL WS-END-OF-POS = 'Y'
+           PERFORM 9000-TERMINATE
+           GOBACK
+           .
+
+       1000-INITIALIZE.
+           OPEN INPUT POSITION-FILE
+           OPEN INPUT PRICE-FEED-FILE
+           IF WS-POS-STATUS NOT = '00'
+               DISPLAY 'Error opening position file: ' WS-POS-STATUS
+               MOVE 'OPENFAIL' TO WS-ERROR-CODE
+               MOVE 'Position file open error' TO WS-ERROR-DETAIL
+               PERFORM 8000-AUDIT-ERROR
+               PERFORM 9000-TERMINATE
+               GOBACK
+           END-IF
+           IF WS-PRC-STATUS NOT = '00'
+               DISPLAY 'Error opening price feed file: ' WS-PRC-STATUS
+               MOVE 'FEEDFAIL' TO WS-ERROR-CODE
+               MOVE 'Price feed file open error' TO WS-ERROR-DETAIL
+               PERFORM 8000-AUDIT-ERROR
+               PERFORM 9000-TERMINATE
+               GOBACK
+           END-IF
+           READ POSITION-FILE
+               AT END MOVE 'Y' TO WS-END-OF-POS
+           END-READ
+           READ PRICE-FEED-FILE
+               AT END MOVE 'Y' TO WS-END-OF-PRC
+           END-READ
+           .
+
+       2000-PROCESS-POSITIONS.
+           IF WS-END-OF-POS = 'Y'
+               EXIT PERFORM
+           END-IF
+
+           MOVE 'N' TO WS-FOUND-PRICE
+           PERFORM 2100-FIND-PRICE
+
+           IF WS-FOUND-PRICE = 'Y'
+               MOVE PRC-PRICE TO POS-REALTIME-PRICE           *-- Change: Ingest real-time price
+               MOVE PRC-TIMESTAMP TO POS-PRICE-TIMESTAMP      *-- Change: Store price timestamp
+               COMPUTE WS-PNL = (POS-QUANTITY * PRC-PRICE) - POS-COST-BASIS
+               MOVE WS-PNL TO POS-PNL                         *-- Change: Calculate and store P&L
+               MOVE (POS-QUANTITY * PRC-PRICE) TO POS-MARKET-VALUE *-- Change: Update market value
+               PERFORM 8000-AUDIT-SUCCESS
+           ELSE
+               MOVE 'STALE' TO WS-ERROR-CODE
+               MOVE 'No real-time price found' TO WS-ERROR-DETAIL
+               PERFORM 8000-AUDIT-ERROR
+           END-IF
+
+           READ POSITION-FILE
+               AT END MOVE 'Y' TO WS-END-OF-POS
+           END-READ
+           .
+
+       2100-FIND-PRICE.
+           MOVE 'N' TO WS-FOUND-PRICE
+           PERFORM VARYING WS-LOOP-COUNT FROM 1 BY 1 UNTIL WS-END-OF-PRC = 'Y' OR WS-FOUND-PRICE = 'Y'
+               IF PRC-INVESTMENT-ID = POS-INVESTMENT-ID
+                   MOVE 'Y' TO WS-FOUND-PRICE
+               ELSE
+                   READ PRICE-FEED-FILE
+                       AT END MOVE 'Y' TO WS-END-OF-PRC
+                   END-READ
+               END-IF
+           END-PERFORM
+           .
+
+       8000-AUDIT-SUCCESS.
+           MOVE 'FEED' TO AUD-TYPE
+           MOVE 'UPDATE' TO AUD-ACTION
+           MOVE 'SUCC' TO AUD-STATUS
+           MOVE POS-PORTFOLIO-ID TO AUD-PORTFOLIO-ID
+           MOVE POS-INVESTMENT-ID TO AUD-ACCOUNT-NO
+           MOVE 'Real-time price update' TO AUD-MESSAGE
+           MOVE SPACES TO AUD-FEED-ERROR-CODE
+           MOVE SPACES TO AUD-FEED-DETAIL
+           PERFORM 8500-WRITE-AUDIT
+           .
+
+       8000-AUDIT-ERROR.
+           MOVE 'FEED' TO AUD-TYPE
+           MOVE WS-ERROR-CODE TO AUD-ACTION
+           MOVE 'ALRM' TO AUD-STATUS
+           MOVE POS-PORTFOLIO-ID TO AUD-PORTFOLIO-ID
+           MOVE POS-INVESTMENT-ID TO AUD-ACCOUNT-NO
+           MOVE WS-ERROR-DETAIL TO AUD-MESSAGE
+           MOVE WS-ERROR-CODE TO AUD-FEED-ERROR-CODE
+           MOVE WS-ERROR-DETAIL TO AUD-FEED-DETAIL
+           PERFORM 8500-WRITE-AUDIT
+           .
+
+       8500-WRITE-AUDIT.
+           CALL 'AUDPROC' USING AUDIT-RECORD
+           .
+
+       9000-TERMINATE.
+           CLOSE POSITION-FILE
+           CLOSE PRICE-FEED-FILE
+           .
+
+[Summary Change Report]
+- Integrated real-time price feed ingestion and mapping to positions.
+- Calculated and stored real-time P&L and updated market value.
+- Enhanced audit logging for feed success, stale price, and feed failure scenarios.
+- All changes are inline-commented for traceability and follow COBOL formatting standards.
