@@ -1,498 +1,232 @@
-## 1. Introduction  
-This document provides a comprehensive technical overview and Low-Level Design (LLD) for the modernization of the COBOL application modules impacted by the integration of a real-time market price feed for dynamic portfolio valuation. The document details the existing logic, identifies insertion points for the required changes, and presents structured diffs for all impacted files. The goal is to ensure seamless integration of real-time data ingestion, dynamic valuation, enhanced audit logging, and historical price storage, while maintaining system integrity and auditability.
+# Technical Document and Low-Level Design (LLD)
 
----
+## 1. Introduction  
+This document provides a comprehensive technical overview and Low-Level Design (LLD) for the COBOL application modules impacted by the integration of a real-time market price feed for dynamic portfolio valuation. The document covers the existing logic, identifies insertion points for the required changes, and details the proposed modifications, including structured before-and-after code snippets. The goal is to facilitate accurate implementation, review, and testing of the enhancements across the legacy system.
 
 ## 2. Existing Logic and Flow  
-
 ### 2.1 Overview  
-The application processes portfolio positions and valuations in batch mode, maintains historical price data, and logs audit events for compliance and troubleshooting. The core modules are structured as follows:
-
-- **RPTPOS00.cbl**: Main batch program for position valuation and reporting.
-- **POSREC.cpy**: Defines the position record structure.
-- **HISTLD00.cbl**: Loads historical price feeds into the database.
-- **AUDITLOG.cpy**: Defines the audit log record structure.
-- **AUDPROC.cbl**: Centralized audit logging for alarms and errors.
+The application is a batch-driven legacy system responsible for updating portfolio positions, recalculating valuations, and maintaining an audit trail. The core processing flow involves reading position records, performing updates, and logging audit information. The system is modular, with copybooks defining record structures and subprograms handling audit processing.
 
 ### 2.2 Detailed Logic  
 
-#### 2.2.1 RPTPOS00.cbl
+#### 2.2.1 Main Batch Update Program (`src/programs/batch/POSUPDT.cbl`)
+- **Initialization (Lines 53-67):**  
+  Opens the position and audit files, checks file status, and reads the first position record.
+- **Processing Loop (Lines 69-77):**  
+  Iterates over each position record, invoking the update logic and reading the next record until end-of-file.
+- **Position Update Logic (Lines 79-90):**  
+  For active positions (`POS-STATUS = 'A'`), computes market value, updates audit fields, and writes an audit record. Error count is incremented for non-active positions.
+- **Audit Write (Lines 92-109):**  
+  Prepares and writes an audit record for each update.
+- **Termination (Lines 111-116):**  
+  Closes files and displays update/error counts.
 
-- **2000-PROCESS-REPORT**: Orchestrates the report generation by reading positions, processing transactions, and writing summaries.
-- **2110-FORMAT-POSITION**: Formats each position, calculates change percentage, and writes the report record.
+#### 2.2.2 Position Record Structure (`src/copybook/common/POSREC.cpy`)
+- Defines the layout for position records, including keys, quantities, cost basis, market value, currency, status, and audit fields.
 
-```cobol
-       2000-PROCESS-REPORT.
-           PERFORM 2100-READ-POSITIONS
-           PERFORM 2200-PROCESS-TRANSACTIONS
-           PERFORM 2300-WRITE-SUMMARY.
+#### 2.2.3 Audit Log Record Structure (`src/copybook/common/AUDITLOG.cpy`)
+- Specifies the audit record format, including timestamp, system/user/program IDs, action types, status, key info, before/after images, and message.
 
-       2100-READ-POSITIONS.
-           READ POSITION-MASTER
-               AT END SET END-OF-POSITIONS TO TRUE
-           END-READ
-           
-           PERFORM UNTIL END-OF-POSITIONS
-               PERFORM 2110-FORMAT-POSITION
-               READ POSITION-MASTER
-                   AT END SET END-OF-POSITIONS TO TRUE
-               END-READ
-           END-PERFORM.
+#### 2.2.4 Audit Processing Subroutine (`src/programs/common/AUDPROC.cbl`)
+- **Initialization (Lines 59-69):**  
+  Accepts timestamp, opens the audit file, and handles file status.
+- **Audit Processing (Lines 71-92):**  
+  Initializes and populates the audit record from linkage section data, writes the record, and sets return codes.
+- **Termination (Lines 94-96):**  
+  Closes the audit file.
 
-       2110-FORMAT-POSITION.
-           MOVE POS-PORTFOLIO-ID   TO WS-POS-PORTFOLIO
-           MOVE POS-DESCRIPTION    TO WS-POS-DESCRIPTION
-           MOVE POS-QUANTITY       TO WS-POS-QUANTITY
-           MOVE POS-CURRENT-VALUE  TO WS-POS-VALUE
-           COMPUTE WS-POS-CHANGE-PCT = 
-               (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
-                POS-PREVIOUS-VALUE * 100
-           WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
-```
-
-#### 2.2.2 POSREC.cpy
-
-Defines the structure for position records, including portfolio ID, date, investment ID, quantity, cost basis, market value, currency, status, and audit fields.
-
-```cobol
-       01  POSITION-RECORD.
-           05  POS-KEY.
-               10  POS-PORTFOLIO-ID   PIC X(08).
-               10  POS-DATE           PIC X(08).
-               10  POS-INVESTMENT-ID  PIC X(10).
-           05  POS-DATA.
-               10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
-               10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
-               10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
-               10  POS-CURRENCY       PIC X(03).
-               10  POS-STATUS         PIC X(01).
-                   88  POS-STATUS-ACTIVE  VALUE 'A'.
-                   88  POS-STATUS-CLOSED  VALUE 'C'.
-                   88  POS-STATUS-PEND    VALUE 'P'.
-           05  POS-AUDIT.
-               10  POS-LAST-MAINT-DATE   PIC X(26).
-               10  POS-LAST-MAINT-USER   PIC X(08).
-           05  POS-FILLER               PIC X(50).
-```
-
-#### 2.2.3 HISTLD00.cbl
-
-Handles loading of historical price feeds into the database, with error handling for SQL operations.
-
-```cobol
-       2200-LOAD-TO-DB2.
-           INITIALIZE POSHIST-RECORD
-           
-           MOVE TH-ACCOUNT-NO    TO PH-ACCOUNT-NO
-           MOVE TH-PORTFOLIO-ID  TO PH-PORTFOLIO-ID
-           MOVE TH-TRANS-DATE    TO PH-TRANS-DATE
-           MOVE TH-TRANS-TIME    TO PH-TRANS-TIME
-           MOVE TH-TRANS-TYPE    TO PH-TRANS-TYPE
-           MOVE TH-SECURITY-ID   TO PH-SECURITY-ID
-           MOVE TH-QUANTITY      TO PH-QUANTITY
-           MOVE TH-PRICE         TO PH-PRICE
-           MOVE TH-AMOUNT        TO PH-AMOUNT
-           MOVE TH-FEES          TO PH-FEES
-           MOVE TH-TOTAL-AMOUNT  TO PH-TOTAL-AMOUNT
-           MOVE TH-COST-BASIS    TO PH-COST-BASIS
-           MOVE TH-GAIN-LOSS     TO PH-GAIN-LOSS
-           
-           EXEC SQL
-               INSERT INTO POSHIST
-               VALUES (:POSHIST-RECORD)
-           END-EXEC
-           
-           IF SQLCODE = 0
-               ADD 1 TO WS-RECORDS-WRITTEN
-           ELSE
-               IF SQLCODE = -803
-                   CONTINUE
-               ELSE
-                   ADD 1 TO WS-ERROR-COUNT
-                   PERFORM DB2-ERROR-ROUTINE
-               END-IF
-           END-IF
-```
-
-#### 2.2.4 AUDITLOG.cpy
-
-Defines the audit log record structure, including timestamp, system/user/program IDs, type, action, status, key info, before/after images, and message.
-
-```cobol
-       01  AUDIT-RECORD.
-           05  AUD-HEADER.
-               10  AUD-TIMESTAMP     PIC X(26).
-               10  AUD-SYSTEM-ID     PIC X(8).
-               10  AUD-USER-ID       PIC X(8).
-               10  AUD-PROGRAM       PIC X(8).
-               10  AUD-TERMINAL      PIC X(8).
-           05  AUD-TYPE             PIC X(4).
-               88  AUD-TRANSACTION     VALUE 'TRAN'.
-               88  AUD-USER-ACTION     VALUE 'USER'.
-               88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-           05  AUD-ACTION           PIC X(8).
-               88  AUD-CREATE         VALUE 'CREATE  '.
-               88  AUD-UPDATE         VALUE 'UPDATE  '.
-               88  AUD-DELETE         VALUE 'DELETE  '.
-               88  AUD-INQUIRE        VALUE 'INQUIRE '.
-               88  AUD-LOGIN          VALUE 'LOGIN   '.
-               88  AUD-LOGOUT         VALUE 'LOGOUT  '.
-               88  AUD-STARTUP        VALUE 'STARTUP '.
-               88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
-           05  AUD-STATUS           PIC X(4).
-               88  AUD-SUCCESS        VALUE 'SUCC'.
-               88  AUD-FAILURE        VALUE 'FAIL'.
-               88  AUD-WARNING        VALUE 'WARN'.
-           05  AUD-KEY-INFO.
-               10  AUD-PORTFOLIO-ID  PIC X(8).
-               10  AUD-ACCOUNT-NO    PIC X(10).
-           05  AUD-BEFORE-IMAGE     PIC X(100).
-           05  AUD-AFTER-IMAGE      PIC X(100).
-           05  AUD-MESSAGE          PIC X(100).
-```
-
-#### 2.2.5 AUDPROC.cbl
-
-- **2000-PROCESS-AUDIT**: Builds and writes the audit record.
-- **3000-TERMINATE**: Closes the audit file.
-
-```cobol
-       2000-PROCESS-AUDIT.
-           INITIALIZE AUDIT-RECORD
-           
-           MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
-           MOVE LS-SYSTEM-INFO     TO AUD-HEADER
-           MOVE LS-TYPE            TO AUD-TYPE
-           MOVE LS-ACTION          TO AUD-ACTION
-           MOVE LS-STATUS          TO AUD-STATUS
-           MOVE LS-KEY-INFO        TO AUD-KEY-INFO
-           MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
-           MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
-           MOVE LS-MESSAGE         TO AUD-MESSAGE
-           
-           WRITE AUDIT-RECORD
-           
-           IF WS-FILE-STATUS NOT = '00'
-               DISPLAY 'Error writing audit record: ' WS-FILE-STATUS
-               MOVE 8 TO LS-RETURN-CODE
-           ELSE
-               MOVE 0 TO LS-RETURN-CODE
-           END-IF
-           .
-           
-       3000-TERMINATE.
-           CLOSE AUDIT-FILE
-           .
-```
-
-#### Flowchart
-
+#### Flowchart:  
 ```mermaid
 flowchart TD
     Start(["Start"])
-    ReadPositions["Read
-Positions"]
-    FormatPosition["Format
-Position"]
-    ProcessTransactions["Process
-Transactions"]
-    WriteSummary["Write
-Summary"]
-    LoadToDB2["Load
-Historical Prices
-to DB2"]
-    ProcessAudit["Process
-Audit Log"]
-    TerminateAudit["Terminate
-Audit Log"]
+    Init["1000-INITIALIZE:
+Open files
+Read first position"]
+    LoopCheck["WS-EOF = 'Y'?"]
+    Process["2000-PROCESS:
+PERFORM 2100-UPDATE-POSITION"]
+    Update["2100-UPDATE-POSITION:
+If POS-STATUS = 'A'
+Compute market value
+Update audit fields
+PERFORM 2200-WRITE-AUDIT"]
+    Audit["2200-WRITE-AUDIT:
+Prepare and write audit record"]
+    ReadNext["Read next position record"]
+    Terminate["3000-TERMINATE:
+Close files
+Display counts"]
     End(["End"])
 
-    Start --> ReadPositions
-    ReadPositions --> FormatPosition
-    FormatPosition --> ProcessTransactions
-    ProcessTransactions --> WriteSummary
-    WriteSummary --> LoadToDB2
-    LoadToDB2 --> ProcessAudit
-    ProcessAudit --> TerminateAudit
-    TerminateAudit --> End
+    Start --> Init
+    Init --> LoopCheck
+    LoopCheck -- No --> Process
+    Process --> Update
+    Update --> Audit
+    Audit --> ReadNext
+    ReadNext --> LoopCheck
+    LoopCheck -- Yes --> Terminate
+    Terminate --> End
 ```
 
----
-
 ## 3. Proposed Changes  
-
 ### 3.1 User Story or Analysis Report Summary  
-**User Story:**  
-Integrate real-time market price feed for dynamic portfolio valuation.  
-- Enable ingestion of real-time prices.
-- Recalculate position P&L and valuation on each price update.
-- Store real-time prices and timestamps.
-- Enhance audit logging for alarms and stale price events.
-- Persist historical price data for backtesting.
+**User Story:** Integrate real-time market price feed for dynamic portfolio valuation.  
+- Ingest real-time prices, recalculate position values, persist new values with timestamps, and enhance audit/error handling.
 
----
+### 3.2 Proposed Code Changes Summary:
 
-### 3.2 Proposed Code Changes Summary
-
-#### 3.2.1 Impacted Sections and Files
-
-| File Path                                 | Sections/Paragraphs                     |
-|--------------------------------------------|-----------------------------------------|
-| `src/programs/batch/RPTPOS00.cbl`         | 2000-PROCESS-REPORT, 2110-FORMAT-POSITION |
-| `src/copybook/common/POSREC.cpy`          | Entire file                             |
-| `src/programs/batch/HISTLD00.cbl`         | EXEC SQL INSERT INTO POSHIST            |
-| `src/copybook/common/AUDITLOG.cpy`        | Entire file                             |
-| `src/programs/common/AUDPROC.cbl`         | 2000-PROCESS-AUDIT, 3000-TERMINATE      |
-
-- **Purpose of Changes:**  
-  - To support real-time price ingestion, dynamic position valuation, enhanced audit logging, and historical price storage for compliance and analytics.
-- **Impact:**  
-  - Core batch and online processing logic is updated for real-time data.
-  - Data structures are extended for new fields (real-time price, timestamp, P&L, alarms).
-  - Audit and error handling logic is enhanced for new event types.
-  - Historical price storage is expanded for backtesting and analytics.
-
----
+#### 3.2.1 Impacted Sections and Files:
+- **src/programs/batch/POSUPDT.cbl**  
+  - *Purpose of Changes:* Integrate real-time price ingestion, recalculate position values using live data, persist new fields, and trigger enhanced audit/error handling.
+  - *Impact:* Core update logic, new error/audit scenarios, and data persistence.
+- **src/copybook/common/POSREC.cpy**  
+  - *Purpose of Changes:* Extend position record to store real-time price, valuation timestamp, and P&L fields.
+  - *Impact:* Data structure change affecting all position-processing programs.
+- **src/copybook/common/AUDITLOG.cpy**  
+  - *Purpose of Changes:* Add fields for feed status, error codes, and alarms to audit records.
+  - *Impact:* Enables richer audit logging for feed failures and stale prices.
+- **src/programs/common/AUDPROC.cbl**  
+  - *Purpose of Changes:* Handle new audit/error scenarios, process additional audit fields.
+  - *Impact:* Enhanced error handling and audit trail for real-time feed integration.
 
 ### 3.3 Insertion Points  
-
-- **RPTPOS00.cbl**
-  - Insert logic to fetch and apply real-time price feed in `2000-PROCESS-REPORT` before/within `2110-FORMAT-POSITION`.
-  - Update `2110-FORMAT-POSITION` to use real-time price, calculate real-time P&L, and store timestamp.
-
-- **POSREC.cpy**
-  - Add fields for real-time price, price timestamp, and real-time P&L.
-
-- **HISTLD00.cbl**
-  - Update SQL insert logic to include new price history fields (real-time price, timestamp).
-  - Add logic for backtesting support.
-
-- **AUDITLOG.cpy**
-  - Add fields for alarm type, event code, and stale price indicator.
-
-- **AUDPROC.cbl**
-  - Enhance `2000-PROCESS-AUDIT` to handle new alarm and stale price events.
-  - Update `3000-TERMINATE` for any new cleanup logic if required.
-
----
+- **POSUPDT.cbl:**  
+  - After reading each position record (Line 64), insert logic to fetch real-time price and handle errors.
+  - In `2100-UPDATE-POSITION` (Lines 79-90), replace static price calculation with real-time price, update new fields, and handle feed errors.
+  - In `2200-WRITE-AUDIT` (Lines 92-109), log feed status and error codes.
+- **POSREC.cpy:**  
+  - Add new fields for real-time price, valuation timestamp, and P&L after existing market value field.
+- **AUDITLOG.cpy:**  
+  - Add fields for feed status, error code, and alarm after AUD-STATUS.
+- **AUDPROC.cbl:**  
+  - In linkage section and audit record mapping, handle new fields for feed status, error code, and alarm.
 
 ### 3.4 Structured Diffs  
 
-#### 3.4.1 `src/copybook/common/POSREC.cpy`
+#### **A. src/copybook/common/POSREC.cpy**
 
 **Before:**
 ```cobol
-       01  POSITION-RECORD.
-           05  POS-KEY.
-               10  POS-PORTFOLIO-ID   PIC X(08).
-               10  POS-DATE           PIC X(08).
-               10  POS-INVESTMENT-ID  PIC X(10).
-           05  POS-DATA.
-               10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
-               10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
-               10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
-               10  POS-CURRENCY       PIC X(03).
-               10  POS-STATUS         PIC X(01).
-                   88  POS-STATUS-ACTIVE  VALUE 'A'.
-                   88  POS-STATUS-CLOSED  VALUE 'C'.
-                   88  POS-STATUS-PEND    VALUE 'P'.
-           05  POS-AUDIT.
-               10  POS-LAST-MAINT-DATE   PIC X(26).
-               10  POS-LAST-MAINT-USER   PIC X(08).
-           05  POS-FILLER               PIC X(50).
+14               10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
+15               10  POS-CURRENCY       PIC X(03).
 ```
 
 **After:**
 ```cobol
-       01  POSITION-RECORD.
-           05  POS-KEY.
-               10  POS-PORTFOLIO-ID   PIC X(08).
-               10  POS-DATE           PIC X(08).
-               10  POS-INVESTMENT-ID  PIC X(10).
-           05  POS-DATA.
-               10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
-               10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
-               10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
-               10  POS-REALTIME-PRICE PIC S9(13)V9(2) COMP-3.   *> New: Real-time price
-               10  POS-PRICE-TIMESTAMP PIC X(26).               *> New: Price feed timestamp
-               10  POS-REALTIME-PNL   PIC S9(13)V9(2) COMP-3.   *> New: Real-time P&L
-               10  POS-CURRENCY       PIC X(03).
-               10  POS-STATUS         PIC X(01).
-                   88  POS-STATUS-ACTIVE  VALUE 'A'.
-                   88  POS-STATUS-CLOSED  VALUE 'C'.
-                   88  POS-STATUS-PEND    VALUE 'P'.
-           05  POS-AUDIT.
-               10  POS-LAST-MAINT-DATE   PIC X(26).
-               10  POS-LAST-MAINT-USER   PIC X(08).
-           05  POS-FILLER               PIC X(30).              *> Adjusted for new fields
+14               10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
+14A              10  POS-REALTIME-PRICE PIC S9(13)V9(6) COMP-3.
+14B              10  POS-VALUATION-TIME PIC X(26).
+14C              10  POS-PNL            PIC S9(13)V9(2) COMP-3.
+15               10  POS-CURRENCY       PIC X(03).
 ```
 
----
-
-#### 3.4.2 `src/programs/batch/RPTPOS00.cbl`
+#### **B. src/copybook/common/AUDITLOG.cpy**
 
 **Before:**
 ```cobol
-       2000-PROCESS-REPORT.
-           PERFORM 2100-READ-POSITIONS
-           PERFORM 2200-PROCESS-TRANSACTIONS
-           PERFORM 2300-WRITE-SUMMARY.
-
-       2110-FORMAT-POSITION.
-           MOVE POS-PORTFOLIO-ID   TO WS-POS-PORTFOLIO
-           MOVE POS-DESCRIPTION    TO WS-POS-DESCRIPTION
-           MOVE POS-QUANTITY       TO WS-POS-QUANTITY
-           MOVE POS-CURRENT-VALUE  TO WS-POS-VALUE
-           COMPUTE WS-POS-CHANGE-PCT = 
-               (POS-CURRENT-VALUE - POS-PREVIOUS-VALUE) /
-                POS-PREVIOUS-VALUE * 100
-           WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
+27           05  AUD-STATUS           PIC X(4).
 ```
 
 **After:**
 ```cobol
-       2000-PROCESS-REPORT.
-           PERFORM 2100-READ-POSITIONS
-           *> New: Fetch real-time price feed for each position
-           PERFORM 2150-APPLY-REALTIME-PRICE
-           PERFORM 2200-PROCESS-TRANSACTIONS
-           PERFORM 2300-WRITE-SUMMARY.
-
-       2150-APPLY-REALTIME-PRICE.
-           *> Fetch real-time price and timestamp from feed
-           CALL 'GET-REALTIME-PRICE' USING POS-INVESTMENT-ID
-                                         RETURNING POS-REALTIME-PRICE
-           MOVE FUNCTION CURRENT-DATE TO POS-PRICE-TIMESTAMP
-           COMPUTE POS-REALTIME-PNL = (POS-REALTIME-PRICE - POS-COST-BASIS) * POS-QUANTITY
-
-       2110-FORMAT-POSITION.
-           MOVE POS-PORTFOLIO-ID   TO WS-POS-PORTFOLIO
-           MOVE POS-DESCRIPTION    TO WS-POS-DESCRIPTION
-           MOVE POS-QUANTITY       TO WS-POS-QUANTITY
-           MOVE POS-REALTIME-PRICE TO WS-POS-VALUE         *> Updated to use real-time price
-           MOVE POS-PRICE-TIMESTAMP TO WS-PRICE-TIMESTAMP  *> New: Store timestamp
-           MOVE POS-REALTIME-PNL   TO WS-POS-PNL           *> New: Store real-time P&L
-           COMPUTE WS-POS-CHANGE-PCT = 
-               (POS-REALTIME-PRICE - POS-PREVIOUS-VALUE) /
-                POS-PREVIOUS-VALUE * 100
-           WRITE REPORT-RECORD FROM WS-POSITION-DETAIL.
+27           05  AUD-STATUS           PIC X(4).
+27A          05  AUD-FEED-STATUS      PIC X(8).
+27B          05  AUD-FEED-ERROR-CODE  PIC X(8).
+27C          05  AUD-FEED-ALARM       PIC X(8).
 ```
 
----
+#### **C. src/programs/batch/POSUPDT.cbl**
 
-#### 3.4.3 `src/programs/batch/HISTLD00.cbl`
-
-**Before:**
+**Before (Lines 83-84):**
 ```cobol
-       2200-LOAD-TO-DB2.
-           INITIALIZE POSHIST-RECORD
-           ...
-           EXEC SQL
-               INSERT INTO POSHIST
-               VALUES (:POSHIST-RECORD)
-           END-EXEC
-           ...
+83              COMPUTE POS-MARKET-VALUE = POS-QUANTITY * 100.00
+84              MOVE FUNCTION CURRENT-DATE TO POS-LAST-MAINT-DATE
 ```
 
 **After:**
 ```cobol
-       2200-LOAD-TO-DB2.
-           INITIALIZE POSHIST-RECORD
-           ...
-           *> New: Add real-time price and timestamp to POSHIST-RECORD
-           MOVE TH-REALTIME-PRICE    TO PH-REALTIME-PRICE
-           MOVE TH-PRICE-TIMESTAMP   TO PH-PRICE-TIMESTAMP
-           ...
-           EXEC SQL
-               INSERT INTO POSHIST
-               (ACCOUNT_NO, PORTFOLIO_ID, TRANS_DATE, TRANS_TIME, TRANS_TYPE, SECURITY_ID,
-                QUANTITY, PRICE, AMOUNT, FEES, TOTAL_AMOUNT, COST_BASIS, GAIN_LOSS,
-                REALTIME_PRICE, PRICE_TIMESTAMP)
-               VALUES (:PH-ACCOUNT-NO, :PH-PORTFOLIO-ID, :PH-TRANS-DATE, :PH-TRANS-TIME,
-                       :PH-TRANS-TYPE, :PH-SECURITY-ID, :PH-QUANTITY, :PH-PRICE,
-                       :PH-AMOUNT, :PH-FEES, :PH-TOTAL-AMOUNT, :PH-COST-BASIS,
-                       :PH-GAIN-LOSS, :PH-REALTIME-PRICE, :PH-PRICE-TIMESTAMP)
-           END-EXEC
-           ...
+83A             * Fetch real-time price (pseudo-call)
+83B             CALL 'GET-REALTIME-PRICE' USING POS-INVESTMENT-ID
+83C                 RETURNING POS-REALTIME-PRICE
+83D             IF POS-REALTIME-PRICE > 0
+83E                 COMPUTE POS-MARKET-VALUE = POS-QUANTITY * POS-REALTIME-PRICE
+83F                 MOVE FUNCTION CURRENT-DATE TO POS-VALUATION-TIME
+83G                 COMPUTE POS-PNL = POS-MARKET-VALUE - POS-COST-BASIS
+83H                 MOVE 'OK' TO AUD-FEED-STATUS
+83I                 MOVE SPACES TO AUD-FEED-ERROR-CODE
+83J                 MOVE SPACES TO AUD-FEED-ALARM
+83K             ELSE
+83L                 MOVE 'FAIL' TO AUD-FEED-STATUS
+83M                 MOVE 'NO_PRICE' TO AUD-FEED-ERROR-CODE
+83N                 MOVE 'ALARM' TO AUD-FEED-ALARM
+83O                 ADD 1 TO WS-ERROR-COUNT
+83P             END-IF
+84              MOVE FUNCTION CURRENT-DATE TO POS-LAST-MAINT-DATE
 ```
 
----
-
-#### 3.4.4 `src/copybook/common/AUDITLOG.cpy`
-
-**Before:**
+**Before (Lines 95-99):**
 ```cobol
-       01  AUDIT-RECORD.
-           ...
-           05  AUD-STATUS           PIC X(4).
-               88  AUD-SUCCESS        VALUE 'SUCC'.
-               88  AUD-FAILURE        VALUE 'FAIL'.
-               88  AUD-WARNING        VALUE 'WARN'.
-           ...
-           05  AUD-MESSAGE          PIC X(100).
+95          MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
+96          MOVE 'POSUPDT'          TO AUD-PROGRAM
+97          MOVE 'TRAN'             TO AUD-TYPE
+98          MOVE 'UPDATE  '         TO AUD-ACTION
+99          MOVE 'SUCC'             TO AUD-STATUS
 ```
 
 **After:**
 ```cobol
-       01  AUDIT-RECORD.
-           ...
-           05  AUD-STATUS           PIC X(4).
-               88  AUD-SUCCESS        VALUE 'SUCC'.
-               88  AUD-FAILURE        VALUE 'FAIL'.
-               88  AUD-WARNING        VALUE 'WARN'.
-           05  AUD-ALARM-TYPE        PIC X(10).    *> New: Alarm type (e.g., 'STALEPRICE')
-           05  AUD-EVENT-CODE        PIC X(10).    *> New: Event code for new events
-           05  AUD-IS-STALE-PRICE    PIC X(01).    *> New: 'Y' if price is stale, else 'N'
-           ...
-           05  AUD-MESSAGE          PIC X(100).
+95          MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
+96          MOVE 'POSUPDT'          TO AUD-PROGRAM
+97          MOVE 'TRAN'             TO AUD-TYPE
+98          MOVE 'UPDATE  '         TO AUD-ACTION
+99          MOVE AUD-FEED-STATUS    TO AUD-FEED-STATUS
+99A         MOVE AUD-FEED-ERROR-CODE TO AUD-FEED-ERROR-CODE
+99B         MOVE AUD-FEED-ALARM     TO AUD-FEED-ALARM
+99C         IF AUD-FEED-STATUS = 'OK'
+99D             MOVE 'SUCC'         TO AUD-STATUS
+99E         ELSE
+99F             MOVE 'FAIL'         TO AUD-STATUS
+99G         END-IF
 ```
 
----
+#### **D. src/programs/common/AUDPROC.cbl**
 
-#### 3.4.5 `src/programs/common/AUDPROC.cbl`
-
-**Before:**
+**Before (Lines 34-48):**
 ```cobol
-       2000-PROCESS-AUDIT.
-           INITIALIZE AUDIT-RECORD
-           ...
-           MOVE LS-MESSAGE         TO AUD-MESSAGE
-           WRITE AUDIT-RECORD
-           ...
-           
-       3000-TERMINATE.
-           CLOSE AUDIT-FILE
-           .
+34      01  LS-AUDIT-REQUEST.
+35          05  LS-SYSTEM-INFO.
+...
+42          05  LS-STATUS          PIC X(4).
+...
 ```
 
 **After:**
 ```cobol
-       2000-PROCESS-AUDIT.
-           INITIALIZE AUDIT-RECORD
-           ...
-           MOVE LS-MESSAGE         TO AUD-MESSAGE
-           *> New: Handle alarm and stale price events
-           IF LS-ALARM-TYPE NOT = SPACES
-               MOVE LS-ALARM-TYPE TO AUD-ALARM-TYPE
-           END-IF
-           IF LS-EVENT-CODE NOT = SPACES
-               MOVE LS-EVENT-CODE TO AUD-EVENT-CODE
-           END-IF
-           IF LS-IS-STALE-PRICE = 'Y'
-               MOVE 'Y' TO AUD-IS-STALE-PRICE
-           ELSE
-               MOVE 'N' TO AUD-IS-STALE-PRICE
-           END-IF
-           WRITE AUDIT-RECORD
-           ...
-           
-       3000-TERMINATE.
-           *> New: Additional cleanup if required for real-time feed
-           CLOSE AUDIT-FILE
-           .
+34      01  LS-AUDIT-REQUEST.
+35          05  LS-SYSTEM-INFO.
+...
+42          05  LS-STATUS          PIC X(4).
+42A         05  LS-FEED-STATUS     PIC X(8).
+42B         05  LS-FEED-ERROR-CODE PIC X(8).
+42C         05  LS-FEED-ALARM      PIC X(8).
+...
 ```
 
----
+**Before (Lines 77-78):**
+```cobol
+77          MOVE LS-ACTION          TO AUD-ACTION
+78          MOVE LS-STATUS          TO AUD-STATUS
+```
+
+**After:**
+```cobol
+77          MOVE LS-ACTION          TO AUD-ACTION
+78          MOVE LS-STATUS          TO AUD-STATUS
+78A         MOVE LS-FEED-STATUS     TO AUD-FEED-STATUS
+78B         MOVE LS-FEED-ERROR-CODE TO AUD-FEED-ERROR-CODE
+78C         MOVE LS-FEED-ALARM      TO AUD-FEED-ALARM
+```
 
 ## 4. Conclusion  
-The proposed changes enable the COBOL application to support real-time market price ingestion, dynamic portfolio valuation, and enhanced audit and historical data capabilities. The modifications are carefully integrated into the existing codebase, extending data structures and processing logic while preserving backward compatibility and auditability. These enhancements position the system for improved analytics, compliance, and operational efficiency in a modernized financial environment.
+The proposed changes enable the COBOL application to ingest real-time market prices, dynamically recalculate portfolio valuations, and persist new valuation and audit fields. Enhanced audit logging and error handling ensure robust monitoring of feed integration and data quality. These modifications modernize the legacy system, improve transparency, and support future extensibility for real-time financial processing.
