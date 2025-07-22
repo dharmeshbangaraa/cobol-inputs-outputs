@@ -1,427 +1,330 @@
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document details the technical changes and low-level design (LLD) for the COBOL application modules related to position record management, audit logging, and batch position updates. The changes introduce real-time price feed integration, enhanced P&L calculation, and robust audit trail capabilities for feed events and errors.
+This document details the technical changes and low-level design (LLD) for the COBOL batch program `HISTLD00`, which is responsible for loading position history data into DB2 and, as per recent enhancements, storing historical price information in a new VSAM file. The purpose of this document is to provide a comprehensive overview of the modifications, their rationale, and the expected impact on the application.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The application manages investment positions, processes real-time price feeds, updates position records, and logs audit events. The main modules are:
-- **POSREC.CPY**: Defines the structure of position records.
-- **AUDITLOG.CPY**: Defines the structure of audit log records.
-- **AUDPROC.CBL**: Handles audit trail processing.
-- **POSUPDT.CBL**: Batch program for updating positions with real-time prices.
+The `HISTLD00` program processes transaction history records in batch mode. It reads records from an input file, loads them into a DB2 table, manages batch control and checkpointing, and outputs processing statistics. The new enhancement introduces the storage of historical price data into a dedicated VSAM file.
 
 ### 2.2 Detailed Logic  
-- **Position Update Flow**:  
-  1. Initialize and open position and price feed files.
-  2. For each position, attempt to find a matching real-time price.
-  3. If found, update the position with the new price, recalculate market value and P&L, and log a successful audit event.
-  4. If not found, log an audit event indicating a stale or missing price.
-  5. Handle file open/read errors with appropriate audit logging.
-  6. Terminate and close files.
+- **Initialization:**  
+  - Opens all required files (transaction history, batch control, and the new historical price file).  
+  - Connects to DB2 and initializes checkpoints.  
+- **Processing Loop:**  
+  - Reads transaction history records sequentially.  
+  - For each record, loads data into the DB2 table.  
+  - Commits work at defined intervals and updates checkpoints.  
+  - **New:** Stores historical price data in the new VSAM file for each record processed.  
+- **Termination:**  
+  - Final commit, closes all files, disconnects from DB2, and displays processing statistics, including the new historical price count.
 
 #### Flowchart:  
 ```
 flowchart TD
     Start(["Start"])
-    Init["Initialize
-Open Position & Price Feed Files"]
-    CheckPos["Read
-Next Position"]
-    EndOfPos{"End of
-Position File?"}
-    FindPrice["Find Matching
-Real-Time Price"]
-    PriceFound{"Price Found?"}
-    UpdatePos["Update Position:
-- POS-REALTIME-PRICE
-- POS-PRICE-TIMESTAMP
-- POS-PNL
-- POS-MARKET-VALUE"]
-    AuditSuccess["Audit Success
-(FEED/UPDATE/SUCC)"]
-    AuditError["Audit Error
-(FEED/STALE/ALRM or FEEDFAIL/ALRM)"]
-    NextPos["Read Next Position"]
-    Terminate["Terminate
-Close Files"]
+    Init["1000-INITIALIZE:
+Open Files
+Connect DB2
+Init Checkpoints"]
+    ProcessLoop["2000-PROCESS:
+Read History
+If More Records"]
+    LoadDB2["2200-LOAD-TO-DB2:
+Load to DB2"]
+    CheckCommit["2300-CHECK-COMMIT:
+Commit & Update Checkpoint"]
+    StorePriceHist["2100-STORE-PRICEHIST:
+Store Historical Price
+in VSAM"]
+    Terminate["3000-TERMINATE:
+Final Commit
+Close Files
+Disconnect DB2
+Display Stats"]
+    End(["End"])
 
     Start --> Init
-    Init --> CheckPos
-    CheckPos --> EndOfPos
-    EndOfPos -- No --> FindPrice
-    EndOfPos -- Yes --> Terminate
-    FindPrice --> PriceFound
-    PriceFound -- Yes --> UpdatePos
-    PriceFound -- No --> AuditError
-    UpdatePos --> AuditSuccess
-    AuditSuccess --> NextPos
-    AuditError --> NextPos
-    NextPos --> CheckPos
+    Init --> ProcessLoop
+    ProcessLoop -->|Yes| LoadDB2
+    LoadDB2 --> CheckCommit
+    CheckCommit --> StorePriceHist
+    StorePriceHist --> ProcessLoop
+    ProcessLoop -->|No| Terminate
+    Terminate --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-Enhance the position update process to support real-time price feeds, dynamic P&L calculation, and comprehensive audit logging for feed events, including error and alarm handling.
+As per the impact analysis, the application must now store historical price data for each transaction in a new VSAM file (`PRICEHIST-FILE`). This ensures that historical pricing information is available for downstream processes and audit requirements.
 
 ### 3.2 Impacted Code Changes Summary:
 
-#### 3.2.1 Impacted Sections and Files:
-- **src/copybook/common/POSREC.cpy**
-- **src/copybook/common/AUDITLOG.cpy**
-- **src/programs/common/AUDPROC.cbl**
-- **src/programs/batch/POSUPDT.cbl**
+#### 3.2.1 Impacted Sections and Files:  
+- **File:** `src/programs/batch/HISTLD00.cbl`
+  - **Sections Impacted:**
+    - FILE-CONTROL and FILE SECTION: Added new VSAM file definition.
+    - WORKING-STORAGE SECTION: Added file status and counter for historical prices.
+    - 1000-INITIALIZE/1100-OPEN-FILES: Open new file.
+    - 2000-PROCESS: Call new logic for each record.
+    - 2100-STORE-PRICEHIST: New paragraph for writing to VSAM.
+    - 3200-CLOSE-FILES: Close new file.
+    - 3400-DISPLAY-STATS: Display new counter.
 
   - **Purpose of Changes:**  
-    - Enable ingestion and storage of real-time price data for investment positions.
-    - Calculate and store real-time P&L and update market value.
-    - Enhance audit logging to capture feed events, errors, and alarms with detailed information.
+    To enable the application to persist historical price data for each transaction processed, as required by business and audit needs.
+
   - **Impact:**  
-    - Positions now reflect up-to-date market values and P&L.
-    - Audit logs provide traceability for feed events, including failures and stale data.
-    - Improved error handling and operational transparency for batch updates.
+    - Ensures historical price data is captured and available for future reference.
+    - Minimal impact on existing logic; changes are modular and traceable.
+    - Additional statistics and error handling for the new file.
 
 ### 3.3 Insertion Points  
-- **POSREC.CPY**:  
-  - Added fields: `POS-REALTIME-PRICE`, `POS-PNL`, `POS-PRICE-TIMESTAMP` (see inline comments).
-  - Reduced `POS-FILLER` to accommodate new fields.
-
-- **AUDITLOG.CPY**:  
-  - Added audit types/actions/status for feed events: `AUD-PRICE-FEED`, `AUD-FEED-FAIL`, `AUD-FEED-STALE`, `AUD-ALARM`.
-  - Added fields: `AUD-FEED-ERROR-CODE`, `AUD-FEED-DETAIL`.
-
-- **AUDPROC.CBL**:  
-  - Working-storage and linkage sections extended for feed error/alarm handling.
-  - In `2000-PROCESS-AUDIT`, logic added to capture feed error codes/details and set alarm status for feed events.
-
-- **POSUPDT.CBL**:  
-  - File-control and file section updated to include price feed file.
-  - Working-storage extended for error handling.
-  - In `2000-PROCESS-POSITIONS`, logic added to ingest real-time price, update position, calculate P&L, and handle audit logging for both success and error scenarios.
+- **FILE-CONTROL Section:**  
+  - Inserted new `SELECT PRICEHIST-FILE` entry for the VSAM file.
+- **FILE SECTION:**  
+  - Added FD for `PRICEHIST-FILE`.
+- **WORKING-STORAGE SECTION:**  
+  - Added `WS-PHIST-STATUS` and `WS-HIST-PRICE-WRITTEN`.
+- **1100-OPEN-FILES Paragraph:**  
+  - Opened `PRICEHIST-FILE` for output and added error handling.
+- **2000-PROCESS Paragraph:**  
+  - After loading to DB2 and checkpointing, inserted call to `2100-STORE-PRICEHIST`.
+- **2100-STORE-PRICEHIST Paragraph:**  
+  - New logic to write historical price data to VSAM, with error handling and counter increment.
+- **3200-CLOSE-FILES Paragraph:**  
+  - Added `PRICEHIST-FILE` to the CLOSE statement.
+- **3400-DISPLAY-STATS Paragraph:**  
+  - Displays the count of historical prices written.
 
 ### 3.4 Structured Diffs  
 
-#### **src/copybook/common/POSREC.cpy**
-
-**Before:**
+**FILE-CONTROL Section**  
+_Before:_
 ```cobol
-           05  POS-DATA.
-               10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
-               10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
-               10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
-               10  POS-CURRENCY       PIC X(03).
-               10  POS-STATUS         PIC X(01).
-                   88  POS-STATUS-ACTIVE  VALUE 'A'.
-                   88  POS-STATUS-CLOSED  VALUE 'C'.
-                   88  POS-STATUS-PEND    VALUE 'P'.
-           05  POS-AUDIT.
-               10  POS-LAST-MAINT-DATE   PIC X(26).
-               10  POS-LAST-MAINT-USER   PIC X(08).
-           05  POS-FILLER               PIC X(50).
+     SELECT TRANSACTION-HISTORY
+         ASSIGN TO TRANHIST
+         ORGANIZATION IS INDEXED
+         ACCESS MODE IS SEQUENTIAL
+         RECORD KEY IS TH-KEY
+         FILE STATUS IS WS-TH-STATUS.
+         
+     SELECT BATCH-CONTROL-FILE
+         ASSIGN TO BCHCTL
+         ORGANIZATION IS INDEXED
+         ACCESS MODE IS DYNAMIC
+         RECORD KEY IS BCT-KEY
+         FILE STATUS IS WS-BCT-STATUS.
+```
+_After:_
+```cobol
+     SELECT TRANSACTION-HISTORY
+         ASSIGN TO TRANHIST
+         ORGANIZATION IS INDEXED
+         ACCESS MODE IS SEQUENTIAL
+         RECORD KEY IS TH-KEY
+         FILE STATUS IS WS-TH-STATUS.
+         
+     SELECT BATCH-CONTROL-FILE
+         ASSIGN TO BCHCTL
+         ORGANIZATION IS INDEXED
+         ACCESS MODE IS DYNAMIC
+         RECORD KEY IS BCT-KEY
+         FILE STATUS IS WS-BCT-STATUS.
+
+*-- Change: Added new VSAM file for historical price storage as per impact analysis
+     SELECT PRICEHIST-FILE
+         ASSIGN TO PRICEHIST
+         ORGANIZATION IS INDEXED
+         ACCESS MODE IS DYNAMIC
+         RECORD KEY IS PHIST-KEY
+         FILE STATUS IS WS-PHIST-STATUS.
 ```
 
-**After:**
+**FILE SECTION**  
+_Before:_
 ```cobol
-           05  POS-DATA.
-               10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
-               10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
-               10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
-               10  POS-REALTIME-PRICE PIC S9(13)V9(4) COMP-3.   *-- Change: Added for real-time price feed
-               10  POS-PNL            PIC S9(13)V9(2) COMP-3.   *-- Change: Added for real-time P&L calculation
-               10  POS-CURRENCY       PIC X(03).
-               10  POS-STATUS         PIC X(01).
-                   88  POS-STATUS-ACTIVE  VALUE 'A'.
-                   88  POS-STATUS-CLOSED  VALUE 'C'.
-                   88  POS-STATUS-PEND    VALUE 'P'.
-           05  POS-AUDIT.
-               10  POS-LAST-MAINT-DATE   PIC X(26).
-               10  POS-LAST-MAINT-USER   PIC X(08).
-               10  POS-PRICE-TIMESTAMP   PIC X(26).             *-- Change: Added to store timestamp of real-time price
-           05  POS-FILLER               PIC X(30).              *-- Change: Reduced filler size due to new fields
+ FD  TRANSACTION-HISTORY.
+     COPY HISTREC.
+
+ FD  BATCH-CONTROL-FILE.
+     COPY BCHCTL.
+```
+_After:_
+```cobol
+ FD  TRANSACTION-HISTORY.
+     COPY HISTREC.
+
+ FD  BATCH-CONTROL-FILE.
+     COPY BCHCTL.
+
+*-- Change: Added FD for new PRICEHIST KSDS file
+ FD  PRICEHIST-FILE.
+     COPY PRICEHIST.
 ```
 
----
-
-#### **src/copybook/common/AUDITLOG.cpy**
-
-**Before:**
+**WORKING-STORAGE SECTION**  
+_Before:_
 ```cobol
-           05  AUD-TYPE             PIC X(4).
-               88  AUD-TRANSACTION     VALUE 'TRAN'.
-               88  AUD-USER-ACTION     VALUE 'USER'.
-               88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-           05  AUD-ACTION           PIC X(8).
-               88  AUD-CREATE         VALUE 'CREATE  '.
-               88  AUD-UPDATE         VALUE 'UPDATE  '.
-               88  AUD-DELETE         VALUE 'DELETE  '.
-               88  AUD-INQUIRE        VALUE 'INQUIRE '.
-               88  AUD-LOGIN          VALUE 'LOGIN   '.
-               88  AUD-LOGOUT         VALUE 'LOGOUT  '.
-               88  AUD-STARTUP        VALUE 'STARTUP '.
-               88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
-           05  AUD-STATUS           PIC X(4).
-               88  AUD-SUCCESS        VALUE 'SUCC'.
-               88  AUD-FAILURE        VALUE 'FAIL'.
-               88  AUD-WARNING        VALUE 'WARN'.
-           05  AUD-KEY-INFO.
-               10  AUD-PORTFOLIO-ID  PIC X(8).
-               10  AUD-ACCOUNT-NO    PIC X(10).
-           05  AUD-BEFORE-IMAGE     PIC X(100).
-           05  AUD-AFTER-IMAGE      PIC X(100).
-           05  AUD-MESSAGE          PIC X(100).
+ 01  WS-FILE-STATUS.
+     05  WS-TH-STATUS          PIC X(2).
+     05  WS-BCT-STATUS         PIC X(2).
+     
+ 01  WS-COUNTERS.
+     05  WS-RECORDS-READ       PIC S9(9) COMP VALUE 0.
+     05  WS-RECORDS-WRITTEN    PIC S9(9) COMP VALUE 0.
+     05  WS-ERROR-COUNT        PIC S9(9) COMP VALUE 0.
+     05  WS-COMMIT-COUNT       PIC S9(4) COMP VALUE 0.
+```
+_After:_
+```cobol
+ 01  WS-FILE-STATUS.
+     05  WS-TH-STATUS          PIC X(2).
+     05  WS-BCT-STATUS         PIC X(2).
+*-- Change: Added file status for PRICEHIST
+     05  WS-PHIST-STATUS       PIC X(2).
+     
+ 01  WS-COUNTERS.
+     05  WS-RECORDS-READ       PIC S9(9) COMP VALUE 0.
+     05  WS-RECORDS-WRITTEN    PIC S9(9) COMP VALUE 0.
+     05  WS-ERROR-COUNT        PIC S9(9) COMP VALUE 0.
+     05  WS-COMMIT-COUNT       PIC S9(4) COMP VALUE 0.
+*-- Change: Counter for historical prices written
+     05  WS-HIST-PRICE-WRITTEN PIC S9(9) COMP VALUE 0.
 ```
 
-**After:**
+**1100-OPEN-FILES Paragraph**  
+_Before:_
 ```cobol
-           05  AUD-TYPE             PIC X(4).
-               88  AUD-TRANSACTION     VALUE 'TRAN'.
-               88  AUD-USER-ACTION     VALUE 'USER'.
-               88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-               88  AUD-PRICE-FEED      VALUE 'FEED'.           *-- Change: Added for real-time feed events
-           05  AUD-ACTION           PIC X(8).
-               88  AUD-CREATE         VALUE 'CREATE  '.
-               88  AUD-UPDATE         VALUE 'UPDATE  '.
-               88  AUD-DELETE         VALUE 'DELETE  '.
-               88  AUD-INQUIRE        VALUE 'INQUIRE '.
-               88  AUD-LOGIN          VALUE 'LOGIN   '.
-               88  AUD-LOGOUT         VALUE 'LOGOUT  '.
-               88  AUD-STARTUP        VALUE 'STARTUP '.
-               88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
-               88  AUD-FEED-FAIL      VALUE 'FEEDFAIL'.        *-- Change: Added for feed failure events
-               88  AUD-FEED-STALE     VALUE 'STALE   '.        *-- Change: Added for stale price events
-           05  AUD-STATUS           PIC X(4).
-               88  AUD-SUCCESS        VALUE 'SUCC'.
-               88  AUD-FAILURE        VALUE 'FAIL'.
-               88  AUD-WARNING        VALUE 'WARN'.
-               88  AUD-ALARM          VALUE 'ALRM'.            *-- Change: Added for feed alarm/alert
-           05  AUD-KEY-INFO.
-               10  AUD-PORTFOLIO-ID  PIC X(8).
-               10  AUD-ACCOUNT-NO    PIC X(10).
-           05  AUD-BEFORE-IMAGE     PIC X(100).
-           05  AUD-AFTER-IMAGE      PIC X(100).
-           05  AUD-MESSAGE          PIC X(100).
-           05  AUD-FEED-ERROR-CODE  PIC X(10).                *-- Change: Added for feed error code
-           05  AUD-FEED-DETAIL      PIC X(50).                *-- Change: Added for feed error/detail message
+ 1100-OPEN-FILES.
+     OPEN INPUT TRANSACTION-HISTORY
+     IF WS-TH-STATUS NOT = '00'
+         MOVE 'Error opening history file' TO ERR-TEXT
+         PERFORM 9000-ERROR-ROUTINE
+     END-IF
+     
+     OPEN I-O BATCH-CONTROL-FILE
+     IF WS-BCT-STATUS NOT = '00'
+         MOVE 'Error opening control file' TO ERR-TEXT
+         PERFORM 9000-ERROR-ROUTINE
+     END-IF
+     .
+```
+_After:_
+```cobol
+ 1100-OPEN-FILES.
+     OPEN INPUT TRANSACTION-HISTORY
+     IF WS-TH-STATUS NOT = '00'
+         MOVE 'Error opening history file' TO ERR-TEXT
+         PERFORM 9000-ERROR-ROUTINE
+     END-IF
+     
+     OPEN I-O BATCH-CONTROL-FILE
+     IF WS-BCT-STATUS NOT = '00'
+         MOVE 'Error opening control file' TO ERR-TEXT
+         PERFORM 9000-ERROR-ROUTINE
+     END-IF
+*-- Change: Open PRICEHIST file for output
+     OPEN OUTPUT PRICEHIST-FILE
+     IF WS-PHIST-STATUS NOT = '00'
+         MOVE 'Error opening PRICEHIST file' TO ERR-TEXT
+         PERFORM 9000-ERROR-ROUTINE
+     END-IF
+     .
 ```
 
----
-
-#### **src/programs/common/AUDPROC.cbl**
-
-**Before:**
+**2000-PROCESS Paragraph**  
+_Before:_
 ```cobol
-       WORKING-STORAGE SECTION.
-       01  WS-FILE-STATUS          PIC X(2).
-       01  WS-FORMATTED-TIME       PIC X(26).
-       
-       LINKAGE SECTION.
-       01  LS-AUDIT-REQUEST.
-           05  LS-SYSTEM-INFO.
-               10  LS-SYSTEM-ID    PIC X(8).
-               10  LS-USER-ID      PIC X(8).
-               10  LS-PROGRAM      PIC X(8).
-               10  LS-TERMINAL     PIC X(8).
-           05  LS-TYPE            PIC X(4).
-           05  LS-ACTION          PIC X(8).
-           05  LS-STATUS          PIC X(4).
-           05  LS-KEY-INFO.
-               10  LS-PORT-ID     PIC X(8).
-               10  LS-ACCT-NO     PIC X(10).
-           05  LS-BEFORE-IMAGE    PIC X(100).
-           05  LS-AFTER-IMAGE     PIC X(100).
-           05  LS-MESSAGE         PIC X(100).
-           05  LS-RETURN-CODE     PIC S9(4) COMP.
+ 2000-PROCESS.
+     PERFORM 2100-READ-HISTORY
+     
+     IF MORE-RECORDS
+         PERFORM 2200-LOAD-TO-DB2
+         PERFORM 2300-CHECK-COMMIT
+     END-IF
+     .
+```
+_After:_
+```cobol
+ 2000-PROCESS.
+     PERFORM 2100-READ-HISTORY
+     
+     IF MORE-RECORDS
+         PERFORM 2200-LOAD-TO-DB2
+         PERFORM 2300-CHECK-COMMIT
+*-- Change: Call new logic to store historical price in VSAM
+         PERFORM 2100-STORE-PRICEHIST
+     END-IF
+     .
 ```
 
-**After:**
+**2100-STORE-PRICEHIST Paragraph (New)**  
 ```cobol
-       WORKING-STORAGE SECTION.
-       01  WS-FILE-STATUS          PIC X(2).
-       01  WS-FORMATTED-TIME       PIC X(26).
-       01  WS-FEED-ALARM-MSG       PIC X(100).                *-- Change: Added for feed alarm message handling
-       01  WS-FEED-ERROR-CODE      PIC X(10).                 *-- Change: Added for feed error code handling
-       01  WS-FEED-DETAIL          PIC X(50).                 *-- Change: Added for feed error/detail handling
-       
-       LINKAGE SECTION.
-       01  LS-AUDIT-REQUEST.
-           05  LS-SYSTEM-INFO.
-               10  LS-SYSTEM-ID    PIC X(8).
-               10  LS-USER-ID      PIC X(8).
-               10  LS-PROGRAM      PIC X(8).
-               10  LS-TERMINAL     PIC X(8).
-           05  LS-TYPE            PIC X(4).
-           05  LS-ACTION          PIC X(8).
-           05  LS-STATUS          PIC X(4).
-           05  LS-KEY-INFO.
-               10  LS-PORT-ID     PIC X(8).
-               10  LS-ACCT-NO     PIC X(10).
-           05  LS-BEFORE-IMAGE    PIC X(100).
-           05  LS-AFTER-IMAGE     PIC X(100).
-           05  LS-MESSAGE         PIC X(100).
-           05  LS-RETURN-CODE     PIC S9(4) COMP.
-           05  LS-FEED-ERROR-CODE PIC X(10).                 *-- Change: Added for feed error code
-           05  LS-FEED-DETAIL     PIC X(50).                 *-- Change: Added for feed error/detail
+*-- Change: New paragraph for storing historical price in PRICEHIST VSAM
+ 2100-STORE-PRICEHIST.
+     INITIALIZE PRICEHIST-REC
+     MOVE TH-ACCOUNT-NO    TO PHIST-ACCOUNT-NO
+     MOVE TH-PORTFOLIO-ID  TO PHIST-PORTFOLIO-ID
+     MOVE TH-TRANS-DATE    TO PHIST-TRANS-DATE
+     MOVE TH-TRANS-TIME    TO PHIST-TRANS-TIME
+     MOVE TH-SECURITY-ID   TO PHIST-SECURITY-ID
+     MOVE TH-PRICE         TO PHIST-PRICE
+     MOVE TH-AMOUNT        TO PHIST-AMOUNT
+     MOVE TH-TOTAL-AMOUNT  TO PHIST-TOTAL-AMOUNT
+     MOVE TH-GAIN-LOSS     TO PHIST-GAIN-LOSS
+     MOVE TH-PRICE-SOURCE  TO PHIST-PRICE-SOURCE
+     MOVE TH-PRICE-TIMESTAMP TO PHIST-PRICE-TIMESTAMP
+     WRITE PRICEHIST-REC
+         INVALID KEY
+             ADD 1 TO WS-ERROR-COUNT
+             MOVE 'PRICEHIST write error' TO ERR-TEXT
+             PERFORM 9000-ERROR-ROUTINE
+         NOT INVALID KEY
+             ADD 1 TO WS-HIST-PRICE-WRITTEN
+     .
 ```
 
-**Procedure Division (Excerpt):**
-
-**Before:**
+**3200-CLOSE-FILES Paragraph**  
+_Before:_
 ```cobol
-           MOVE LS-MESSAGE         TO AUD-MESSAGE
+ 3200-CLOSE-FILES.
+     CLOSE TRANSACTION-HISTORY
+           BATCH-CONTROL-FILE
+     .
+```
+_After:_
+```cobol
+ 3200-CLOSE-FILES.
+     CLOSE TRANSACTION-HISTORY
+           BATCH-CONTROL-FILE
+*-- Change: Close PRICEHIST file
+           PRICEHIST-FILE
+     .
 ```
 
-**After:**
+**3400-DISPLAY-STATS Paragraph**  
+_Before:_
 ```cobol
-           MOVE LS-MESSAGE         TO AUD-MESSAGE
-           MOVE LS-FEED-ERROR-CODE TO AUD-FEED-ERROR-CODE     *-- Change: Capture feed error code if present
-           MOVE LS-FEED-DETAIL     TO AUD-FEED-DETAIL         *-- Change: Capture feed error/detail if present
-
-           IF LS-TYPE = 'FEED' OR LS-ACTION = 'FEEDFAIL' OR LS-ACTION = 'STALE   '
-               DISPLAY 'Feed event: ' LS-ACTION ' Code:' LS-FEED-ERROR-CODE
-               MOVE 'ALRM' TO AUD-STATUS                      *-- Change: Set alarm status for feed events
-           END-IF
+ 3400-DISPLAY-STATS.
+     DISPLAY 'HISTLD00 Processing Statistics:'
+     DISPLAY '  Records Read:    ' WS-RECORDS-READ
+     DISPLAY '  Records Written: ' WS-RECORDS-WRITTEN
+     DISPLAY '  Errors:         ' WS-ERROR-COUNT
+     .
 ```
-
----
-
-#### **src/programs/batch/POSUPDT.cbl**
-
-**Before:**
+_After:_
 ```cobol
-       FILE-CONTROL.
-           SELECT POSITION-FILE
-               ASSIGN TO POSFILE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-POS-STATUS.
-
-       DATA DIVISION.
-       FILE SECTION.
-       FD  POSITION-FILE
-           RECORDING MODE IS F
-           BLOCK CONTAINS 0 RECORDS.
-           COPY POSREC.
-
-       WORKING-STORAGE SECTION.
-       01  WS-POS-STATUS          PIC X(2).
-       01  WS-END-OF-POS          PIC X VALUE 'N'.
-       01  WS-FOUND-PRICE         PIC X VALUE 'N'.
-
-       PROCEDURE DIVISION.
-       MAIN-LOGIC.
-           PERFORM 1000-INITIALIZE
-           PERFORM 2000-PROCESS-POSITIONS UNTIL WS-END-OF-POS = 'Y'
-           PERFORM 9000-TERMINATE
-           GOBACK
-           .
-```
-
-**After:**
-```cobol
-       FILE-CONTROL.
-           SELECT POSITION-FILE
-               ASSIGN TO POSFILE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-POS-STATUS.
-           SELECT PRICE-FEED-FILE
-               ASSIGN TO PRCFILE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-PRC-STATUS.           *-- Change: Added for real-time price feed
-
-       DATA DIVISION.
-       FILE SECTION.
-       FD  POSITION-FILE
-           RECORDING MODE IS F
-           BLOCK CONTAINS 0 RECORDS.
-           COPY POSREC.
-       FD  PRICE-FEED-FILE
-           RECORDING MODE IS F
-           BLOCK CONTAINS 0 RECORDS.
-       01  PRICE-FEED-RECORD.
-           05  PRC-INVESTMENT-ID  PIC X(10).
-           05  PRC-PRICE          PIC S9(13)V9(4) COMP-3.
-           05  PRC-TIMESTAMP      PIC X(26).
-
-       WORKING-STORAGE SECTION.
-       01  WS-POS-STATUS          PIC X(2).
-       01  WS-PRC-STATUS          PIC X(2).
-       01  WS-END-OF-POS          PIC X VALUE 'N'.
-       01  WS-END-OF-PRC          PIC X VALUE 'N'.
-       01  WS-FOUND-PRICE         PIC X VALUE 'N'.
-       01  WS-PNL                 PIC S9(13)V9(2) COMP-3.      *-- Change: For real-time P&L calculation
-       01  WS-ERROR-CODE          PIC X(10).                   *-- Change: For feed error handling
-       01  WS-ERROR-DETAIL        PIC X(50).                   *-- Change: For feed error handling
-
-       COPY AUDITLOG.
-
-       PROCEDURE DIVISION.
-       MAIN-LOGIC.
-           PERFORM 1000-INITIALIZE
-           PERFORM 2000-PROCESS-POSITIONS UNTIL WS-END-OF-POS = 'Y'
-           PERFORM 9000-TERMINATE
-           GOBACK
-           .
-```
-
-**Logic for Processing Positions (Excerpt):**
-
-**Before:**
-```cobol
-           IF WS-FOUND-PRICE = 'Y'
-               * (No real-time price logic)
-           ELSE
-               * (No error handling for missing price)
-           END-IF
-```
-
-**After:**
-```cobol
-           IF WS-FOUND-PRICE = 'Y'
-               MOVE PRC-PRICE TO POS-REALTIME-PRICE           *-- Change: Ingest real-time price
-               MOVE PRC-TIMESTAMP TO POS-PRICE-TIMESTAMP      *-- Change: Store price timestamp
-               COMPUTE WS-PNL = (POS-QUANTITY * PRC-PRICE) - POS-COST-BASIS
-               MOVE WS-PNL TO POS-PNL                         *-- Change: Calculate and store P&L
-               MOVE (POS-QUANTITY * PRC-PRICE) TO POS-MARKET-VALUE *-- Change: Update market value
-               PERFORM 8000-AUDIT-SUCCESS
-           ELSE
-               MOVE 'STALE' TO WS-ERROR-CODE
-               MOVE 'No real-time price found' TO WS-ERROR-DETAIL
-               PERFORM 8000-AUDIT-ERROR
-           END-IF
-```
-
-**Audit Logging (Excerpt):**
-
-**Before:**
-```cobol
-           * (No audit logging for feed events)
-```
-
-**After:**
-```cobol
-       8000-AUDIT-SUCCESS.
-           MOVE 'FEED' TO AUD-TYPE
-           MOVE 'UPDATE' TO AUD-ACTION
-           MOVE 'SUCC' TO AUD-STATUS
-           MOVE POS-PORTFOLIO-ID TO AUD-PORTFOLIO-ID
-           MOVE POS-INVESTMENT-ID TO AUD-ACCOUNT-NO
-           MOVE 'Real-time price update' TO AUD-MESSAGE
-           MOVE SPACES TO AUD-FEED-ERROR-CODE
-           MOVE SPACES TO AUD-FEED-DETAIL
-           PERFORM 8500-WRITE-AUDIT
-           .
-
-       8000-AUDIT-ERROR.
-           MOVE 'FEED' TO AUD-TYPE
-           MOVE WS-ERROR-CODE TO AUD-ACTION
-           MOVE 'ALRM' TO AUD-STATUS
-           MOVE POS-PORTFOLIO-ID TO AUD-PORTFOLIO-ID
-           MOVE POS-INVESTMENT-ID TO AUD-ACCOUNT-NO
-           MOVE WS-ERROR-DETAIL TO AUD-MESSAGE
-           MOVE WS-ERROR-CODE TO AUD-FEED-ERROR-CODE
-           MOVE WS-ERROR-DETAIL TO AUD-FEED-DETAIL
-           PERFORM 8500-WRITE-AUDIT
-           .
+ 3400-DISPLAY-STATS.
+     DISPLAY 'HISTLD00 Processing Statistics:'
+     DISPLAY '  Records Read:    ' WS-RECORDS-READ
+     DISPLAY '  Records Written: ' WS-RECORDS-WRITTEN
+     DISPLAY '  Errors:         ' WS-ERROR-COUNT
+*-- Change: Display count of historical prices written
+     DISPLAY '  Hist Prices:     ' WS-HIST-PRICE-WRITTEN
+     .
 ```
 
 ## 4. Conclusion  
-The implemented changes enable the COBOL application to process real-time price feeds, dynamically update position records with current market values and P&L, and provide comprehensive audit logging for all feed-related events. These enhancements improve data accuracy, operational transparency, and error traceability, supporting robust investment position management and regulatory compliance.
+The implemented changes in `HISTLD00` introduce a robust mechanism for capturing and storing historical price data in a new VSAM file, as required by business and audit processes. The enhancements are modular, maintainable, and minimally invasive, ensuring continued reliability of the batch load process while extending its functionality to meet new requirements.
+```
