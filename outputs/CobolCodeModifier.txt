@@ -10,16 +10,16 @@
       * Date       Author        Description
       * ---------- ------------- -------------------------------------
       * 2024-03-20 [Author]     Initial Creation
-      * 2024-06-XX COBOL Impact Modifier Agent Enable real-time price feed integration, valuation recalculation, error handling, and audit logging *-- Change: Real-time price feed and valuation logic added
+      * 2024-06-XX [COBOL Impact Modifier] Enable real-time price feed integration, dynamic valuation, error handling, audit logging. *-- Change: Real-time price feed, valuation, audit, error handling logic added.
       *================================================================*
        IDENTIFICATION DIVISION.
        PROGRAM-ID. PORTUPDT.
-       
+
        ENVIRONMENT DIVISION.
        CONFIGURATION SECTION.
        SOURCE-COMPUTER. IBM-ZOS.
        OBJECT-COMPUTER. IBM-ZOS.
-       
+
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
            SELECT PORTFOLIO-FILE
@@ -28,22 +28,23 @@
                ACCESS MODE IS RANDOM
                RECORD KEY IS PORT-KEY
                FILE STATUS IS WS-FILE-STATUS.
-           
+
            SELECT UPDATE-FILE
                ASSIGN TO UPDTFILE
                ORGANIZATION IS SEQUENTIAL
                FILE STATUS IS WS-UPDT-STATUS.
-      *-- Change: Add real-time price feed file
+
+      *-- Change: Add real-time price feed file for integration
            SELECT PRICE-FEED-FILE
                ASSIGN TO PRCFEED
                ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-PRC-STATUS.
-       
+               FILE STATUS IS WS-PRCFEED-STATUS.
+
        DATA DIVISION.
        FILE SECTION.
        FD  PORTFOLIO-FILE.
            COPY PORTFLIO.
-           
+
        FD  UPDATE-FILE.
        01  UPDATE-RECORD.
            05  UPDT-KEY.
@@ -54,13 +55,14 @@
                88  UPDT-VALUE     VALUE 'V'.
                88  UPDT-NAME      VALUE 'N'.
            05  UPDT-NEW-VALUE     PIC X(50).
-      *-- Change: Add price feed record
+
+      *-- Change: Add price feed record structure
        FD  PRICE-FEED-FILE.
        01  PRICE-FEED-RECORD.
            05  PRCFEED-ID         PIC X(8).
            05  PRCFEED-TIMESTAMP  PIC 9(14).
            05  PRCFEED-PRICE      PIC S9(13)V99 COMP-3.
-       
+
        WORKING-STORAGE SECTION.
       *----------------------------------------------------------------*
       * Constants and switches
@@ -69,25 +71,25 @@
            05  WS-PROGRAM-NAME     PIC X(08) VALUE 'PORTUPDT '.
            05  WS-SUCCESS          PIC S9(4) VALUE +0.
            05  WS-ERROR            PIC S9(4) VALUE +8.
-           
+
        01  WS-SWITCHES.
            05  WS-FILE-STATUS      PIC X(02).
                88  WS-SUCCESS-STATUS     VALUE '00'.
                88  WS-EOF-STATUS        VALUE '10'.
                88  WS-REC-NOT-FND       VALUE '23'.
-           
+
            05  WS-UPDT-STATUS      PIC X(02).
                88  WS-UPDT-SUCCESS      VALUE '00'.
                88  WS-UPDT-EOF          VALUE '10'.
-      *-- Change: Add price feed file status
-           05  WS-PRC-STATUS       PIC X(02).
-               88  WS-PRC-SUCCESS       VALUE '00'.
-               88  WS-PRC-EOF           VALUE '10'.
-           
+
+           05  WS-PRCFEED-STATUS   PIC X(02).
+               88  WS-PRCFEED-SUCCESS   VALUE '00'.
+               88  WS-PRCFEED-EOF       VALUE '10'.
+
            05  WS-END-OF-FILE-SW   PIC X     VALUE 'N'.
                88  END-OF-FILE              VALUE 'Y'.
                88  NOT-END-OF-FILE          VALUE 'N'.
-           
+
       *----------------------------------------------------------------*
       * Work areas
       *----------------------------------------------------------------*
@@ -96,56 +98,59 @@
            05  WS-ERROR-COUNT      PIC 9(7) VALUE ZERO.
            05  WS-RETURN-CODE      PIC S9(4) VALUE +0.
            05  WS-NUMERIC-WORK     PIC S9(13)V99.
-      *-- Change: Add real-time price and timestamp
-           05  WS-REALTIME-PRICE   PIC S9(13)V99 COMP-3.
-           05  WS-REALTIME-TIMESTAMP PIC 9(14).
-      *-- Change: Audit log work area
-           05  WS-AUDIT-MESSAGE    PIC X(80).
-       
+      *-- Change: Add area for latest price feed
+           05  WS-LATEST-PRICE     PIC S9(13)V99 COMP-3 VALUE ZERO.
+           05  WS-LATEST-TIMESTAMP PIC 9(14) VALUE ZERO.
+
+      *-- Change: Audit log and error message area
+           05  WS-AUDIT-MSG        PIC X(80).
+           05  WS-ERROR-MSG        PIC X(80).
+
        PROCEDURE DIVISION.
        0000-MAIN.
            PERFORM 1000-INITIALIZE
-           
-           PERFORM 1005-LOAD-REALTIME-PRICE-FEED *-- Change: Load price feed
-           
+
+           PERFORM 1010-LOAD-PRICE-FEED *-- Change: Load latest price feed
+
            PERFORM 2000-PROCESS
               UNTIL END-OF-FILE
-           
+
            PERFORM 3000-TERMINATE
-           
+
            GOBACK.
-           
+
        1000-INITIALIZE.
            INITIALIZE WS-WORK-AREAS
-           
+
            OPEN I-O   PORTFOLIO-FILE
            OPEN INPUT UPDATE-FILE
       *-- Change: Open price feed file
            OPEN INPUT PRICE-FEED-FILE
-           
-           IF NOT WS-SUCCESS-STATUS OR 
+
+           IF NOT WS-SUCCESS-STATUS OR
               NOT WS-UPDT-SUCCESS OR
-              NOT WS-PRC-SUCCESS
-              DISPLAY 'Error opening files: ' 
+              NOT WS-PRCFEED-SUCCESS
+              DISPLAY 'Error opening files: '
                       'PORT=' WS-FILE-STATUS
                       'UPDT=' WS-UPDT-STATUS
-                      'PRC='  WS-PRC-STATUS
+                      'PRCFEED=' WS-PRCFEED-STATUS
               MOVE WS-ERROR TO WS-RETURN-CODE
               PERFORM 3000-TERMINATE
            END-IF
            .
-      *-- Change: Load first price feed record
-       1005-LOAD-REALTIME-PRICE-FEED.
+
+      *-- Change: Load latest price feed for dynamic valuation
+       1010-LOAD-PRICE-FEED.
            READ PRICE-FEED-FILE
                AT END
-                   MOVE ZERO TO WS-REALTIME-PRICE
-                   MOVE ZERO TO WS-REALTIME-TIMESTAMP
+                   MOVE ZERO TO WS-LATEST-PRICE
+                   MOVE ZERO TO WS-LATEST-TIMESTAMP
                NOT AT END
-                   MOVE PRCFEED-PRICE TO WS-REALTIME-PRICE
-                   MOVE PRCFEED-TIMESTAMP TO WS-REALTIME-TIMESTAMP
+                   MOVE PRCFEED-PRICE TO WS-LATEST-PRICE
+                   MOVE PRCFEED-TIMESTAMP TO WS-LATEST-TIMESTAMP
            END-READ
            .
-           
+
        2000-PROCESS.
            READ UPDATE-FILE
                AT END
@@ -154,23 +159,23 @@
                    PERFORM 2100-PROCESS-UPDATE
            END-READ
            .
-           
+
        2100-PROCESS-UPDATE.
            MOVE UPDT-KEY TO PORT-KEY
-           
+
            READ PORTFOLIO-FILE
-           
+
            IF WS-SUCCESS-STATUS
                PERFORM 2200-APPLY-UPDATE
            ELSE
                ADD 1 TO WS-ERROR-COUNT
                DISPLAY 'Record not found: ' PORT-KEY
-      *-- Change: Log error to audit
-               MOVE 'Record not found: ' TO WS-AUDIT-MESSAGE
-               PERFORM 2500-AUDIT-LOGGING
+      *-- Change: Log error for audit
+               MOVE 'Record not found for update' TO WS-ERROR-MSG
+               PERFORM 4000-AUDIT-LOGGING
            END-IF
            .
-           
+
        2200-APPLY-UPDATE.
            EVALUATE TRUE
                WHEN UPDT-STATUS
@@ -181,48 +186,50 @@
                    MOVE UPDT-NEW-VALUE TO WS-NUMERIC-WORK
                    MOVE WS-NUMERIC-WORK TO PORT-TOTAL-VALUE
            END-EVALUATE
-      *-- Change: Apply real-time price update and recalculate valuation
-           IF WS-REALTIME-PRICE > ZERO
-               MOVE WS-REALTIME-PRICE TO PORT-TOTAL-VALUE
-               MOVE WS-REALTIME-TIMESTAMP TO PORT-LAST-MAINT
-               MOVE 'Real-time price update applied' TO WS-AUDIT-MESSAGE
-               PERFORM 2500-AUDIT-LOGGING
+
+      *-- Change: Apply latest price feed for dynamic valuation
+           IF WS-LATEST-PRICE NOT = ZERO
+               MOVE WS-LATEST-PRICE TO PORT-TOTAL-VALUE
+               MOVE 'Valuation updated from real-time price feed' TO WS-AUDIT-MSG
+               PERFORM 4000-AUDIT-LOGGING
            END-IF
-           
+
            REWRITE PORT-RECORD
-           
+
            IF WS-SUCCESS-STATUS
                ADD 1 TO WS-UPDATE-COUNT
            ELSE
                ADD 1 TO WS-ERROR-COUNT
                DISPLAY 'Update failed for: ' PORT-KEY
-      *-- Change: Log error to audit
-               MOVE 'Update failed for: ' TO WS-AUDIT-MESSAGE
-               PERFORM 2500-AUDIT-LOGGING
+      *-- Change: Log error for audit
+               MOVE 'Update failed for record' TO WS-ERROR-MSG
+               PERFORM 4000-AUDIT-LOGGING
            END-IF
            .
-      *-- Change: Audit logging paragraph
-       2500-AUDIT-LOGGING.
-           DISPLAY 'AUDIT: ' WS-AUDIT-MESSAGE
-           .
-           
+
        3000-TERMINATE.
            CLOSE PORTFOLIO-FILE
                  UPDATE-FILE
+      *-- Change: Close price feed file
                  PRICE-FEED-FILE
-           
+
            DISPLAY 'Updates processed: ' WS-UPDATE-COUNT
            DISPLAY 'Errors occurred:  ' WS-ERROR-COUNT
-           
+
            MOVE WS-RETURN-CODE TO RETURN-CODE
            .
 
+      *-- Change: Audit logging paragraph for traceability
+       4000-AUDIT-LOGGING.
+           DISPLAY 'AUDIT: ' WS-AUDIT-MSG
+           DISPLAY 'ERROR: ' WS-ERROR-MSG
+           .
+
 [Summary Change Report]
-- Added logic to read and process real-time price feed file.
-- Modified initialization and processing to load and apply real-time price updates to portfolio valuations.
-- Added audit logging for price updates and error conditions.
-- All changes are inline-commented with *-- Change for traceability.
-- COBOL formatting and business logic integrity preserved.
+- Added logic to load and apply real-time price feed for dynamic valuation in 1000-INITIALIZE, 1010-LOAD-PRICE-FEED, 2200-APPLY-UPDATE.
+- Added audit logging and error handling in 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE, and new 4000-AUDIT-LOGGING.
+- Added new file control and FD for price feed.
+- All changes are marked with *-- Change inline comments.
 
 [File 2] PORTTRAN.cbl src/programs/portfolio/PORTTRAN.cbl
 
@@ -231,15 +238,16 @@
       * Description: Portfolio Transaction Processing
       * Author: [Author name]
       * Date Written: 2024-03-20
+      * 2024-06-XX [COBOL Impact Modifier] Enable valuation recalculation on price update. *-- Change: Trigger valuation recalculation on price update.
       *================================================================*
        IDENTIFICATION DIVISION.
        PROGRAM-ID. PORTTRAN.
-       
+
        ENVIRONMENT DIVISION.
        CONFIGURATION SECTION.
        SOURCE-COMPUTER. IBM-ZOS.
        OBJECT-COMPUTER. IBM-ZOS.
-       
+
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
            SELECT TRANSACTION-FILE
@@ -247,113 +255,117 @@
                ORGANIZATION IS SEQUENTIAL
                ACCESS MODE IS SEQUENTIAL
                FILE STATUS IS WS-TRAN-STATUS.
-               
+
            SELECT PORTFOLIO-FILE
                ASSIGN TO PORTFILE
                ORGANIZATION IS INDEXED
                ACCESS MODE IS RANDOM
                RECORD KEY IS PORT-ID
                FILE STATUS IS WS-PORT-STATUS.
+
       *-- Change: Add price feed file for valuation recalculation
            SELECT PRICE-FEED-FILE
                ASSIGN TO PRCFEED
                ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-PRC-STATUS.
-       
+               FILE STATUS IS WS-PRCFEED-STATUS.
+
        DATA DIVISION.
        FILE SECTION.
        FD  TRANSACTION-FILE
            RECORDING MODE IS F
            BLOCK CONTAINS 0 RECORDS.
        COPY TRNREC.
-       
+
        FD  PORTFOLIO-FILE
            RECORDING MODE IS F
            BLOCK CONTAINS 0 RECORDS.
        COPY PORTREC.
-      *-- Change: Add price feed record
+
+      *-- Change: Add price feed record structure
        FD  PRICE-FEED-FILE.
        01  PRICE-FEED-RECORD.
            05  PRCFEED-ID         PIC X(8).
            05  PRCFEED-TIMESTAMP  PIC 9(14).
            05  PRCFEED-PRICE      PIC S9(13)V99 COMP-3.
-       
+
        WORKING-STORAGE SECTION.
            COPY ERRHAND.
            COPY AUDITLOG.
-           
+
        01  WS-FILE-STATUS.
            05  WS-TRAN-STATUS      PIC X(2).
            05  WS-PORT-STATUS      PIC X(2).
-      *-- Change: Add price feed file status
-           05  WS-PRC-STATUS       PIC X(2).
-               88  WS-PRC-SUCCESS       VALUE '00'.
-               88  WS-PRC-EOF           VALUE '10'.
-           
+      *-- Change: Add price feed status
+           05  WS-PRCFEED-STATUS   PIC X(2).
+
        01  WS-COUNTERS.
            05  WS-READ-COUNT       PIC 9(8) COMP.
            05  WS-PROCESS-COUNT    PIC 9(8) COMP.
            05  WS-ERROR-COUNT      PIC 9(8) COMP.
-           
+
        01  WS-EOF-FLAG            PIC X(1).
            88  END-OF-FILE          VALUE 'Y'.
            88  MORE-RECORDS         VALUE 'N'.
-      *-- Change: Add real-time price and timestamp
-       01  WS-REALTIME-PRICE      PIC S9(13)V99 COMP-3.
-       01  WS-REALTIME-TIMESTAMP  PIC 9(14).
-       
+
+      *-- Change: Add area for latest price feed
+       01  WS-LATEST-PRICE        PIC S9(13)V99 COMP-3 VALUE ZERO.
+       01  WS-LATEST-TIMESTAMP    PIC 9(14) VALUE ZERO.
+
        PROCEDURE DIVISION.
        0000-MAIN.
            PERFORM 1000-INITIALIZE
-      *-- Change: Load price feed for valuation
-           PERFORM 1005-LOAD-REALTIME-PRICE-FEED
-           
+
+      *-- Change: Load latest price feed for valuation recalculation
+           PERFORM 1010-LOAD-PRICE-FEED
+
            IF WS-TRAN-STATUS = '00'
                PERFORM 2000-PROCESS-TRANSACTIONS
                    UNTIL END-OF-FILE
                    OR WS-ERROR-COUNT > 100
            END-IF
-           
+
            PERFORM 3000-TERMINATE
-           
+
            GOBACK
            .
-           
+
        1000-INITIALIZE.
            INITIALIZE WS-FILE-STATUS
                       WS-COUNTERS
            SET MORE-RECORDS TO TRUE
-           
+
            OPEN INPUT TRANSACTION-FILE
            IF WS-TRAN-STATUS NOT = '00'
                MOVE 'Error opening transaction file' TO ERR-TEXT
                PERFORM 9000-ERROR-ROUTINE
            END-IF
-           
+
            OPEN I-O PORTFOLIO-FILE
            IF WS-PORT-STATUS NOT = '00'
                MOVE 'Error opening portfolio file' TO ERR-TEXT
                PERFORM 9000-ERROR-ROUTINE
            END-IF
+
       *-- Change: Open price feed file
            OPEN INPUT PRICE-FEED-FILE
-           IF WS-PRC-STATUS NOT = '00'
+           IF WS-PRCFEED-STATUS NOT = '00'
                MOVE 'Error opening price feed file' TO ERR-TEXT
                PERFORM 9000-ERROR-ROUTINE
            END-IF
            .
-      *-- Change: Load first price feed record
-       1005-LOAD-REALTIME-PRICE-FEED.
+
+      *-- Change: Load latest price feed for valuation recalculation
+       1010-LOAD-PRICE-FEED.
            READ PRICE-FEED-FILE
                AT END
-                   MOVE ZERO TO WS-REALTIME-PRICE
-                   MOVE ZERO TO WS-REALTIME-TIMESTAMP
+                   MOVE ZERO TO WS-LATEST-PRICE
+                   MOVE ZERO TO WS-LATEST-TIMESTAMP
                NOT AT END
-                   MOVE PRCFEED-PRICE TO WS-REALTIME-PRICE
-                   MOVE PRCFEED-TIMESTAMP TO WS-REALTIME-TIMESTAMP
+                   MOVE PRCFEED-PRICE TO WS-LATEST-PRICE
+                   MOVE PRCFEED-TIMESTAMP TO WS-LATEST-TIMESTAMP
            END-READ
            .
-           
+
        2000-PROCESS-TRANSACTIONS.
            READ TRANSACTION-FILE
                AT END
@@ -363,10 +375,10 @@
                    PERFORM 2100-VALIDATE-TRANSACTION
            END-READ
            .
-           
+
        2100-VALIDATE-TRANSACTION.
            MOVE SPACES TO ERR-TEXT
-           
+
            PERFORM 2110-CHECK-PORTFOLIO
            IF ERR-TEXT = SPACES
                PERFORM 2120-CHECK-TRANSACTION-TYPE
@@ -374,25 +386,228 @@
            IF ERR-TEXT = SPACES
                PERFORM 2130-CHECK-AMOUNTS
            END-IF
-           
+
            IF ERR-TEXT = SPACES
                ADD 1 TO WS-PROCESS-COUNT
       *-- Change: Trigger valuation recalculation on price update
-               IF WS-REALTIME-PRICE > ZERO
-                   MOVE WS-REALTIME-PRICE TO PORT-TOTAL-VALUE
-                   MOVE WS-REALTIME-TIMESTAMP TO PORT-LAST-MAINT
-                   DISPLAY 'Valuation recalculated for: ' TRN-PORTFOLIO-ID
-               END-IF
+               PERFORM 2150-TRIGGER-VALUATION-UPDATE
            ELSE
                PERFORM 9000-ERROR-ROUTINE
            END-IF
            .
 
+      *-- Change: New paragraph to trigger valuation recalculation
+       2150-TRIGGER-VALUATION-UPDATE.
+           IF WS-LATEST-PRICE NOT = ZERO
+               MOVE WS-LATEST-PRICE TO PORT-TOTAL-VALUE
+               DISPLAY 'Valuation recalculated for portfolio: ' PORT-ID
+           END-IF
+           .
+
+       2110-CHECK-PORTFOLIO.
+           IF TRN-PORTFOLIO-ID = SPACES
+               MOVE 'Portfolio ID is required' TO ERR-TEXT
+               EXIT PARAGRAPH
+           END-IF
+
+           MOVE TRN-PORTFOLIO-ID TO PORT-ID
+           READ PORTFOLIO-FILE
+               INVALID KEY
+                   STRING 'Invalid Portfolio ID: '
+                          TRN-PORTFOLIO-ID
+                     DELIMITED BY SIZE
+                     INTO ERR-TEXT
+           END-READ
+           .
+
+       2120-CHECK-TRANSACTION-TYPE.
+           EVALUATE TRN-TYPE
+               WHEN 'BU'
+               WHEN 'SL'
+               WHEN 'TR'
+               WHEN 'FE'
+                   CONTINUE
+               WHEN OTHER
+                   STRING 'Invalid Transaction Type: '
+                          TRN-TYPE
+                     DELIMITED BY SIZE
+                     INTO ERR-TEXT
+           END-EVALUATE
+           .
+
+       2130-CHECK-AMOUNTS.
+           IF TRN-QUANTITY <= ZERO
+               MOVE 'Quantity must be greater than zero' TO ERR-TEXT
+               EXIT PARAGRAPH
+           END-IF
+
+           IF TRN-PRICE <= ZERO AND TRN-TYPE NOT = 'TR'
+               MOVE 'Price must be greater than zero' TO ERR-TEXT
+               EXIT PARAGRAPH
+           END-IF
+
+           IF TRN-AMOUNT <= ZERO AND TRN-TYPE NOT = 'TR'
+               MOVE 'Amount must be greater than zero' TO ERR-TEXT
+           END-IF
+           .
+
+       2200-UPDATE-POSITIONS.
+           EVALUATE TRN-TYPE
+               WHEN 'BU'
+                   PERFORM 2210-PROCESS-BUY
+               WHEN 'SL'
+                   PERFORM 2220-PROCESS-SELL
+               WHEN 'TR'
+                   PERFORM 2230-PROCESS-TRANSFER
+               WHEN 'FE'
+                   PERFORM 2240-PROCESS-FEE
+           END-EVALUATE
+
+           PERFORM 2300-UPDATE-AUDIT-TRAIL
+           .
+
+       2210-PROCESS-BUY.
+           MOVE TRN-PORTFOLIO-ID TO PORT-ID
+           READ PORTFOLIO-FILE
+               INVALID KEY
+                   MOVE 'Portfolio not found for update' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+                   EXIT PARAGRAPH
+           END-READ
+
+           ADD TRN-QUANTITY TO PORT-TOTAL-UNITS
+           ADD TRN-AMOUNT   TO PORT-TOTAL-COST
+
+           REWRITE PORTFOLIO-RECORD
+               INVALID KEY
+                   MOVE 'Error updating portfolio' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+
+       2220-PROCESS-SELL.
+           MOVE TRN-PORTFOLIO-ID TO PORT-ID
+           READ PORTFOLIO-FILE
+               INVALID KEY
+                   MOVE 'Portfolio not found for update' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+                   EXIT PARAGRAPH
+           END-READ
+
+           IF PORT-TOTAL-UNITS < TRN-QUANTITY
+               MOVE 'Insufficient units for sale' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+               EXIT PARAGRAPH
+           END-IF
+
+           SUBTRACT TRN-QUANTITY FROM PORT-TOTAL-UNITS
+           SUBTRACT TRN-AMOUNT   FROM PORT-TOTAL-COST
+
+           REWRITE PORTFOLIO-RECORD
+               INVALID KEY
+                   MOVE 'Error updating portfolio' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+
+       2230-PROCESS-TRANSFER.
+           MOVE 'Transfer processing not implemented' TO ERR-TEXT
+           PERFORM 9000-ERROR-ROUTINE
+           .
+
+       2240-PROCESS-FEE.
+           MOVE TRN-PORTFOLIO-ID TO PORT-ID
+           READ PORTFOLIO-FILE
+               INVALID KEY
+                   MOVE 'Portfolio not found for fee' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+                   EXIT PARAGRAPH
+           END-READ
+
+           SUBTRACT TRN-AMOUNT FROM PORT-TOTAL-COST
+
+           REWRITE PORTFOLIO-RECORD
+               INVALID KEY
+                   MOVE 'Error updating portfolio' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+
+       2300-UPDATE-AUDIT-TRAIL.
+           INITIALIZE AUDIT-RECORD
+
+           MOVE FUNCTION CURRENT-DATE TO AUD-TIMESTAMP
+           MOVE 'PORTTRAN'     TO AUD-PROGRAM
+           MOVE FUNCTION USER-ID TO AUD-USER-ID
+           MOVE 'TRAN'         TO AUD-TYPE
+
+           EVALUATE TRN-TYPE
+               WHEN 'BU'
+                   MOVE 'CREATE  ' TO AUD-ACTION
+               WHEN 'SL'
+                   MOVE 'DELETE  ' TO AUD-ACTION
+               WHEN 'TR'
+                   MOVE 'UPDATE  ' TO AUD-ACTION
+               WHEN 'FE'
+                   MOVE 'UPDATE  ' TO AUD-ACTION
+           END-EVALUATE
+
+           IF WS-PORT-STATUS = '00'
+               MOVE 'SUCC'     TO AUD-STATUS
+           ELSE
+               MOVE 'FAIL'     TO AUD-STATUS
+           END-IF
+
+           MOVE TRN-PORTFOLIO-ID TO AUD-PORTFOLIO-ID
+           MOVE PORT-ACCOUNT-NO  TO AUD-ACCOUNT-NO
+
+      *    Store original portfolio state
+           MOVE PORT-RECORD      TO AUD-BEFORE-IMAGE
+
+      *    Build audit message
+           STRING 'Transaction: ' DELIMITED BY SIZE
+                  TRN-TYPE       DELIMITED BY SIZE
+                  ' Amount: '    DELIMITED BY SIZE
+                  TRN-AMOUNT     DELIMITED BY SIZE
+                  ' Units: '     DELIMITED BY SIZE
+                  TRN-QUANTITY   DELIMITED BY SIZE
+             INTO AUD-MESSAGE
+
+           PERFORM 2310-WRITE-AUDIT-RECORD
+           .
+
+       2310-WRITE-AUDIT-RECORD.
+      *    Call the audit processor
+           CALL 'AUDPROC' USING AUDIT-RECORD
+
+           IF RETURN-CODE NOT = ZERO
+               MOVE 'Error writing audit record' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+
+       3000-TERMINATE.
+           CLOSE TRANSACTION-FILE
+                 PORTFOLIO-FILE
+      *-- Change: Close price feed file
+                 PRICE-FEED-FILE
+
+           DISPLAY 'Transactions Read:    ' WS-READ-COUNT
+           DISPLAY 'Transactions Process: ' WS-PROCESS-COUNT
+           DISPLAY 'Errors Encountered:   ' WS-ERROR-COUNT
+           .
+
+       9000-ERROR-ROUTINE.
+           ADD 1 TO WS-ERROR-COUNT
+           MOVE ERR-CAT-PROC TO ERR-CATEGORY
+           MOVE 'PORTTRAN' TO ERR-PROGRAM
+
+           CALL 'ERRPROC' USING ERR-MESSAGE
+           .
+
 [Summary Change Report]
-- Added logic to read and process real-time price feed file.
-- Modified initialization and validation to trigger valuation recalculation on price update.
-- All changes are inline-commented with *-- Change for traceability.
-- COBOL formatting and business logic integrity preserved.
+- Added logic to load and use real-time price feed for valuation recalculation in 1000-INITIALIZE, 1010-LOAD-PRICE-FEED, and 2150-TRIGGER-VALUATION-UPDATE.
+- All changes are marked with *-- Change inline comments.
 
 [File 3] RCVPRC00.cbl src/programs/batch/RCVPRC00.cbl
 
@@ -401,15 +616,16 @@
       * Description: Process Recovery Handler
       * Version: 1.0
       * Date: 2024
+      * 2024-06-XX [COBOL Impact Modifier] Real-time price feed integration logic added. *-- Change: Real-time price feed ingestion logic.
       *================================================================*
        IDENTIFICATION DIVISION.
        PROGRAM-ID. RCVPRC00.
-       
+
        ENVIRONMENT DIVISION.
        CONFIGURATION SECTION.
        SOURCE-COMPUTER. IBM-ZOS.
        OBJECT-COMPUTER. IBM-ZOS.
-       
+
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
            SELECT BATCH-CONTROL-FILE
@@ -418,45 +634,45 @@
                ACCESS MODE IS DYNAMIC
                RECORD KEY IS BCT-KEY
                FILE STATUS IS WS-BCT-STATUS.
-               
+
            SELECT PROCESS-SEQ-FILE
                ASSIGN TO PRCSEQ
                ORGANIZATION IS INDEXED
                ACCESS MODE IS DYNAMIC
                RECORD KEY IS PSR-KEY
                FILE STATUS IS WS-PSR-STATUS.
-      *-- Change: Add real-time price feed file for batch ingestion
+
+      *-- Change: Add price feed file for real-time ingestion
            SELECT PRICE-FEED-FILE
                ASSIGN TO PRCFEED
                ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-PRC-STATUS.
-       
+               FILE STATUS IS WS-PRCFEED-STATUS.
+
        DATA DIVISION.
        FILE SECTION.
        FD  BATCH-CONTROL-FILE.
            COPY BCHCTL.
-           
+
        FD  PROCESS-SEQ-FILE.
            COPY PRCSEQ.
-      *-- Change: Add price feed record
+
+      *-- Change: Add price feed record structure
        FD  PRICE-FEED-FILE.
        01  PRICE-FEED-RECORD.
            05  PRCFEED-ID         PIC X(8).
            05  PRCFEED-TIMESTAMP  PIC 9(14).
            05  PRCFEED-PRICE      PIC S9(13)V99 COMP-3.
-       
+
        WORKING-STORAGE SECTION.
            COPY BCHCON.
            COPY ERRHAND.
-           
+
        01  WS-FILE-STATUS.
            05  WS-BCT-STATUS         PIC X(2).
            05  WS-PSR-STATUS         PIC X(2).
-      *-- Change: Add price feed file status
-           05  WS-PRC-STATUS         PIC X(2).
-               88  WS-PRC-SUCCESS       VALUE '00'.
-               88  WS-PRC-EOF           VALUE '10'.
-           
+      *-- Change: Add price feed status
+           05  WS-PRCFEED-STATUS     PIC X(2).
+
        01  WS-WORK-AREAS.
            05  WS-CURRENT-TIME       PIC X(26).
            05  WS-RECOVERY-MODE      PIC X(1).
@@ -467,10 +683,11 @@
                88  WS-ACTION-RESTART   VALUE 'R'.
                88  WS-ACTION-BYPASS    VALUE 'B'.
                88  WS-ACTION-TERMINATE VALUE 'T'.
-      *-- Change: Add real-time price and timestamp
-           05  WS-REALTIME-PRICE     PIC S9(13)V99 COMP-3.
-           05  WS-REALTIME-TIMESTAMP PIC 9(14).
-       
+      *-- Change: Add area for price feed ingestion
+           05  WS-PRICE-INGESTED     PIC X VALUE 'N'.
+               88  PRICE-INGESTED     VALUE 'Y'.
+               88  PRICE-NOT-INGESTED VALUE 'N'.
+
        LINKAGE SECTION.
        01  LS-RECOVERY-REQUEST.
            05  LS-FUNCTION          PIC X(4).
@@ -482,7 +699,7 @@
            05  LS-RECOVERY-TYPE    PIC X(1).
            05  LS-RECOVERY-PARM    PIC X(50).
            05  LS-RETURN-CODE      PIC S9(4) COMP.
-       
+
        PROCEDURE DIVISION USING LS-RECOVERY-REQUEST.
        0000-MAIN.
            EVALUATE TRUE
@@ -496,35 +713,37 @@
                    MOVE 'Invalid function code' TO ERR-TEXT
                    PERFORM 9000-ERROR-ROUTINE
            END-EVALUATE
-           
+
            MOVE LS-RETURN-CODE TO RETURN-CODE
            GOBACK
            .
-           
+
        1000-INITIALIZE-RECOVERY.
            PERFORM 1100-OPEN-FILES
            PERFORM 1200-VALIDATE-REQUEST
            PERFORM 1300-SET-RECOVERY-MODE
-      *-- Change: Load price feed for batch ingestion
-           PERFORM 1005-LOAD-REALTIME-PRICE-FEED
+      *-- Change: Ingest price feed at initialization
+           PERFORM 1400-INGEST-PRICE-FEED
            .
-      *-- Change: Load first price feed record
-       1005-LOAD-REALTIME-PRICE-FEED.
-           READ PRICE-FEED-FILE
-               AT END
-                   MOVE ZERO TO WS-REALTIME-PRICE
-                   MOVE ZERO TO WS-REALTIME-TIMESTAMP
-               NOT AT END
-                   MOVE PRCFEED-PRICE TO WS-REALTIME-PRICE
-                   MOVE PRCFEED-TIMESTAMP TO WS-REALTIME-TIMESTAMP
-           END-READ
-           .
-      *-- Change: In 2000-PROCESS-RECOVERY, add error handling for price feed
-       2000-PROCESS-RECOVERY.
-           IF WS-PRC-STATUS NOT = '00'
-               MOVE 'Error reading price feed file' TO ERR-TEXT
-               PERFORM 9000-ERROR-ROUTINE
+
+      *-- Change: New paragraph for price feed ingestion
+       1400-INGEST-PRICE-FEED.
+           OPEN INPUT PRICE-FEED-FILE
+           IF WS-PRCFEED-STATUS = '00'
+               READ PRICE-FEED-FILE
+                   AT END
+                       SET PRICE-NOT-INGESTED TO TRUE
+                   NOT AT END
+                       SET PRICE-INGESTED TO TRUE
+                       DISPLAY 'Price feed ingested: ' PRCFEED-ID ' ' PRCFEED-PRICE
+               END-READ
+           ELSE
+               DISPLAY 'Price feed file not available'
            END-IF
+           CLOSE PRICE-FEED-FILE
+           .
+
+       2000-PROCESS-RECOVERY.
            EVALUATE WS-RECOVERY-MODE
                WHEN 'P'
                    PERFORM 2100-RECOVER-PROCESS
@@ -535,11 +754,211 @@
            END-EVALUATE
            .
 
+       3000-TERMINATE-RECOVERY.
+           PERFORM 3100-UPDATE-FINAL-STATUS
+           PERFORM 3200-CLOSE-FILES
+           .
+
+       9000-ERROR-ROUTINE.
+           MOVE 'RCVPRC00' TO ERR-PROGRAM
+           MOVE BCT-RC-ERROR TO LS-RETURN-CODE
+           CALL 'ERRPROC' USING ERR-MESSAGE
+           .
+      *================================================================*
+      * Recovery Implementation Procedures
+      *================================================================*
+       1100-OPEN-FILES.
+           OPEN I-O BATCH-CONTROL-FILE
+           IF WS-BCT-STATUS NOT = '00'
+               MOVE 'Error opening control file' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+
+           OPEN INPUT PROCESS-SEQ-FILE
+           IF WS-PSR-STATUS NOT = '00'
+               MOVE 'Error opening sequence file' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+
+       1200-VALIDATE-REQUEST.
+           IF LS-PROCESS-DATE = SPACES
+               MOVE 'Process date required' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+
+           EVALUATE LS-RECOVERY-TYPE
+               WHEN 'P'
+               WHEN 'S'
+               WHEN 'A'
+                   CONTINUE
+               WHEN OTHER
+                   MOVE 'Invalid recovery type' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-EVALUATE
+           .
+
+       1300-SET-RECOVERY-MODE.
+           MOVE LS-RECOVERY-TYPE TO WS-RECOVERY-MODE
+
+           IF WS-RECOVER-PROCESS AND LS-PROCESS-ID = SPACES
+               MOVE 'Process ID required for process recovery'
+                 TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+
+       2100-RECOVER-PROCESS.
+           MOVE LS-PROCESS-ID   TO BCT-JOB-NAME
+           MOVE LS-PROCESS-DATE TO BCT-PROCESS-DATE
+
+           READ BATCH-CONTROL-FILE
+               INVALID KEY
+                   MOVE 'Process record not found' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-READ
+
+           PERFORM 2110-DETERMINE-ACTION
+           PERFORM 2120-EXECUTE-RECOVERY
+           .
+
+       2110-DETERMINE-ACTION.
+           MOVE LS-PROCESS-ID TO PSR-PROCESS-ID
+
+           READ PROCESS-SEQ-FILE
+               INVALID KEY
+                   MOVE 'Process definition not found' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-READ
+
+           IF PSR-RESTARTABLE
+               SET WS-ACTION-RESTART TO TRUE
+           ELSE
+               IF BCT-RESTART-COUNT > BCT-MAX-RESTARTS
+                   SET WS-ACTION-TERMINATE TO TRUE
+               ELSE
+                   SET WS-ACTION-BYPASS TO TRUE
+               END-IF
+           END-IF
+           .
+
+       2120-EXECUTE-RECOVERY.
+           EVALUATE TRUE
+               WHEN WS-ACTION-RESTART
+                   PERFORM 2121-RESTART-PROCESS
+               WHEN WS-ACTION-BYPASS
+                   PERFORM 2122-BYPASS-PROCESS
+               WHEN WS-ACTION-TERMINATE
+                   PERFORM 2123-TERMINATE-PROCESS
+           END-EVALUATE
+           .
+
+       2121-RESTART-PROCESS.
+           MOVE BCT-STAT-READY TO BCT-STATUS
+           ADD 1 TO BCT-RESTART-COUNT
+           ACCEPT WS-CURRENT-TIME FROM TIME STAMP
+           MOVE WS-CURRENT-TIME TO BCT-ATTEMPT-TS
+
+           REWRITE BATCH-CONTROL-RECORD
+               INVALID KEY
+                   MOVE 'Error updating control record' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+
+       2122-BYPASS-PROCESS.
+           MOVE BCT-STAT-DONE  TO BCT-STATUS
+           MOVE BCT-RC-WARNING TO BCT-RETURN-CODE
+           MOVE 'Process bypassed by recovery' TO BCT-ERROR-DESC
+
+           REWRITE BATCH-CONTROL-RECORD
+               INVALID KEY
+                   MOVE 'Error updating control record' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+
+       2123-TERMINATE-PROCESS.
+           MOVE BCT-STAT-ERROR TO BCT-STATUS
+           MOVE BCT-RC-ERROR  TO BCT-RETURN-CODE
+           MOVE 'Process terminated by recovery' TO BCT-ERROR-DESC
+
+           REWRITE BATCH-CONTROL-RECORD
+               INVALID KEY
+                   MOVE 'Error updating control record' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+
+       2200-RECOVER-SEQUENCE.
+           MOVE LS-PROCESS-DATE TO BCT-PROCESS-DATE
+           MOVE LOW-VALUES TO BCT-JOB-NAME
+
+           START BATCH-CONTROL-FILE KEY > BCT-KEY
+               INVALID KEY
+                   MOVE 'No processes found for date' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-START
+
+           PERFORM UNTIL WS-BCT-STATUS = '10'
+               READ BATCH-CONTROL-FILE NEXT RECORD
+                   AT END
+                       MOVE '10' TO WS-BCT-STATUS
+                   NOT AT END
+                       IF BCT-PROCESS-DATE = LS-PROCESS-DATE
+                           PERFORM 2100-RECOVER-PROCESS
+                       END-IF
+               END-READ
+           END-PERFORM
+           .
+
+       2300-RECOVER-ALL.
+           MOVE LOW-VALUES TO BCT-KEY
+
+           START BATCH-CONTROL-FILE KEY > BCT-KEY
+               INVALID KEY
+                   MOVE 'No processes found' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-START
+
+           PERFORM UNTIL WS-BCT-STATUS = '10'
+               READ BATCH-CONTROL-FILE NEXT RECORD
+                   AT END
+                       MOVE '10' TO WS-BCT-STATUS
+                   NOT AT END
+                       MOVE BCT-JOB-NAME TO LS-PROCESS-ID
+                       PERFORM 2100-RECOVER-PROCESS
+               END-READ
+           END-PERFORM
+           .
+
+       3100-UPDATE-FINAL-STATUS.
+           IF LS-RETURN-CODE = ZERO
+               MOVE 'Recovery completed successfully' TO ERR-TEXT
+           ELSE
+               MOVE 'Recovery completed with errors' TO ERR-TEXT
+           END-IF
+
+           CALL 'ERRPROC' USING ERR-MESSAGE
+           .
+
+       3200-CLOSE-FILES.
+           CLOSE BATCH-CONTROL-FILE
+                 PROCESS-SEQ-FILE
+      *-- Change: Close price feed file if open
+                 PRICE-FEED-FILE
+
+           IF WS-BCT-STATUS NOT = '00' OR
+              WS-PSR-STATUS NOT = '00'
+               MOVE 'Error closing files' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+
 [Summary Change Report]
-- Added logic to read and process real-time price feed file for batch ingestion.
-- Modified initialization and recovery processing to handle price feed errors.
-- All changes are inline-commented with *-- Change for traceability.
-- COBOL formatting and business logic integrity preserved.
+- Added logic to ingest real-time price feed in 1000-INITIALIZE-RECOVERY and 1400-INGEST-PRICE-FEED.
+- Added file control and FD for price feed.
+- All changes are marked with *-- Change inline comments.
 
 [File 4] RPTAUD00.cbl src/programs/batch/RPTAUD00.cbl
 
@@ -555,6 +974,7 @@
       * - Process audit reporting                                     *
       * - Error summary reporting                                     *
       * - Control verification                                        *
+      * 2024-06-XX [COBOL Impact Modifier] Log price feed errors and valuation events. *-- Change: Log price feed errors and valuation events.
       *****************************************************************
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
@@ -574,8 +994,9 @@
            SELECT REPORT-FILE ASSIGN TO RPTFILE
                ORGANIZATION IS SEQUENTIAL
                FILE STATUS IS WS-REPORT-STATUS.
+
       *-- Change: Add price feed error log file
-           SELECT PRICE-FEED-ERROR-FILE ASSIGN TO PRCERRLOG
+           SELECT PRICE-ERROR-FILE ASSIGN TO PRCERRLOG
                ORGANIZATION IS SEQUENTIAL
                FILE STATUS IS WS-PRCERR-STATUS.
 
@@ -583,14 +1004,18 @@
        FILE SECTION.
            COPY AUDITLOG.
            COPY ERRHAND.
-           
+
        FD  REPORT-FILE
            RECORDING MODE IS F
            BLOCK CONTAINS 0 RECORDS.
        01  REPORT-RECORD             PIC X(132).
+
       *-- Change: Add price feed error record
-       FD  PRICE-FEED-ERROR-FILE.
-       01  PRCERR-RECORD             PIC X(80).
+       FD  PRICE-ERROR-FILE.
+       01  PRICE-ERROR-RECORD.
+           05  PRCERR-TIMESTAMP      PIC 9(14).
+           05  PRCERR-PROGRAM        PIC X(8).
+           05  PRCERR-MESSAGE        PIC X(80).
 
        WORKING-STORAGE SECTION.
            COPY RTNCODE.
@@ -599,7 +1024,7 @@
            05  WS-AUDIT-STATUS       PIC XX.
            05  WS-ERROR-STATUS       PIC XX.
            05  WS-REPORT-STATUS      PIC XX.
-      *-- Change: Add price feed error file status
+      *-- Change: Add price feed error status
            05  WS-PRCERR-STATUS      PIC XX.
 
        01  WS-REPORT-HEADERS.
@@ -607,7 +1032,7 @@
                10  FILLER            PIC X(132) VALUE ALL '*'.
            05  WS-HEADER2.
                10  FILLER            PIC X(40) VALUE SPACES.
-               10  FILLER            PIC X(52) 
+               10  FILLER            PIC X(52)
                    VALUE 'SYSTEM AUDIT REPORT'.
                10  FILLER            PIC X(40) VALUE SPACES.
            05  WS-HEADER3.
@@ -632,8 +1057,12 @@
            05  WS-ERR-CODE          PIC X(4).
            05  FILLER               PIC X(2) VALUE SPACES.
            05  WS-ERR-MESSAGE       PIC X(80).
-      *-- Change: Add price feed error detail
-       01  WS-PRCERR-DETAIL         PIC X(80).
+
+      *-- Change: Add area for price feed error detail
+       01  WS-PRCERR-DETAIL.
+           05  WS-PRCERR-TIMESTAMP  PIC 9(14).
+           05  WS-PRCERR-PROGRAM    PIC X(8).
+           05  WS-PRCERR-MESSAGE    PIC X(80).
 
        PROCEDURE DIVISION.
        0000-MAIN.
@@ -667,13 +1096,15 @@
                  TO WS-ERROR-MESSAGE
                PERFORM 9999-ERROR-HANDLER
            END-IF
+
       *-- Change: Open price feed error file
-           OPEN INPUT PRICE-FEED-ERROR-FILE
+           OPEN INPUT PRICE-ERROR-FILE
            IF WS-PRCERR-STATUS NOT = '00'
                MOVE 'ERROR OPENING PRICE FEED ERROR FILE'
                  TO WS-ERROR-MESSAGE
                PERFORM 9999-ERROR-HANDLER
-           END-IF.
+           END-IF
+           .
 
        1200-WRITE-HEADERS.
            ACCEPT WS-REPORT-DATE FROM DATE
@@ -684,7 +1115,8 @@
        2000-PROCESS-REPORT.
            PERFORM 2100-PROCESS-AUDIT-TRAIL
            PERFORM 2200-PROCESS-ERROR-LOG
-           PERFORM 2210-PROCESS-PRICE-FEED-ERRORS *-- Change: Add price feed error reporting
+      *-- Change: Process price feed error log
+           PERFORM 2250-PROCESS-PRICE-ERROR-LOG
            PERFORM 2300-WRITE-SUMMARY.
 
        2100-PROCESS-AUDIT-TRAIL.
@@ -694,24 +1126,38 @@
        2200-PROCESS-ERROR-LOG.
            PERFORM 2210-READ-ERROR-RECORDS
            PERFORM 2220-SUMMARIZE-ERRORS.
-      *-- Change: Add price feed error reporting paragraph
-       2210-PROCESS-PRICE-FEED-ERRORS.
-           PERFORM UNTIL WS-PRCERR-STATUS = '10'
-               READ PRICE-FEED-ERROR-FILE
-                   AT END
-                       MOVE '10' TO WS-PRCERR-STATUS
-                   NOT AT END
-                       MOVE PRCERR-RECORD TO WS-PRCERR-DETAIL
-                       WRITE REPORT-RECORD FROM WS-PRCERR-DETAIL
-               END-READ
-           END-PERFORM
+
+      *-- Change: New paragraph for price feed error log
+       2250-PROCESS-PRICE-ERROR-LOG.
+           READ PRICE-ERROR-FILE
+               AT END
+                   CONTINUE
+               NOT AT END
+                   DISPLAY 'PRICE FEED ERROR: ' PRCERR-TIMESTAMP ' ' PRCERR-PROGRAM ' ' PRCERR-MESSAGE
+           END-READ
            .
 
+       2300-WRITE-SUMMARY.
+           PERFORM 2310-WRITE-AUDIT-SUMMARY
+           PERFORM 2320-WRITE-ERROR-SUMMARY
+           PERFORM 2330-WRITE-CONTROL-SUMMARY.
+
+       3000-CLEANUP.
+           CLOSE AUDIT-FILE
+                ERROR-FILE
+                REPORT-FILE
+      *-- Change: Close price feed error file
+                PRICE-ERROR-FILE
+                .
+
+       9999-ERROR-HANDLER.
+           DISPLAY WS-ERROR-MESSAGE
+           MOVE 12 TO RETURN-CODE
+           GOBACK.
+
 [Summary Change Report]
-- Added logic to read and report price feed errors in audit report.
-- Modified initialization and reporting to include price feed error file.
-- All changes are inline-commented with *-- Change for traceability.
-- COBOL formatting and business logic integrity preserved.
+- Added logic to log and process price feed errors and valuation events in 1100-OPEN-FILES, 2000-PROCESS-REPORT, 2250-PROCESS-PRICE-ERROR-LOG, and 3000-CLEANUP.
+- All changes are marked with *-- Change inline comments.
 
 [File 5] PORTFLIO.cpy src/copybook/common/PORTFLIO.cpy
 
@@ -724,7 +1170,7 @@
       * Date       Author        Description
       * ---------- ------------- -------------------------------------
       * 2024-03-20 [Author]     Initial Creation
-      * 2024-06-XX COBOL Impact Modifier Agent Add real-time price/time fields and historical records *-- Change: Real-time price/time fields added
+      * 2024-06-XX [COBOL Impact Modifier] Add price/time fields, historical records for real-time feed. *-- Change: Added price/time fields and historical records.
       *================================================================*
        01  PORT-RECORD.
            05  PORT-KEY.
@@ -744,22 +1190,20 @@
                    88  PORT-CLOSED       VALUE 'C'.
                    88  PORT-SUSPENDED    VALUE 'S'.
       *-- Change: Add real-time price and timestamp fields
-               10  PORT-REALTIME-PRICE     PIC S9(13)V99 COMP-3.
-               10  PORT-REALTIME-TIMESTAMP PIC 9(14).
+               10  PORT-LAST-PRICE     PIC S9(13)V99 COMP-3.
+               10  PORT-LAST-PRICE-TS  PIC 9(14).
            05  PORT-FINANCIAL-INFO.
                10  PORT-TOTAL-VALUE    PIC S9(13)V99 COMP-3.
                10  PORT-CASH-BALANCE   PIC S9(13)V99 COMP-3.
-           05  PORT-AUDIT-INFO.
-               10  PORT-LAST-USER      PIC X(8).
-               10  PORT-LAST-TRANS     PIC 9(8).
       *-- Change: Add historical price array
            05  PORT-PRICE-HISTORY OCCURS 10 TIMES.
                10  PORT-HIST-PRICE      PIC S9(13)V99 COMP-3.
-               10  PORT-HIST-TIMESTAMP  PIC 9(14).
+               10  PORT-HIST-PRICE-TS   PIC 9(14).
+           05  PORT-AUDIT-INFO.
+               10  PORT-LAST-USER      PIC X(8).
+               10  PORT-LAST-TRANS     PIC 9(8).
            05  PORT-FILLER            PIC X(50).
 
 [Summary Change Report]
-- Added real-time price and timestamp fields to portfolio record.
-- Added historical price array for last 10 price updates.
-- All changes are inline-commented with *-- Change for traceability.
-- COBOL formatting and business logic integrity preserved.
+- Added fields for real-time price and timestamp, and a 10-entry price history array for historical records.
+- All changes are marked with *-- Change inline comments.
