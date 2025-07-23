@@ -1,71 +1,188 @@
-User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates  
-- 5 impacted components identified (**High impact only**)  
-- High complexity change affecting real-time data ingestion, valuation, error handling, and audit logging across portfolio and position management
+# High-Impact COBOL/JCL/Copybook File Impact Analysis for Real-Time Market Price Updates
+
+## Summary
+**User Story:**  
+As a Portfolio Manager, I want the system to receive and process real-time market price updates from an external source so that portfolio valuations and risk metrics are consistently accurate and reflect the most current market conditions.
+
+- **Total number of impacted components:** 15 (High impact only)
+- **High-level assessment of change complexity:**  
+  This is a high-complexity change affecting core data structures, batch and online processing, error handling, audit logging, and reporting. The change impacts both direct data ingestion and valuation logic, as well as critical supporting infrastructure for audit, error, and historical data management.
 
 ---
 
-**Ranked Impact List**:
+## Ranked Impact List
 
-| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                 |
-|------------------------------------------|--------|---------|---------------------------------------------|-------------------------------------------------|
-| `src/programs/batch/POSUPDT.cbl`         | High   | Direct  | [To be implemented: real-time update logic] | Entry point for position updates                |
-| `src/copybook/common/POSREC.cpy`         | High   | Direct  | [Position record structure]                 | Shared by valuation and update programs         |
-| `src/programs/common/AUDPROC.cbl`        | High   | Direct  | 2000-PROCESS-AUDIT, 3000-TERMINATE          | Called for audit logging on price update events |
-| `src/copybook/common/AUDITLOG.cpy`       | High   | Direct  | [Audit log record structure]                | Used by AUDPROC and batch reporting             |
-| `src/programs/batch/HISTLD00.cbl`        | High   | Direct  | 2000-PROCESS-HISTORY, 2300-CHECK-COMMIT     | Maintains historical record of prices           |
+| Program File Path                        | Impact | Nature   | Affected Paragraphs/Sections                  | Dependency Path                                                      |
+|------------------------------------------|--------|----------|-----------------------------------------------|---------------------------------------------------------------------|
+| src/copybook/common/POSREC.cpy           | High   | Direct   | Entire copybook                              | Used by position update, valuation, and reporting programs          |
+| src/copybook/common/HISTREC.cpy          | High   | Direct   | Entire copybook                              | Used by history loading, reporting, and audit programs              |
+| src/copybook/common/AUDITLOG.cpy         | High   | Direct   | Entire copybook                              | Used by audit logging routines and programs                         |
+| src/copybook/common/ERRHAND.cpy          | High   | Direct   | Entire copybook                              | Used by error handling routines and all programs that log/process errors |
+| src/programs/batch/HISTLD00.cbl          | High   | Direct   | 2200-LOAD-TO-DB2, 2310-UPDATE-CHECKPOINT, 3000-TERMINATE | Loads transaction history into DB2, maintains historical price records |
+| src/programs/common/AUDPROC.cbl          | High   | Direct   | 2000-PROCESS-AUDIT                           | Called by other programs to write audit records                     |
+| src/programs/common/ERRPROC.cbl          | High   | Direct   | 2000-PROCESS-ERROR                           | Called by all programs for error logging                            |
+| src/programs/common/DB2ERR.cbl           | High   | Direct   | 1000-LOG-ERROR                               | Handles DB2 SQL errors, logs to error log table                     |
+| src/database/db2/POSHIST.sql             | High   | Direct   | Entire table definition                      | Table for storing position history, referenced by batch/online progs|
+| src/database/db2/ERRLOG.sql              | High   | Direct   | Entire table definition                      | Table for storing error and alert logs, referenced by error handlers|
+| src/programs/utility/UTLMON00.cbl        | High   | Direct   | 2000-PROCESS, 2400-GENERATE-ALERTS           | Monitors system health, generates alerts if data feed/prices outdated|
+| src/programs/utility/UTLVAL00.cbl        | High   | Indirect | 2000-PROCESS, 2200-CHECK-INTEGRITY           | Validates data integrity, cross-references position/transaction data|
+| src/programs/batch/RPTPOS00.cbl          | High   | Indirect | 2000-PROCESS-REPORT, 2100-READ-POSITIONS     | Generates daily position reports using updated market values        |
+| src/programs/batch/RPTAUD00.cbl          | High   | Indirect | 2000-PROCESS-REPORT, 2100-PROCESS-AUDIT-TRAIL| Generates audit reports from audit and error logs                   |
+| src/programs/online/INQPORT.cbl          | High   | Indirect | P200-GET-POSITION                            | Online inquiry for current positions, displays real-time values     |
+| src/programs/online/INQHIST.cbl          | High   | Indirect | P200-GET-HISTORY                             | Online inquiry for transaction/history, displays historical prices  |
 
 ---
 
-**JSON Metadata**:
+## JSON Metadata
+
 ```json
 {
   "impactAnalysis": {
     "userStory": "Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates",
     "impactedComponents": [
       {
-        "programFilePath": "src/programs/batch/POSUPDT.cbl",
-        "impactScore": 0.98,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": [],
-        "dependencyPath": ["POSUPDT"],
-        "rationale": "Primary batch program for updating positions; must be extended to process real-time price feeds and trigger valuation recalculation."
-      },
-      {
         "programFilePath": "src/copybook/common/POSREC.cpy",
-        "impactScore": 0.97,
+        "impactScore": 1.0,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [],
-        "dependencyPath": ["POSUPDT", "RPTPOS00", "UTLVAL00"],
-        "rationale": "Position record structure will be updated to include real-time price and timestamp fields; used by all valuation and reporting programs."
+        "affectedParagraphs": ["Entire copybook"],
+        "dependencyPath": ["POSUPD00", "RPTPOS00", "online inquiry handlers"],
+        "rationale": "Defines position record structure, including market value fields that must be updated in real-time."
       },
       {
-        "programFilePath": "src/programs/common/AUDPROC.cbl",
-        "impactScore": 0.95,
+        "programFilePath": "src/copybook/common/HISTREC.cpy",
+        "impactScore": 1.0,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS-AUDIT", "3000-TERMINATE"],
-        "dependencyPath": ["POSUPDT", "AUDPROC"],
-        "rationale": "Handles audit logging for price update events and error conditions; must be invoked on feed failures and outdated prices."
+        "affectedParagraphs": ["Entire copybook"],
+        "dependencyPath": ["HISTLD00", "RPTAUD00"],
+        "rationale": "Defines historical record structure, essential for maintaining a historical record of received prices and valuation changes."
       },
       {
         "programFilePath": "src/copybook/common/AUDITLOG.cpy",
-        "impactScore": 0.94,
+        "impactScore": 1.0,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [],
+        "affectedParagraphs": ["Entire copybook"],
         "dependencyPath": ["AUDPROC", "RPTAUD00"],
-        "rationale": "Audit log record structure will be extended to capture new event types and timestamps for real-time feed integration."
+        "rationale": "Defines audit log structure, critical for logging data feed failures, outdated prices, and audit events."
+      },
+      {
+        "programFilePath": "src/copybook/common/ERRHAND.cpy",
+        "impactScore": 1.0,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["Entire copybook"],
+        "dependencyPath": ["ERRPROC", "DB2ERR", "ERRHNDL"],
+        "rationale": "Error handling and logging are core to the acceptance criteria for alerting and audit trail requirements."
       },
       {
         "programFilePath": "src/programs/batch/HISTLD00.cbl",
-        "impactScore": 0.92,
+        "impactScore": 1.0,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS-HISTORY", "2300-CHECK-COMMIT"],
-        "dependencyPath": ["POSUPDT", "HISTLD00"],
-        "rationale": "Maintains historical record of received prices for analysis and reporting; must be updated to store real-time price events."
+        "affectedParagraphs": ["2200-LOAD-TO-DB2", "2310-UPDATE-CHECKPOINT", "3000-TERMINATE"],
+        "dependencyPath": ["HISTLD00"],
+        "rationale": "Responsible for loading position history into the database, essential for maintaining a historical record of received prices and valuation changes."
+      },
+      {
+        "programFilePath": "src/programs/common/AUDPROC.cbl",
+        "impactScore": 1.0,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2000-PROCESS-AUDIT"],
+        "dependencyPath": ["AUDPROC"],
+        "rationale": "Writes audit trail entries, required for logging data feed failures, outdated prices, and valuation updates."
+      },
+      {
+        "programFilePath": "src/programs/common/ERRPROC.cbl",
+        "impactScore": 1.0,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2000-PROCESS-ERROR"],
+        "dependencyPath": ["ERRPROC"],
+        "rationale": "Centralized error logging required for alerting and audit trail."
+      },
+      {
+        "programFilePath": "src/programs/common/DB2ERR.cbl",
+        "impactScore": 1.0,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["1000-LOG-ERROR"],
+        "dependencyPath": ["DB2ERR"],
+        "rationale": "Ensures DB2-related failures in price ingestion or valuation updates are logged and can trigger alerts."
+      },
+      {
+        "programFilePath": "src/database/db2/POSHIST.sql",
+        "impactScore": 1.0,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["Entire table definition"],
+        "dependencyPath": ["POSHIST.sql"],
+        "rationale": "Persistent store for historical price and valuation data, directly supporting the requirement to maintain a historical record."
+      },
+      {
+        "programFilePath": "src/database/db2/ERRLOG.sql",
+        "impactScore": 1.0,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["Entire table definition"],
+        "dependencyPath": ["ERRLOG.sql"],
+        "rationale": "Persistent store for error and alert logs, supporting the requirement for audit and alerting."
+      },
+      {
+        "programFilePath": "src/programs/utility/UTLMON00.cbl",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2000-PROCESS", "2400-GENERATE-ALERTS"],
+        "dependencyPath": ["UTLMON00"],
+        "rationale": "Responsible for monitoring and alerting, directly supporting the requirement to trigger alerts if prices become outdated."
+      },
+      {
+        "programFilePath": "src/programs/utility/UTLVAL00.cbl",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["2000-PROCESS", "2200-CHECK-INTEGRITY"],
+        "dependencyPath": ["UTLVAL00"],
+        "rationale": "Ensures that valuation updates and historical records are consistent and accurate, indirectly supporting the user story."
+      },
+      {
+        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["2000-PROCESS-REPORT", "2100-READ-POSITIONS"],
+        "dependencyPath": ["RPTPOS00"],
+        "rationale": "Relies on up-to-date position values, which are impacted by real-time price updates."
+      },
+      {
+        "programFilePath": "src/programs/batch/RPTAUD00.cbl",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["2000-PROCESS-REPORT", "2100-PROCESS-AUDIT-TRAIL"],
+        "dependencyPath": ["RPTAUD00"],
+        "rationale": "Reports on audit and error events related to price updates and data feed issues."
+      },
+      {
+        "programFilePath": "src/programs/online/INQPORT.cbl",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["P200-GET-POSITION"],
+        "dependencyPath": ["INQPORT"],
+        "rationale": "Directly displays position values that must reflect the most current market prices."
+      },
+      {
+        "programFilePath": "src/programs/online/INQHIST.cbl",
+        "impactScore": 0.95,
+        "impactLevel": "High",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["P200-GET-HISTORY"],
+        "dependencyPath": ["INQHIST"],
+        "rationale": "Provides access to historical price and valuation data, which must be accurate and up-to-date."
       }
     ]
   }
@@ -74,26 +191,49 @@ User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio
 
 ---
 
-**Visualization**:
+## Visualization
 
 ```mermaid
 graph TD
-    POSUPDT["src/programs/batch/POSUPDT.cbl (High)"] --> POSREC["src/copybook/common/POSREC.cpy (High)"]
-    POSUPDT --> AUDPROC["src/programs/common/AUDPROC.cbl (High)"]
-    AUDPROC --> AUDITLOG["src/copybook/common/AUDITLOG.cpy (High)"]
-    POSUPDT --> HISTLD00["src/programs/batch/HISTLD00.cbl (High)"]
-    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
-    class POSUPDT,POSREC,AUDPROC,AUDITLOG,HISTLD00 high;
+  POSREC["src/copybook/common/POSREC.cpy (High)"] 
+  HISTREC["src/copybook/common/HISTREC.cpy (High)"]
+  AUDITLOG["src/copybook/common/AUDITLOG.cpy (High)"]
+  ERRHAND["src/copybook/common/ERRHAND.cpy (High)"]
+  HISTLD00["src/programs/batch/HISTLD00.cbl (High)"]
+  AUDPROC["src/programs/common/AUDPROC.cbl (High)"]
+  ERRPROC["src/programs/common/ERRPROC.cbl (High)"]
+  DB2ERR["src/programs/common/DB2ERR.cbl (High)"]
+  POSHIST["src/database/db2/POSHIST.sql (High)"]
+  ERRLOG["src/database/db2/ERRLOG.sql (High)"]
+  UTLMON00["src/programs/utility/UTLMON00.cbl (High)"]
+  UTLVAL00["src/programs/utility/UTLVAL00.cbl (High)"]
+  RPTPOS00["src/programs/batch/RPTPOS00.cbl (High)"]
+  RPTAUD00["src/programs/batch/RPTAUD00.cbl (High)"]
+  INQPORT["src/programs/online/INQPORT.cbl (High)"]
+  INQHIST["src/programs/online/INQHIST.cbl (High)"]
+
+  POSREC --> HISTLD00
+  POSREC --> RPTPOS00
+  POSREC --> INQPORT
+  HISTREC --> HISTLD00
+  HISTREC --> RPTAUD00
+  HISTREC --> INQHIST
+  AUDITLOG --> AUDPROC
+  AUDITLOG --> RPTAUD00
+  ERRHAND --> ERRPROC
+  ERRHAND --> DB2ERR
+  HISTLD00 --> POSHIST
+  HISTLD00 --> AUDPROC
+  HISTLD00 --> ERRPROC
+  AUDPROC --> ERRLOG
+  ERRPROC --> ERRLOG
+  DB2ERR --> ERRLOG
+  UTLMON00 --> ERRPROC
+  UTLMON00 --> AUDPROC
+  UTLVAL00 --> HISTLD00
+  UTLVAL00 --> RPTPOS00
+  RPTPOS00 --> POSREC
+  RPTAUD00 --> AUDITLOG
+  INQPORT --> POSREC
+  INQHIST --> HISTREC
 ```
-
----
-
-**Notes on Reasoning**:
-- Only existing files in the repository are included.
-- POSUPDT.cbl is the logical entry point for position updates and will require the most significant changes for real-time integration.
-- POSREC.cpy is a shared copybook for position records, which must be extended for new data fields.
-- AUDPROC.cbl and AUDITLOG.cpy are central to error handling and audit logging, both of which are critical per the user story.
-- HISTLD00.cbl is responsible for maintaining historical price records, directly supporting the requirement for historical analysis.
-- All other programs, copybooks, and JCL files were reviewed and excluded if not directly or critically impacted by the real-time feed integration, valuation, or logging requirements.
-
-**End of Report**
