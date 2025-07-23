@@ -1,97 +1,77 @@
-
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document details the recent changes and low-level design for the COBOL application modules related to position record management and audit trail processing. The changes introduce new fields for real-time market price ingestion, enhanced audit logging for market feed errors and alarms, and prepare for future logic to apply real-time prices and store P&L in batch processing.
+This document details the technical changes and low-level design (LLD) for recent modifications to the COBOL application modules and copybooks related to position record management and audit trail processing. The changes primarily introduce new fields for real-time market price tracking and enhanced audit logging, as well as prepare for new logic implementation in batch processing modules.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The application manages financial position records and maintains an audit trail for all significant events. The core modules include copybooks for data structures (`POSREC.CPY`, `AUDITLOG.CPY`), an audit processing subroutine (`AUDPROC.CBL`), and a batch update program (`POSUPDT.CBL`).
+The application manages financial position records and maintains an audit trail for all significant events and data changes. The core modules include copybooks for data structure definitions and COBOL programs for processing and logging.
 
 ### 2.2 Detailed Logic  
-- **Position Record Structure (`POSREC.CPY`):**  
-  Defines the data layout for position records, including portfolio, investment, quantity, cost basis, market value, and status.  
-  - *Change:* Added fields for last real-time market price and its timestamp.
-
-- **Audit Trail Record (`AUDITLOG.CPY`):**  
-  Defines the audit record structure, capturing system/user info, action types, status, key info, before/after images, and messages.  
-  - *Change:* Added fields for market feed error code, feed status, and alarm indicator.
-
-- **Audit Trail Processing (`AUDPROC.CBL`):**  
-  Handles initialization, processing, and termination of audit records.  
-  - *Change:* Enhanced to process and log new feed error/status/alarm fields.
-
-- **Batch Position Update (`POSUPDT.CBL`):**  
-  Currently empty; to be implemented for real-time price application and P&L storage.
+- **Position Record Management:**  
+  The `POSREC.CPY` copybook defines the structure for position records, including portfolio, investment, and valuation details.  
+- **Audit Trail Processing:**  
+  The `AUDITLOG.CPY` copybook and `AUDPROC.CBL` program define and process audit records, capturing system, user, and transaction information for traceability and compliance.  
+- **Batch Processing:**  
+  The `POSUPDT.CBL` program is a placeholder for future logic related to real-time price application and P&L storage.
 
 #### Flowchart:  
 ```
 flowchart TD
     Start(["Start"])
-    Init["1000-INITIALIZE:
-Accept
-System Time
-Open Audit File"]
-    ProcessAudit["2000-PROCESS-AUDIT:
-Initialize Audit Record
-Move Linkage Data
-Move Feed Error/Status/Alarm
-Write Audit Record"]
-    Terminate["3000-TERMINATE:
-Close Audit File"]
+    ReadPositionRecord["Read
+Position Record
+(POSREC.CPY)"]
+    ProcessPosition["Process
+Position Data"]
+    UpdateAuditTrail["Update
+Audit Trail
+(AUDPROC.CBL)"]
+    WriteAuditRecord["Write
+Audit Record
+(AUDITLOG.CPY)"]
     End(["End"])
 
-    Start --> Init
-    Init --> ProcessAudit
-    ProcessAudit --> Terminate
-    Terminate --> End
+    Start --> ReadPositionRecord
+    ReadPositionRecord --> ProcessPosition
+    ProcessPosition --> UpdateAuditTrail
+    UpdateAuditTrail --> WriteAuditRecord
+    WriteAuditRecord --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-Enhance position and audit record structures to support real-time market price ingestion and detailed market feed error/alarm logging. Prepare batch update logic for real-time price application and P&L storage.
+Enhance position and audit record structures to support real-time market price ingestion, valuation timestamping, and detailed market feed error/status/alarm logging. Prepare batch processing modules for future logic implementation.
 
 ### 3.2 Impacted Code Changes Summary:
 
 #### 3.2.1 Impacted Sections and Files:
 - **src/copybook/common/POSREC.cpy**
-  - *Purpose of Changes:* Add fields for last real-time market price and its timestamp to support real-time valuation and audit/backtesting.
-  - *Impact:* Enables storage and tracking of the most recent market price and its ingestion time for each position.
-
+  - *Purpose of Changes:* Add fields for last-ingested real-time market price and valuation timestamp.
+  - *Impact:* Enables accurate tracking of the latest market price and its ingestion time for each position, supporting real-time analytics and auditability.
 - **src/copybook/common/AUDITLOG.cpy**
-  - *Purpose of Changes:* Add fields for market feed error code, feed status, and alarm indicator to enhance audit traceability.
-  - *Impact:* Allows detailed logging of market feed issues and alarm states for operational monitoring and compliance.
-
+  - *Purpose of Changes:* Add fields for market feed error code, feed status, and alarm indicator.
+  - *Impact:* Improves audit trail granularity, allowing for detailed monitoring and alerting on market data feed issues.
 - **src/programs/common/AUDPROC.cbl**
-  - *Purpose of Changes:* Add working-storage and linkage for new audit fields; update audit processing logic to populate these fields.
-  - *Impact:* Ensures all relevant feed error/status/alarm information is captured in the audit trail.
-
+  - *Purpose of Changes:* Add working-storage and linkage for new audit fields; update logic to populate and write these fields.
+  - *Impact:* Ensures all relevant feed error/status/alarm information is captured in audit records for traceability.
 - **src/programs/batch/POSUPDT.cbl**
-  - *Purpose of Changes:* File is empty; serves as a placeholder for new logic to apply real-time prices and store P&L.
-  - *Impact:* Prepares for future implementation as per requirements.
+  - *Purpose of Changes:* File is empty; reserved for new logic implementation.
+  - *Impact:* No current impact; sets the stage for future enhancements.
+- **src/programs/batch/POSVAL00.cbl**
+  - *Purpose of Changes:* File not found; no changes applied.
+  - *Impact:* None.
 
 ### 3.3 Insertion Points  
 - **POSREC.CPY:**  
-  - *Insertion Point:* After `POS-STATUS` in the `POS-DATA` group.
-  - *Description:*  
-    - Added `POS-LAST-PRICE` (PIC S9(13)V9(6) COMP-3) for last real-time market price.
-    - Added `POS-PRICE-TIMESTAMP` (PIC X(26)) for the timestamp of last price ingestion.
-
+  - New fields `POS-LAST-PRICE` and `POS-PRICE-TIMESTAMP` inserted under `POS-DATA` section (after `POS-STATUS`).
 - **AUDITLOG.CPY:**  
-  - *Insertion Point:* After `AUD-KEY-INFO`.
-  - *Description:*  
-    - Added `AUD-ERROR-CODE` (PIC X(10)) for market feed error codes.
-    - Added `AUD-FEED-STATUS` (PIC X(8)) for feed status (OK/STALE/FAIL).
-    - Added `AUD-FEED-ALARM` (PIC X(1)) for alarm state (Y/N).
-
+  - New fields `AUD-ERROR-CODE`, `AUD-FEED-STATUS`, and `AUD-FEED-ALARM` inserted after `AUD-KEY-INFO`.
 - **AUDPROC.CBL:**  
-  - *Insertion Points:*  
-    - *WORKING-STORAGE SECTION:* Added variables for feed error code, status, and alarm.
-    - *LINKAGE SECTION:* Added fields for feed error code, status, and alarm in `LS-AUDIT-REQUEST`.
-    - *2000-PROCESS-AUDIT:* Added logic to move new linkage fields to audit record before writing.
-
+  - Working-storage and linkage section: New variables for feed error, status, and alarm.
+  - Procedure division (`2000-PROCESS-AUDIT`): Logic to move new linkage fields into audit record before writing.
 - **POSUPDT.CBL:**  
-  - *Insertion Point:* Entire file is empty; new logic to be implemented by the next agent.
+  - No insertion; file is empty and ready for new logic.
 
 ### 3.4 Structured Diffs  
 
@@ -159,24 +139,13 @@ Enhance position and audit record structures to support real-time market price i
 
 #### src/programs/common/AUDPROC.cbl
 
-**Before (WORKING-STORAGE SECTION):**  
+**Before (Working-Storage and Linkage):**  
 ```cobol
+ WORKING-STORAGE SECTION.
  01  WS-FILE-STATUS          PIC X(2).
  01  WS-FORMATTED-TIME       PIC X(26).
-```
 
-**After (WORKING-STORAGE SECTION):**  
-```cobol
- 01  WS-FILE-STATUS          PIC X(2).
- 01  WS-FORMATTED-TIME       PIC X(26).
-*-- Change: Add working-storage for feed error/alert handling
- 01  WS-FEED-ERROR-CODE      PIC X(10).
- 01  WS-FEED-STATUS          PIC X(8).
- 01  WS-FEED-ALARM           PIC X(1).
-```
-
-**Before (LINKAGE SECTION):**  
-```cobol
+ LINKAGE SECTION.
  01  LS-AUDIT-REQUEST.
      05  LS-SYSTEM-INFO.
          10  LS-SYSTEM-ID    PIC X(8).
@@ -195,8 +164,17 @@ Enhance position and audit record structures to support real-time market price i
      05  LS-RETURN-CODE     PIC S9(4) COMP.
 ```
 
-**After (LINKAGE SECTION):**  
+**After (Working-Storage and Linkage):**  
 ```cobol
+ WORKING-STORAGE SECTION.
+ 01  WS-FILE-STATUS          PIC X(2).
+ 01  WS-FORMATTED-TIME       PIC X(26).
+*-- Change: Add working-storage for feed error/alert handling
+ 01  WS-FEED-ERROR-CODE      PIC X(10).
+ 01  WS-FEED-STATUS          PIC X(8).
+ 01  WS-FEED-ALARM           PIC X(1).
+
+ LINKAGE SECTION.
  01  LS-AUDIT-REQUEST.
      05  LS-SYSTEM-INFO.
          10  LS-SYSTEM-ID    PIC X(8).
@@ -219,18 +197,44 @@ Enhance position and audit record structures to support real-time market price i
      05  LS-FEED-ALARM      PIC X(1).
 ```
 
-**Before (2000-PROCESS-AUDIT):**  
+**Before (Procedure Division - 2000-PROCESS-AUDIT):**  
 ```cobol
+ 2000-PROCESS-AUDIT.
+     INITIALIZE AUDIT-RECORD
+
+     MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
+     MOVE LS-SYSTEM-INFO     TO AUD-HEADER
+     MOVE LS-TYPE            TO AUD-TYPE
+     MOVE LS-ACTION          TO AUD-ACTION
+     MOVE LS-STATUS          TO AUD-STATUS
+     MOVE LS-KEY-INFO        TO AUD-KEY-INFO
+     MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
+     MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
      MOVE LS-MESSAGE         TO AUD-MESSAGE
+
+     WRITE AUDIT-RECORD
 ```
 
-**After (2000-PROCESS-AUDIT):**  
+**After (Procedure Division - 2000-PROCESS-AUDIT):**  
 ```cobol
+ 2000-PROCESS-AUDIT.
+     INITIALIZE AUDIT-RECORD
+
+     MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
+     MOVE LS-SYSTEM-INFO     TO AUD-HEADER
+     MOVE LS-TYPE            TO AUD-TYPE
+     MOVE LS-ACTION          TO AUD-ACTION
+     MOVE LS-STATUS          TO AUD-STATUS
+     MOVE LS-KEY-INFO        TO AUD-KEY-INFO
+     MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
+     MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
      MOVE LS-MESSAGE         TO AUD-MESSAGE
 *-- Change: Move feed error/status/alarm to audit record for traceability
      MOVE LS-FEED-ERROR-CODE TO AUD-ERROR-CODE
      MOVE LS-FEED-STATUS     TO AUD-FEED-STATUS
      MOVE LS-FEED-ALARM      TO AUD-FEED-ALARM
+
+     WRITE AUDIT-RECORD
 ```
 
 #### src/programs/batch/POSUPDT.cbl
@@ -242,11 +246,17 @@ Enhance position and audit record structures to support real-time market price i
 ```
 
 **After:**  
+_No changes; file remains empty and ready for new logic implementation._
+
+#### src/programs/batch/POSVAL00.cbl
+
+**Before:**  
 ```cobol
-*-- Change: File exists but is empty. No legacy logic to update. 
-*-- Change: New logic will be implemented by the next agent as per impact analysis requirements.
+*-- Change: File not found in repository. No changes applied.
 ```
-*(No changes; file remains empty for next agent's implementation.)*
+
+**After:**  
+_No changes; file not found._
 
 ## 4. Conclusion  
-The changes introduce new fields for real-time market price and timestamp in position records, and enhance audit logging with market feed error, status, and alarm indicators. The audit processing subroutine is updated to handle these new fields, ensuring comprehensive traceability and operational monitoring. The batch update program is prepared for future logic to apply real-time prices and store P&L, supporting evolving business and compliance requirements.
+The implemented changes enhance the application's ability to track real-time market prices and valuation timestamps for positions, and to log detailed market feed error, status, and alarm information in the audit trail. These improvements support better traceability, compliance, and readiness for future enhancements in batch processing modules. All changes are backward-compatible and maintain COBOL formatting standards.
