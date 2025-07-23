@@ -1,20 +1,18 @@
 **Summary**:
 User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates
 
-- 5 impacted components identified (**High impact only**)
-- High complexity change involving real-time data ingestion, dynamic valuation, error handling, audit logging, and updates to batch/database processing.
+- 3 impacted components identified (**High impact only**)
+- High complexity change involving real-time data ingestion, dynamic valuation, error handling, and audit/history tracking across portfolio processing and reporting modules.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                          | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                      |
-|--------------------------------------------|--------|---------|---------------------------------------------|------------------------------------------------------|
-| `src/programs/portfolio/PORTUPDT.cbl`      | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS, 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE | Entry point for portfolio updates; core valuation logic |
-| `src/programs/portfolio/PORTTRAN.cbl`      | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS-TRANSACTIONS, 2100-VALIDATE-TRANSACTION | Transaction processing, triggers valuation updates    |
-| `src/programs/batch/RCVPRC00.cbl`          | High   | Direct  | 1000-INITIALIZE-RECOVERY, 2000-PROCESS-RECOVERY, 2100-RECOVER-PROCESS | Batch price ingestion and recovery                   |
-| `src/programs/batch/RPTAUD00.cbl`          | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS-REPORT, 9999-ERROR-HANDLER | Audit logging/reporting for price/valuation events    |
-| `src/copybook/common/PORTFLIO.cpy`         | High   | Direct  | N/A (data structure)                        | Shared portfolio data structure for valuation updates |
+| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                  |
+|------------------------------------------|--------|---------|---------------------------------------------|--------------------------------------------------|
+| `src/programs/portfolio/PORTUPDT.cbl`    | High   | Direct  | 2000-PROCESS, 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE | Entry point for portfolio updates; core valuation logic |
+| `src/copybook/common/PORTFLIO.cpy`       | High   | Direct  | N/A (data structure)                        | Shared portfolio data structure for valuation     |
+| `src/programs/batch/RPTAUD00.cbl`        | High   | Direct  | 2000-PROCESS-REPORT, 1100-OPEN-FILES, 9999-ERROR-HANDLER | Audit log and historical record/reporting         |
 
 ---
 
@@ -29,45 +27,27 @@ User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS", "2100-PROCESS-UPDATE", "2200-APPLY-UPDATE"],
+        "affectedParagraphs": ["2000-PROCESS", "2100-PROCESS-UPDATE", "2200-APPLY-UPDATE"],
         "dependencyPath": ["PORTUPDT"],
-        "rationale": "Primary program for updating portfolio values; must process real-time price updates and recalculate valuations."
+        "rationale": "Main program for updating portfolio values; must process real-time price updates and trigger recalculation of valuations and P/L metrics."
       },
       {
-        "programFilePath": "src/programs/portfolio/PORTTRAN.cbl",
-        "impactScore": 0.96,
+        "programFilePath": "src/copybook/common/PORTFLIO.cpy",
+        "impactScore": 0.97,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS-TRANSACTIONS", "2100-VALIDATE-TRANSACTION"],
-        "dependencyPath": ["PORTTRAN"],
-        "rationale": "Handles portfolio transactions; must trigger valuation recalculation on price update."
-      },
-      {
-        "programFilePath": "src/programs/batch/RCVPRC00.cbl",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["1000-INITIALIZE-RECOVERY", "2000-PROCESS-RECOVERY", "2100-RECOVER-PROCESS"],
-        "dependencyPath": ["RCVPRC00"],
-        "rationale": "Batch program for receiving and processing price feeds; will require real-time integration logic."
+        "affectedParagraphs": [],
+        "dependencyPath": ["PORTUPDT", "PORTFLIO"],
+        "rationale": "Defines the portfolio data structure; changes needed to accommodate new price fields, timestamps, and possibly historical price arrays."
       },
       {
         "programFilePath": "src/programs/batch/RPTAUD00.cbl",
         "impactScore": 0.93,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS-REPORT", "9999-ERROR-HANDLER"],
+        "affectedParagraphs": ["2000-PROCESS-REPORT", "1100-OPEN-FILES", "9999-ERROR-HANDLER"],
         "dependencyPath": ["RPTAUD00"],
-        "rationale": "Responsible for audit logging and reporting; must log price feed errors and valuation events."
-      },
-      {
-        "programFilePath": "src/copybook/common/PORTFLIO.cpy",
-        "impactScore": 0.92,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": [],
-        "dependencyPath": ["PORTUPDT", "PORTTRAN", "PORTFLIO.cpy"],
-        "rationale": "Portfolio data structure; will require updates to support new price/time fields and historical records."
+        "rationale": "Responsible for audit logging and historical reporting; must record price update events, errors, and support new reporting requirements."
       }
     ]
   }
@@ -82,24 +62,21 @@ User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio
 graph TD
   subgraph High Impact
     PORTUPDT["src/programs/portfolio/PORTUPDT.cbl"]
-    PORTTRAN["src/programs/portfolio/PORTTRAN.cbl"]
-    RCVPRC00["src/programs/batch/RCVPRC00.cbl"]
-    RPTAUD00["src/programs/batch/RPTAUD00.cbl"]
     PORTFLIO["src/copybook/common/PORTFLIO.cpy"]
+    RPTAUD00["src/programs/batch/RPTAUD00.cbl"]
   end
 
-  RCVPRC00 -- feeds price updates --> PORTUPDT
-  PORTUPDT -- updates valuations --> PORTTRAN
-  PORTUPDT -- uses structure --> PORTFLIO
-  PORTTRAN -- uses structure --> PORTFLIO
-  PORTUPDT -- logs events --> RPTAUD00
-  RCVPRC00 -- logs errors --> RPTAUD00
+  PORTUPDT -- uses --> PORTFLIO
+  RPTAUD00 -- logs/reports --> PORTUPDT
+  RPTAUD00 -- uses --> PORTFLIO
 ```
 
 ---
 
-**Key Notes**:
-- Only existing files in the repository are included.
-- All components listed are directly and critically involved in the real-time price feed, valuation, error handling, and audit requirements of the user story.
-- No unrelated or non-existent files are referenced.
-- All file paths are as per the repository structure.
+**Reasoning**:
+
+- `src/programs/portfolio/PORTUPDT.cbl` is the main entry for portfolio updates and will be the focal point for integrating real-time price feeds, recalculating valuations, and updating P/L metrics.
+- `src/copybook/common/PORTFLIO.cpy` is the shared copybook defining the portfolio record structure. It will require changes to support new fields for real-time prices, timestamps, and possibly historical price arrays.
+- `src/programs/batch/RPTAUD00.cbl` is responsible for audit logging and historical reporting, both of which are critical for tracking price update events, error conditions, and supporting new reporting requirements as per the user story.
+
+No unrelated files or programs are included. Only high-impact, directly relevant components are listed, with full file paths as present in the repository.
