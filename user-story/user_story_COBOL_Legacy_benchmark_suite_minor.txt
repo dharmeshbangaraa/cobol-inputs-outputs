@@ -20,7 +20,7 @@ Acceptance Criteria:
    Sample input files and test data include valid `CHANNEL-CODE` values (e.g., `BRCH`, `ATM`, `MOBL`, `NETB`).
 
 5. LRECL & FD Adjustments
-   The LRECL (Logical Record Length) and FD (File Description) entries in COBOL programs and JCL are adjusted to reflect the new field.
+   The LRECL (Logical Record Length) and FD (File Description) entries in COBOL programs.
 
 6. Documentation
    The data dictionary and all relevant documentation are updated to reflect the structure and purpose of `CHANNEL-CODE`.
