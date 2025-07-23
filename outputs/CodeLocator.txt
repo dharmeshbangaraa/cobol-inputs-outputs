@@ -1,18 +1,25 @@
+
+---
+
 **Summary**:
-User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates  
-- 4 impacted components identified (**High impact only**)  
-- High complexity change involving real-time data ingestion, valuation recalculation, error handling, and audit logging across portfolio and position management, as well as audit and logging infrastructure.
+
+User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates
+
+- The system must ingest real-time market prices, update portfolio valuations and risk metrics, handle errors and logging, and maintain historical price records.
+- **5 high-impact components** identified (COBOL programs and copybooks).
+- High complexity: Touches core data ingestion, valuation, error handling, and audit logging paths, requiring changes to both business logic and supporting data structures.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections                 | Dependency Path                                   |
-|------------------------------------------|--------|---------|----------------------------------------------|---------------------------------------------------|
-| `src/programs/batch/POSUPDT.cbl`         | High   | Direct  | (all, new/modified for real-time update)     | Entry point for position updates                  |
-| `src/copybook/common/POSREC.cpy`         | High   | Direct  | POSITION-RECORD, related fields              | Shared data structure for position values         |
-| `src/programs/common/AUDPROC.cbl`        | High   | Direct  | 2000-PROCESS-AUDIT, 3000-TERMINATE           | Called for audit logging and error handling       |
-| `src/copybook/common/AUDITLOG.cpy`       | High   | Direct  | AUDIT-LOG-RECORD, related fields             | Shared audit log structure for error/history      |
+| Program File Path                           | Impact | Nature  | Affected Paragraphs/Sections         | Dependency Path                                   |
+|---------------------------------------------|--------|---------|--------------------------------------|---------------------------------------------------|
+| src/programs/batch/PORTUPDT.cbl             | High   | Direct  | 1000-INIT, 2000-INGEST-PRICE, 2100-UPDATE-VALUATION, 2200-UPDATE-RISK, 3000-LOG-ERROR | Entry point for portfolio updates, core valuation logic |
+| src/programs/common/AUDPROC.cbl             | High   | Direct  | 2000-PROCESS-AUDIT, 3000-TERMINATE   | Called for audit logging of price feed and errors  |
+| src/copybook/common/AUDITLOG.cpy            | High   | Direct  | N/A (copybook)                       | Shared audit log structure for error and event logging |
+| src/programs/batch/HISTLD00.cbl             | High   | Direct  | 2000-PROCESS-HISTORY, 2300-CHECK-COMMIT | Loads and maintains historical price records       |
+| src/copybook/common/POSREC.cpy              | High   | Direct  | N/A (copybook)                       | Position record structure, used in valuation updates |
 
 ---
 
@@ -23,40 +30,61 @@ User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio
     "userStory": "Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates",
     "impactedComponents": [
       {
-        "programFilePath": "src/programs/batch/POSUPDT.cbl",
+        "programFilePath": "src/programs/batch/PORTUPDT.cbl",
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [],
-        "dependencyPath": ["POSUPDT"],
-        "rationale": "Primary batch program for updating positions; must be extended to process real-time price updates, trigger recalculation, and handle new data ingestion logic."
-      },
-      {
-        "programFilePath": "src/copybook/common/POSREC.cpy",
-        "impactScore": 0.97,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["POSITION-RECORD"],
-        "dependencyPath": ["POSUPDT", "POSREC"],
-        "rationale": "Central copybook for position records; will require changes to support timestamping, new price fields, and historical price tracking."
+        "affectedParagraphs": [
+          "1000-INIT",
+          "2000-INGEST-PRICE",
+          "2100-UPDATE-VALUATION",
+          "2200-UPDATE-RISK",
+          "3000-LOG-ERROR"
+        ],
+        "dependencyPath": ["PORTUPDT"],
+        "rationale": "Main program for portfolio updates; must ingest real-time prices, recalculate valuations, update risk metrics, and handle error logging."
       },
       {
         "programFilePath": "src/programs/common/AUDPROC.cbl",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS-AUDIT", "3000-TERMINATE"],
-        "dependencyPath": ["POSUPDT", "AUDPROC"],
-        "rationale": "Handles audit logging; must be invoked for each price update and on error/alert conditions as per new requirements."
-      },
-      {
-        "programFilePath": "src/copybook/common/AUDITLOG.cpy",
         "impactScore": 0.93,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["AUDIT-LOG-RECORD"],
+        "affectedParagraphs": [
+          "2000-PROCESS-AUDIT",
+          "3000-TERMINATE"
+        ],
+        "dependencyPath": ["PORTUPDT", "AUDPROC"],
+        "rationale": "Handles audit logging for price feed events and error conditions; critical for compliance and traceability."
+      },
+      {
+        "programFilePath": "src/copybook/common/AUDITLOG.cpy",
+        "impactScore": 0.91,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [],
         "dependencyPath": ["AUDPROC", "AUDITLOG"],
-        "rationale": "Defines the audit log record structure; will need to accommodate new log types for price feed errors and update events."
+        "rationale": "Defines the audit log record structure; must be updated to support new event types and timestamps for price feed integration."
+      },
+      {
+        "programFilePath": "src/programs/batch/HISTLD00.cbl",
+        "impactScore": 0.90,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [
+          "2000-PROCESS-HISTORY",
+          "2300-CHECK-COMMIT"
+        ],
+        "dependencyPath": ["PORTUPDT", "HISTLD00"],
+        "rationale": "Responsible for loading and maintaining historical price records; must support new real-time ingestion and timestamping."
+      },
+      {
+        "programFilePath": "src/copybook/common/POSREC.cpy",
+        "impactScore": 0.90,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [],
+        "dependencyPath": ["PORTUPDT", "POSREC"],
+        "rationale": "Position record structure used in valuation and risk calculations; may require extension for real-time price fields."
       }
     ]
   }
@@ -69,10 +97,10 @@ User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio
 
 ```mermaid
 graph TD
-  A[src/programs/batch/POSUPDT.cbl]:::high --> B[src/copybook/common/POSREC.cpy]:::high
-  A --> C[src/programs/common/AUDPROC.cbl]:::high
-  C --> D[src/copybook/common/AUDITLOG.cpy]:::high
-
+  A[src/programs/batch/PORTUPDT.cbl]:::high --> B[src/programs/common/AUDPROC.cbl]:::high
+  A --> C[src/copybook/common/POSREC.cpy]:::high
+  A --> D[src/programs/batch/HISTLD00.cbl]:::high
+  B --> E[src/copybook/common/AUDITLOG.cpy]:::high
   classDef high fill:#ffcccc,stroke:#d33,stroke-width:2px;
 ```
 
@@ -80,9 +108,9 @@ graph TD
 
 **Reasoning**:
 
-- **POSUPDT.cbl** is the main entry for position updates and will be the focal point for integrating real-time price ingestion, recalculation, and error handling.
-- **POSREC.cpy** is the shared copybook for position records, which must be enhanced to support new fields (e.g., last update timestamp, historical prices).
-- **AUDPROC.cbl** is responsible for audit logging and must be invoked for every update and error, as per the new requirements.
-- **AUDITLOG.cpy** is the copybook for audit log records, which must be extended to log new event types (price update, feed error, etc.).
+- **PORTUPDT.cbl** is the main entry for portfolio updates and will be the integration point for real-time price ingestion, valuation, and risk updates.
+- **AUDPROC.cbl** and **AUDITLOG.cpy** are central to error handling and audit logging, both required by the user story for compliance and alerting.
+- **HISTLD00.cbl** is responsible for historical price record maintenance, which is explicitly required for analysis and reporting.
+- **POSREC.cpy** is the core data structure for positions, which will be directly impacted by the need to store and update real-time price information.
 
-No unrelated programs or copybooks are included. Only components with direct, high-impact logical connections to the user story are listed. No new files are created; all changes are scoped to existing repository files.
+**No other components in the repository have a direct, high-impact relationship to the user story requirements.** All identified components are present in the codebase and are strictly required for the feature.
