@@ -1,21 +1,22 @@
 **Summary**:
 User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting
 
-- 6 impacted components identified (**High impact only**)
-- High complexity change: affects core transaction data structures, file layouts, batch processing, reporting, test data, and JCL. All programs and copybooks that define, read, write, or report on transaction data must be updated to support the new `CHANNEL-CODE` field.
+- 7 impacted components identified (**High impact only**)
+- High complexity change: impacts core transaction data structures, all batch/utility/reporting programs that process transactions, and JCL controlling file layouts. Requires coordinated updates to copybooks, COBOL programs, and JCL to ensure the new field is handled throughout the batch processing and reporting chain.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                          | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                  |
-|--------------------------------------------|--------|---------|---------------------------------------------|--------------------------------------------------|
-| src/copybook/common/TRNREC.cpy             | High   | Direct  | CHANNEL-CODE definition, record layout      | Used by all transaction-processing programs      |
-| src/programs/portfolio/PORTTRAN.cbl        | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS-TRANSACTIONS, 2100-VALIDATE-TRANSACTION, FD section | Reads/writes transaction file, uses TRNREC.cpy   |
-| src/programs/batch/RPTAUD00.cbl            | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS-REPORT, FD section | Reads transaction file for reporting, uses TRNREC.cpy |
-| src/programs/test/TSTGEN00.cbl             | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS, FD section  | Generates test transaction data, uses TRNREC.cpy |
-| src/programs/utility/UTLVAL00.cbl          | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS, FD section  | Validates transaction files, uses TRNREC.cpy     |
-| src/jcl/RPTAUD00.jcl                       | High   | Direct  | DD statements for transaction/report files  | JCL for batch reporting, LRECL/record length     |
+| Program File Path                              | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                      |
+|------------------------------------------------|--------|---------|---------------------------------------------|------------------------------------------------------|
+| src/copybook/common/TRNREC.cpy                 | High   | Direct  | Transaction record definition               | Used by all transaction-processing programs          |
+| src/programs/portfolio/PORTTRAN.cbl            | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS-TRANSACTIONS, 2100-VALIDATE-TRANSACTION | Reads/writes transaction file, uses TRNREC           |
+| src/programs/utility/UTLVAL00.cbl              | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS               | Reads transaction data, uses TRNREC                  |
+| src/programs/batch/RPTAUD00.cbl                | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS-REPORT        | Generates audit report from transaction data         |
+| src/programs/test/TSTGEN00.cbl                 | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS               | Generates test transaction files, uses TRNREC        |
+| src/copybook/common/POSREC.cpy                 | High   | Direct  | POS record definition                       | Used in validation/reporting of transaction data     |
+| JCL/RTNANA00.jcl                               | High   | Direct  | N/A (JCL step definitions)                  | Controls batch job for transaction analytics         |
 
 ---
 
@@ -30,54 +31,63 @@ User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identificat
         "impactScore": 0.99,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["CHANNEL-CODE definition", "transaction record layout"],
+        "affectedParagraphs": [],
         "dependencyPath": ["TRNREC.cpy"],
-        "rationale": "Primary copybook for transaction record structure; all programs referencing transaction data must include the new CHANNEL-CODE field."
+        "rationale": "Defines the transaction record structure; must be updated to add CHANNEL-CODE field. All programs using this copybook are directly impacted."
       },
       {
         "programFilePath": "src/programs/portfolio/PORTTRAN.cbl",
         "impactScore": 0.97,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS-TRANSACTIONS", "2100-VALIDATE-TRANSACTION", "FD section"],
+        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS-TRANSACTIONS", "2100-VALIDATE-TRANSACTION"],
         "dependencyPath": ["PORTTRAN.cbl", "TRNREC.cpy"],
-        "rationale": "Reads and writes transaction file; must handle new CHANNEL-CODE field in all transaction processing logic and file definitions."
+        "rationale": "Reads and writes transaction files using TRNREC; must be updated to handle CHANNEL-CODE in all transaction processing logic."
+      },
+      {
+        "programFilePath": "src/programs/utility/UTLVAL00.cbl",
+        "impactScore": 0.96,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS"],
+        "dependencyPath": ["UTLVAL00.cbl", "TRNREC.cpy"],
+        "rationale": "Validates transaction data using TRNREC; must be updated to validate and process CHANNEL-CODE."
       },
       {
         "programFilePath": "src/programs/batch/RPTAUD00.cbl",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS-REPORT", "FD section"],
+        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS-REPORT"],
         "dependencyPath": ["RPTAUD00.cbl", "TRNREC.cpy"],
-        "rationale": "Batch reporting program; must include CHANNEL-CODE in report outputs and file layouts."
+        "rationale": "Generates audit reports from transaction data; must include CHANNEL-CODE in reporting output."
       },
       {
         "programFilePath": "src/programs/test/TSTGEN00.cbl",
+        "impactScore": 0.94,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS"],
+        "dependencyPath": ["TSTGEN00.cbl", "TRNREC.cpy"],
+        "rationale": "Generates test transaction files; must generate and handle CHANNEL-CODE for test data."
+      },
+      {
+        "programFilePath": "src/copybook/common/POSREC.cpy",
         "impactScore": 0.93,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS", "FD section"],
-        "dependencyPath": ["TSTGEN00.cbl", "TRNREC.cpy"],
-        "rationale": "Test data generator; must produce sample transactions with valid CHANNEL-CODE values."
+        "affectedParagraphs": [],
+        "dependencyPath": ["POSREC.cpy"],
+        "rationale": "POS record structure used in transaction validation and reporting; may require update to align with new transaction layout."
       },
       {
-        "programFilePath": "src/programs/utility/UTLVAL00.cbl",
+        "programFilePath": "JCL/RTNANA00.jcl",
         "impactScore": 0.92,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS", "FD section"],
-        "dependencyPath": ["UTLVAL00.cbl", "TRNREC.cpy"],
-        "rationale": "Utility for validating transaction files; must validate presence and correctness of CHANNEL-CODE."
-      },
-      {
-        "programFilePath": "src/jcl/RPTAUD00.jcl",
-        "impactScore": 0.90,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["DD statements for transaction/report files"],
-        "dependencyPath": ["RPTAUD00.jcl", "RPTAUD00.cbl"],
-        "rationale": "JCL for batch reporting; LRECL and DD statements must be updated for new record length including CHANNEL-CODE."
+        "affectedParagraphs": [],
+        "dependencyPath": ["RTNANA00.jcl"],
+        "rationale": "Controls batch job for transaction analytics; LRECL and file layout must be updated for CHANNEL-CODE."
       }
     ]
   }
@@ -92,35 +102,42 @@ User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identificat
 graph TD
   subgraph Copybooks
     TRNREC["src/copybook/common/TRNREC.cpy"]
+    POSREC["src/copybook/common/POSREC.cpy"]
   end
+
   subgraph Programs
     PORTTRAN["src/programs/portfolio/PORTTRAN.cbl"]
-    RPTAUD00["src/programs/batch/RPTAUD00.cbl"]
-    TSTGEN00["src/programs/test/TSTGEN00.cbl"]
-    UTLVAL00["src/programs/utility/UTLVAL00.cbl"]
+    UTLVAL["src/programs/utility/UTLVAL00.cbl"]
+    RPTAUD["src/programs/batch/RPTAUD00.cbl"]
+    TSTGEN["src/programs/test/TSTGEN00.cbl"]
   end
+
   subgraph JCL
-    RPTAUD00JCL["src/jcl/RPTAUD00.jcl"]
+    RTNANA["JCL/RTNANA00.jcl"]
   end
 
-  TRNREC -- High Impact --> PORTTRAN
-  TRNREC -- High Impact --> RPTAUD00
-  TRNREC -- High Impact --> TSTGEN00
-  TRNREC -- High Impact --> UTLVAL00
-  RPTAUD00 -- High Impact --> RPTAUD00JCL
+  TRNREC -- Used by --> PORTTRAN
+  TRNREC -- Used by --> UTLVAL
+  TRNREC -- Used by --> RPTAUD
+  TRNREC -- Used by --> TSTGEN
+  POSREC -- Used by --> UTLVAL
+  POSREC -- Used by --> RPTAUD
+  PORTTRAN -- Processed by --> RTNANA
+  UTLVAL -- Processed by --> RTNANA
+  RPTAUD -- Processed by --> RTNANA
+  TSTGEN -- Generates data for --> RTNANA
 
-  style TRNREC fill:#ffcccc,stroke:#d33,stroke-width:2px
-  style PORTTRAN fill:#ffcccc,stroke:#d33,stroke-width:2px
-  style RPTAUD00 fill:#ffcccc,stroke:#d33,stroke-width:2px
-  style TSTGEN00 fill:#ffcccc,stroke:#d33,stroke-width:2px
-  style UTLVAL00 fill:#ffcccc,stroke:#d33,stroke-width:2px
-  style RPTAUD00JCL fill:#ffcccc,stroke:#d33,stroke-width:2px
+  classDef highImpact fill:#ffcccc,stroke:#d00,stroke-width:2px;
+  class TRNREC,POSREC,PORTTRAN,UTLVAL,RPTAUD,TSTGEN,RTNANA highImpact;
 ```
 
 ---
 
-**Notes**:
+**Key Notes**:
 - Only files present in the repository are included.
-- All listed components are directly impacted by the addition of `CHANNEL-CODE` and require updates to definitions, file layouts, or logic.
-- No unrelated or non-existent files are included.
-- All impact scores are high due to the centrality of transaction data in batch, reporting, and test processes.
+- All listed components are directly responsible for defining, processing, or reporting on transaction data and must be updated for the new `CHANNEL-CODE` field.
+- JCL is included where it controls file layouts or LRECL for transaction files.
+- No unrelated or non-existent files are listed.
+- All impact scores are high due to the centrality of transaction data in batch processing and reporting.
+
+This report is ready for the next agent to proceed with implementation or further analysis.
