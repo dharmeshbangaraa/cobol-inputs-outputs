@@ -1,145 +1,127 @@
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document details the recent enhancements and modifications made to the COBOL application modules responsible for portfolio updates, recovery processing, and audit reporting. The primary focus of these changes is the integration of real-time market data feeds, timestamping of price updates, audit triggers, and improved error logging for feed processing. This document serves as a comprehensive reference for developers, testers, and maintainers to understand the low-level design and implementation details of the impacted modules.
+This document details the technical changes and low-level design (LLD2) for the COBOL application modules impacted by the integration of real-time price feed and market data ingestion, as well as enhanced audit logging and reporting. The changes span portfolio update processing, batch recovery, audit logging, and audit reporting components. The purpose of this document is to provide a comprehensive understanding of the modifications, their rationale, and their implementation details for developers, testers, and maintainers.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The application suite consists of several modules:
-- **PORTUPDT**: Updates portfolio records based on incoming update files.
-- **RCVPRC00**: Handles batch process recovery, including error handling and process restarts.
-- **RPTAUD00**: Generates audit and error reports for system processes.
-- **PORTFLIO**: Defines the portfolio master record structure.
+The application suite manages portfolio records, processes batch updates, handles recovery operations, and generates audit reports. The main modules are:
+
+- **PORTUPDT.cbl**: Updates portfolio records based on update files.
+- **RCVPRC00.cbl**: Handles batch recovery and now ingests real-time market data.
+- **AUDITLOG.cpy**: Defines the audit trail record structure.
+- **RPTAUD00.cbl**: Generates audit reports, now including price feed and error events.
 
 ### 2.2 Detailed Logic  
-#### PORTUPDT (Portfolio Update Program)
-- **Initialization**: Opens portfolio, update, and (now) price feed files. (Lines 1000-INITIALIZE)
-- **Processing**: 
-  - Processes real-time price feed records before standard updates (Lines 1500-PROCESS-PRICEFEED).
-  - Applies updates from the update file, including status, name, and value changes (Lines 2000-PROCESS, 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE).
-  - Updates last price timestamp and triggers audit logs on value changes.
-- **Termination**: Closes all files and displays summary statistics (Lines 3000-TERMINATE).
 
-#### RCVPRC00 (Process Recovery Handler)
-- **Initialization**: Opens control, sequence, and (now) market data feed files (1000-INITIALIZE-RECOVERY).
-- **Processing**: 
-  - Handles recovery based on process, sequence, or all modes (2000-PROCESS-RECOVERY).
-  - Polls real-time market data feed, logs errors, and triggers audit logs for invalid prices (2500-POLL-MARKETDATA).
-- **Termination**: Updates final status and closes all files (3000-TERMINATE-RECOVERY).
+#### PORTUPDT.cbl  
+- **Initialization**: Opens portfolio, update, price feed, and audit files.  
+- **Price Feed Processing**: Reads real-time price feed records, updates portfolio values, and logs audit events.  
+- **Update Processing**: Applies updates from the update file to portfolio records and logs audit events.  
+- **Termination**: Closes all files and displays processing statistics.
 
-#### RPTAUD00 (Audit Report Generator)
-- **Initialization**: Opens audit, error, report, and (now) feed error log files (1100-OPEN-FILES).
-- **Processing**: 
-  - Processes audit trails, error logs, and feed error logs (2000-PROCESS-REPORT).
-  - Summarizes and writes reports for each log type.
-- **Termination**: Closes all files (3000-CLEANUP).
+#### RCVPRC00.cbl  
+- **Market Data Polling**: Polls the market feed file, logs each event to the audit log, and handles errors.  
+- **Recovery Processing**: Executes recovery logic based on the function code provided.
 
-#### PORTFLIO (Portfolio Master Record Layout)
-- Defines the structure of portfolio records, now including last price timestamp and a historical price array.
+#### AUDITLOG.cpy  
+- **Audit Record Structure**: Defines fields for timestamp, system, user, program, terminal, type, action, status, key info, before/after images, and message.  
+- **New Types/Actions**: Adds support for price feed and price update events.
 
-#### Flowchart:
+#### RPTAUD00.cbl  
+- **Audit Trail Processing**: Reads audit records, identifies and counts price feed and error events, and writes detailed and summary reports.
+
+#### Flowchart:  
 ```
 flowchart TD
     Start(["Start"])
     Init["Initialize
 Files"]
     PriceFeed["Process
-Real-Time Price Feed"]
+Price Feed"]
     Updates["Process
 Update File"]
-    ApplyUpdate["Apply
-Update to Portfolio"]
-    AuditLog["Trigger
+    Recovery["Batch
+Recovery"]
+    AuditLog["Write
 Audit Log"]
-    Terminate["Terminate
-and Close Files"]
-    MarketFeed["Poll
-Market Data Feed"]
-    FeedError["Log
-Feed Errors"]
     Report["Generate
-Audit/Error/Feed Reports"]
+Audit Report"]
     End(["End"])
 
     Start --> Init
     Init --> PriceFeed
+    PriceFeed --> AuditLog
     PriceFeed --> Updates
-    Updates --> ApplyUpdate
-    ApplyUpdate --> AuditLog
-    AuditLog --> Terminate
-    Terminate --> End
-
-    PriceFeed -.-> MarketFeed
-    MarketFeed -.-> FeedError
-    FeedError -.-> Report
-    Report -.-> End
+    Updates --> AuditLog
+    Updates --> Recovery
+    Recovery --> AuditLog
+    AuditLog --> Report
+    Report --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-- Integrate real-time market price feeds into portfolio and batch recovery processing.
-- Timestamp all price updates and maintain historical price data.
-- Trigger audit logs for all value changes and feed errors.
-- Enhance audit reporting to include feed error logs.
+- Integrate real-time price feed and market data ingestion into portfolio and batch processing.
+- Enhance audit logging to capture price feed and error events.
+- Update audit reporting to include new event types and provide summary statistics.
 
 ### 3.2 Impacted Code Changes Summary:
+
 #### 3.2.1 Impacted Sections and Files:
-- **src/programs/portfolio/PORTUPDT.cbl**: Portfolio update logic, price feed integration, audit triggers.
-- **src/programs/batch/RCVPRC00.cbl**: Batch recovery, market data polling, audit/error logging.
-- **src/copybook/common/PORTFLIO.cpy**: Portfolio record structure, timestamp, and historical price fields.
-- **src/programs/batch/RPTAUD00.cbl**: Audit report generation, feed error log integration.
+- **src/programs/portfolio/PORTUPDT.cbl**
+- **src/programs/batch/RCVPRC00.cbl**
+- **src/copybook/common/AUDITLOG.cpy**
+- **src/programs/batch/RPTAUD00.cbl**
 
-  - **Purpose of Changes**:  
-    To enable real-time integration of market data, ensure all price changes are timestamped and auditable, and provide comprehensive reporting of feed-related errors for compliance and operational transparency.
+  - **Purpose of Changes:**  
+    - Enable ingestion and processing of real-time price/market data.
+    - Provide comprehensive audit logging for all new events and errors.
+    - Enhance reporting to reflect new audit event types.
 
-  - **Impact**:  
-    - Real-time price and market data can now update portfolios and recovery processes.
-    - All price changes are timestamped and historical data is retained.
-    - Audit logs are triggered for all value changes and feed errors.
-    - Audit reports now include feed error logs, improving traceability and error analysis.
+  - **Impact:**  
+    - Improved data accuracy and timeliness in portfolio valuations.
+    - Enhanced traceability and compliance via detailed audit logs.
+    - Better operational insight through enriched audit reports.
 
 ### 3.3 Insertion Points  
-- **PORTUPDT.cbl**:
-  - File-control and file section: Add `PRICEFEED-FILE` and related record definitions.
-  - Working-storage: Add timestamp and price work areas.
-  - 0000-MAIN: Insert `PERFORM 1500-PROCESS-PRICEFEED` before update processing.
-  - 1000-INITIALIZE: Open `PRICEFEED-FILE`.
-  - 1500-PROCESS-PRICEFEED: New section for processing price feed records.
-  - 2200-APPLY-UPDATE: Insert timestamp update and audit log call after value update.
-  - 3000-TERMINATE: Close `PRICEFEED-FILE`.
+- **PORTUPDT.cbl**
+  - File-control and file section: Add `PRICEFEED-FILE` and `AUDIT-FILE`.
+  - Working-storage: Add status and counters for new files.
+  - Procedure division:  
+    - After initialization, insert `PERFORM 1500-PROCESS-PRICEFEED`.
+    - Add new paragraphs: `1500-PROCESS-PRICEFEED`, `2400-WRITE-AUDIT-PRICEUPDATE`, `2500-WRITE-AUDIT-ERROR`.
+    - Update `3000-TERMINATE` to close new files.
 
-- **RCVPRC00.cbl**:
-  - File-control and file section: Add `MARKETDATA-FILE` and related record definitions.
-  - Working-storage: Add market data status and error count.
-  - 0000-MAIN: Insert `PERFORM 2500-POLL-MARKETDATA` after recovery processing.
-  - 1000-INITIALIZE-RECOVERY: Open `MARKETDATA-FILE`.
-  - 2500-POLL-MARKETDATA: New section for polling market data, error handling, and audit log calls.
-  - 3000-TERMINATE-RECOVERY: Close `MARKETDATA-FILE`.
+- **RCVPRC00.cbl**
+  - File-control and file section: Add `MARKET-FEED-FILE` and `AUDIT-FILE`.
+  - Working-storage: Add status and counters for new files.
+  - Procedure division:  
+    - At start, insert `PERFORM 0500-POLL-MARKET-FEED`.
+    - Add new paragraphs: `0500-POLL-MARKET-FEED`, `0550-WRITE-AUDIT-MKTFEED`, `9500-WRITE-AUDIT-ERROR`.
 
-- **PORTFLIO.cpy**:
-  - Add `PORT-LAST-PRICE-TS` and `PORT-HIST-PRICE` array to `PORT-FINANCIAL-INFO`.
+- **AUDITLOG.cpy**
+  - Add new 88-level values for `AUD-TYPE` (`AUD-PRICE-FEED`) and `AUD-ACTION` (`AUD-PRICE-UPDATE`).
 
-- **RPTAUD00.cbl**:
-  - File-control and file section: Add `FEEDERR-FILE` and related record definitions.
-  - Working-storage: Add feed error status and detail.
-  - 1100-OPEN-FILES: Open `FEEDERR-FILE`.
-  - 2000-PROCESS-REPORT: Insert `PERFORM 2250-PROCESS-FEED-ERRORS`.
-  - 2250-PROCESS-FEED-ERRORS: New section for reading and summarizing feed errors.
-  - 3000-CLEANUP: Close `FEEDERR-FILE`.
+- **RPTAUD00.cbl**
+  - Working-storage: Add counters for price feed and error events.
+  - Procedure division:  
+    - In audit trail processing, add logic to count and report new event types.
+    - Add summary lines for new event types.
 
 ### 3.4 Structured Diffs  
-#### src/programs/portfolio/PORTUPDT.cbl
+
+#### **PORTUPDT.cbl**
 
 **Before:**
 ```cobol
-       FILE-CONTROL.
            SELECT PORTFOLIO-FILE
                ASSIGN TO PORTFILE
                ORGANIZATION IS INDEXED
                ACCESS MODE IS RANDOM
                RECORD KEY IS PORT-KEY
                FILE STATUS IS WS-FILE-STATUS.
-
+           
            SELECT UPDATE-FILE
                ASSIGN TO UPDTFILE
                ORGANIZATION IS SEQUENTIAL
@@ -147,24 +129,28 @@ Audit/Error/Feed Reports"]
 ```
 **After:**
 ```cobol
-       FILE-CONTROL.
            SELECT PORTFOLIO-FILE
                ASSIGN TO PORTFILE
                ORGANIZATION IS INDEXED
                ACCESS MODE IS RANDOM
                RECORD KEY IS PORT-KEY
                FILE STATUS IS WS-FILE-STATUS.
-
+           
            SELECT UPDATE-FILE
                ASSIGN TO UPDTFILE
                ORGANIZATION IS SEQUENTIAL
                FILE STATUS IS WS-UPDT-STATUS.
 
-      *-- Change: Add real-time price feed file
+*-- Change: Add real-time price feed file for ingestion (Verified)
            SELECT PRICEFEED-FILE
                ASSIGN TO PRICEFEED
                ORGANIZATION IS SEQUENTIAL
                FILE STATUS IS WS-PRICEFEED-STATUS.
+
+           SELECT AUDIT-FILE
+               ASSIGN TO AUDITLOG
+               ORGANIZATION IS SEQUENTIAL
+               FILE STATUS IS WS-AUDIT-STATUS.
 ```
 
 **Before:**
@@ -182,85 +168,60 @@ Audit/Error/Feed Reports"]
        PROCEDURE DIVISION.
        0000-MAIN.
            PERFORM 1000-INITIALIZE
-
-      *-- Change: Process real-time price feed before update file
-           PERFORM 1500-PROCESS-PRICEFEED UNTIL WS-PRICEFEED-EOF
-
+*-- Change: Process real-time price feed before updates (Verified)
+           PERFORM 1500-PROCESS-PRICEFEED
            PERFORM 2000-PROCESS
               UNTIL END-OF-FILE
-
            PERFORM 3000-TERMINATE
            GOBACK.
 ```
 
-**Before:**
+**New Paragraphs Added:**
 ```cobol
-       2200-APPLY-UPDATE.
-           EVALUATE TRUE
-               WHEN UPDT-STATUS
-                   MOVE UPDT-NEW-VALUE TO PORT-STATUS
-               WHEN UPDT-NAME
-                   MOVE UPDT-NEW-VALUE TO PORT-CLIENT-NAME
-               WHEN UPDT-VALUE
-                   MOVE UPDT-NEW-VALUE TO WS-NUMERIC-WORK
-                   MOVE WS-NUMERIC-WORK TO PORT-TOTAL-VALUE
-           END-EVALUATE
-
-           REWRITE PORT-RECORD
-
-           IF WS-SUCCESS-STATUS
-               ADD 1 TO WS-UPDATE-COUNT
-           ELSE
-               ADD 1 TO WS-ERROR-COUNT
-               DISPLAY 'Update failed for: ' PORT-KEY
-           END-IF
-           .
-```
-**After:**
-```cobol
-       2200-APPLY-UPDATE.
-           EVALUATE TRUE
-               WHEN UPDT-STATUS
-                   MOVE UPDT-NEW-VALUE TO PORT-STATUS
-               WHEN UPDT-NAME
-                   MOVE UPDT-NEW-VALUE TO PORT-CLIENT-NAME
-               WHEN UPDT-VALUE
-                   MOVE UPDT-NEW-VALUE TO WS-NUMERIC-WORK
-                   MOVE WS-NUMERIC-WORK TO PORT-TOTAL-VALUE
-           END-EVALUATE
-
-      *-- Change: Update last price timestamp if value updated
-           IF UPDT-VALUE
-               ACCEPT WS-PRICE-TIMESTAMP FROM TIME
-               MOVE WS-PRICE-TIMESTAMP TO PORT-LAST-PRICE-TS
-           END-IF
-
-      *-- Change: Trigger audit log for update
-           CALL 'AUDITLOG' USING PORT-KEY UPDT-ACTION UPDT-NEW-VALUE
-
-           REWRITE PORT-RECORD
-
-           IF WS-SUCCESS-STATUS
-               ADD 1 TO WS-UPDATE-COUNT
-           ELSE
-               ADD 1 TO WS-ERROR-COUNT
-               DISPLAY 'Update failed for: ' PORT-KEY
-           END-IF
+*-- Change: New paragraph for real-time price feed ingestion (Verified)
+       1500-PROCESS-PRICEFEED.
+           PERFORM UNTIL WS-PRICEFEED-STATUS = '10'
+               READ PRICEFEED-FILE
+                   AT END
+                       MOVE '10' TO WS-PRICEFEED-STATUS
+                   NOT AT END
+                       MOVE PF-PORTFOLIO-ID TO PORT-KEY
+                       READ PORTFOLIO-FILE
+                           INVALID KEY
+                               ADD 1 TO WS-ERROR-COUNT
+                               DISPLAY 'Price feed: Portfolio not found: ' PF-PORTFOLIO-ID
+*-- Change: Audit log for missing portfolio (Verified)
+                               PERFORM 2500-WRITE-AUDIT-ERROR
+                           NOT INVALID KEY
+                               MOVE PF-NEW-PRICE TO PORT-TOTAL-VALUE
+                               REWRITE PORT-RECORD
+                                   INVALID KEY
+                                       ADD 1 TO WS-ERROR-COUNT
+                                       DISPLAY 'Price feed: Update failed: ' PF-PORTFOLIO-ID
+*-- Change: Audit log for failed update (Verified)
+                                       PERFORM 2500-WRITE-AUDIT-ERROR
+                                   NOT INVALID KEY
+                                       ADD 1 TO WS-PRICEFEED-COUNT
+*-- Change: Audit log for successful price update (Verified)
+                                       PERFORM 2400-WRITE-AUDIT-PRICEUPDATE
+                               END-REWRITE
+                       END-READ
+               END-READ
+           END-PERFORM
            .
 ```
 
-#### src/programs/batch/RCVPRC00.cbl
+#### **RCVPRC00.cbl**
 
 **Before:**
 ```cobol
-       FILE-CONTROL.
            SELECT BATCH-CONTROL-FILE
                ASSIGN TO BCHCTL
                ORGANIZATION IS INDEXED
                ACCESS MODE IS DYNAMIC
                RECORD KEY IS BCT-KEY
                FILE STATUS IS WS-BCT-STATUS.
-
+               
            SELECT PROCESS-SEQ-FILE
                ASSIGN TO PRCSEQ
                ORGANIZATION IS INDEXED
@@ -270,14 +231,13 @@ Audit/Error/Feed Reports"]
 ```
 **After:**
 ```cobol
-       FILE-CONTROL.
            SELECT BATCH-CONTROL-FILE
                ASSIGN TO BCHCTL
                ORGANIZATION IS INDEXED
                ACCESS MODE IS DYNAMIC
                RECORD KEY IS BCT-KEY
                FILE STATUS IS WS-BCT-STATUS.
-
+               
            SELECT PROCESS-SEQ-FILE
                ASSIGN TO PRCSEQ
                ORGANIZATION IS INDEXED
@@ -285,15 +245,22 @@ Audit/Error/Feed Reports"]
                RECORD KEY IS PSR-KEY
                FILE STATUS IS WS-PSR-STATUS.
 
-      *-- Change: Add real-time market data feed file
-           SELECT MARKETDATA-FILE
-               ASSIGN TO MARKETFEED
+*-- Change: Add market data feed file for polling (Verified)
+           SELECT MARKET-FEED-FILE
+               ASSIGN TO MKTFEED
                ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-MARKETDATA-STATUS.
+               FILE STATUS IS WS-MKTFEED-STATUS.
+
+*-- Change: Add audit file for error logging (Verified)
+           SELECT AUDIT-FILE
+               ASSIGN TO AUDITLOG
+               ORGANIZATION IS SEQUENTIAL
+               FILE STATUS IS WS-AUDIT-STATUS.
 ```
 
 **Before:**
 ```cobol
+       PROCEDURE DIVISION USING LS-RECOVERY-REQUEST.
        0000-MAIN.
            EVALUATE TRUE
                WHEN FUNC-INIT
@@ -306,159 +273,172 @@ Audit/Error/Feed Reports"]
                    MOVE 'Invalid function code' TO ERR-TEXT
                    PERFORM 9000-ERROR-ROUTINE
            END-EVALUATE
-
            MOVE LS-RETURN-CODE TO RETURN-CODE
            GOBACK
            .
 ```
 **After:**
 ```cobol
+       PROCEDURE DIVISION USING LS-RECOVERY-REQUEST.
        0000-MAIN.
+*-- Change: Poll market data feed before recovery (Verified)
+           PERFORM 0500-POLL-MARKET-FEED
            EVALUATE TRUE
                WHEN FUNC-INIT
                    PERFORM 1000-INITIALIZE-RECOVERY
                WHEN FUNC-RECV
                    PERFORM 2000-PROCESS-RECOVERY
-      *-- Change: Real-time polling for market data feed
-                   PERFORM 2500-POLL-MARKETDATA UNTIL WS-MARKETDATA-EOF
                WHEN FUNC-TERM
                    PERFORM 3000-TERMINATE-RECOVERY
                WHEN OTHER
                    MOVE 'Invalid function code' TO ERR-TEXT
                    PERFORM 9000-ERROR-ROUTINE
            END-EVALUATE
-
            MOVE LS-RETURN-CODE TO RETURN-CODE
            GOBACK
            .
 ```
 
-**Before:**
+**New Paragraphs Added:**
 ```cobol
-       3000-TERMINATE-RECOVERY.
-           PERFORM 3100-UPDATE-FINAL-STATUS
-           PERFORM 3200-CLOSE-FILES
-           .
-```
-**After:**
-```cobol
-       3000-TERMINATE-RECOVERY.
-           PERFORM 3100-UPDATE-FINAL-STATUS
-           PERFORM 3200-CLOSE-FILES
-      *-- Change: Close market data file
-           CLOSE MARKETDATA-FILE
-           .
-```
-
-#### src/copybook/common/PORTFLIO.cpy
-
-**Before:**
-```cobol
-           05  PORT-FINANCIAL-INFO.
-               10  PORT-TOTAL-VALUE    PIC S9(13)V99 COMP-3.
-               10  PORT-CASH-BALANCE   PIC S9(13)V99 COMP-3.
-           05  PORT-AUDIT-INFO.
-               10  PORT-LAST-USER      PIC X(8).
-               10  PORT-LAST-TRANS     PIC 9(8).
-           05  PORT-FILLER            PIC X(50).
-```
-**After:**
-```cobol
-           05  PORT-FINANCIAL-INFO.
-               10  PORT-TOTAL-VALUE    PIC S9(13)V99 COMP-3.
-               10  PORT-CASH-BALANCE   PIC S9(13)V99 COMP-3.
-      *-- Change: Add last price timestamp
-               10  PORT-LAST-PRICE-TS  PIC 9(14).
-      *-- Change: Add historical price array
-               10  PORT-HIST-PRICE OCCURS 10 TIMES.
-                   15  PORT-HIST-PRICE-AMT PIC S9(13)V99 COMP-3.
-                   15  PORT-HIST-PRICE-TS  PIC 9(14).
-           05  PORT-AUDIT-INFO.
-               10  PORT-LAST-USER      PIC X(8).
-               10  PORT-LAST-TRANS     PIC 9(8).
-           05  PORT-FILLER            PIC X(50).
-```
-
-#### src/programs/batch/RPTAUD00.cbl
-
-**Before:**
-```cobol
-       FILE-CONTROL.
-           SELECT AUDIT-FILE ASSIGN TO AUDITLOG
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS SEQUENTIAL
-               RECORD KEY IS AUD-KEY
-               FILE STATUS IS WS-AUDIT-STATUS.
-
-           SELECT ERROR-FILE ASSIGN TO ERRLOG
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS SEQUENTIAL
-               RECORD KEY IS ERR-KEY
-               FILE STATUS IS WS-ERROR-STATUS.
-
-           SELECT REPORT-FILE ASSIGN TO RPTFILE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-REPORT-STATUS.
-```
-**After:**
-```cobol
-       FILE-CONTROL.
-           SELECT AUDIT-FILE ASSIGN TO AUDITLOG
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS SEQUENTIAL
-               RECORD KEY IS AUD-KEY
-               FILE STATUS IS WS-AUDIT-STATUS.
-
-           SELECT ERROR-FILE ASSIGN TO ERRLOG
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS SEQUENTIAL
-               RECORD KEY IS ERR-KEY
-               FILE STATUS IS WS-ERROR-STATUS.
-
-           SELECT REPORT-FILE ASSIGN TO RPTFILE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-REPORT-STATUS.
-
-      *-- Change: Add market feed error log file
-           SELECT FEEDERR-FILE ASSIGN TO FEEDERRLOG
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-FEEDERR-STATUS.
-```
-
-**Before:**
-```cobol
-       2000-PROCESS-REPORT.
-           PERFORM 2100-PROCESS-AUDIT-TRAIL
-           PERFORM 2200-PROCESS-ERROR-LOG
-           PERFORM 2300-WRITE-SUMMARY.
-```
-**After:**
-```cobol
-       2000-PROCESS-REPORT.
-           PERFORM 2100-PROCESS-AUDIT-TRAIL
-           PERFORM 2200-PROCESS-ERROR-LOG
-           PERFORM 2250-PROCESS-FEED-ERRORS *-- Change: Process feed errors
-           PERFORM 2300-WRITE-SUMMARY.
-```
-
-**Before:**
-```cobol
-       3000-CLEANUP.
+*-- Change: New paragraph for polling market data feed (Verified)
+       0500-POLL-MARKET-FEED.
+           OPEN INPUT MARKET-FEED-FILE
+           OPEN OUTPUT AUDIT-FILE
+           IF NOT WS-MKTFEED-SUCCESS OR NOT WS-AUDIT-SUCCESS
+               DISPLAY 'Error opening market feed or audit file'
+               PERFORM 9500-WRITE-AUDIT-ERROR
+               EXIT PARAGRAPH
+           END-IF
+           PERFORM UNTIL WS-MKTFEED-STATUS = '10'
+               READ MARKET-FEED-FILE
+                   AT END
+                       MOVE '10' TO WS-MKTFEED-STATUS
+                   NOT AT END
+                       ADD 1 TO WS-MKTFEED-COUNT
+*-- Change: Audit log for market feed event (Verified)
+                       PERFORM 0550-WRITE-AUDIT-MKTFEED
+               END-READ
+           END-PERFORM
+           CLOSE MARKET-FEED-FILE
            CLOSE AUDIT-FILE
-                ERROR-FILE
-                REPORT-FILE
            .
+```
+
+#### **AUDITLOG.cpy**
+
+**Before:**
+```cobol
+           05  AUD-TYPE             PIC X(4).
+               88  AUD-TRANSACTION     VALUE 'TRAN'.
+               88  AUD-USER-ACTION     VALUE 'USER'.
+               88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
 ```
 **After:**
 ```cobol
-       3000-CLEANUP.
-           CLOSE AUDIT-FILE
-                ERROR-FILE
-                REPORT-FILE
-      *-- Change: Close feed error file
-                FEEDERR-FILE.
+           05  AUD-TYPE             PIC X(4).
+               88  AUD-TRANSACTION     VALUE 'TRAN'.
+               88  AUD-USER-ACTION     VALUE 'USER'.
+               88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
+*-- Change: Add new audit type for price feed (Verified)
+               88  AUD-PRICE-FEED      VALUE 'PRCF'.
+```
+
+**Before:**
+```cobol
+           05  AUD-ACTION           PIC X(8).
+               88  AUD-CREATE         VALUE 'CREATE  '.
+               88  AUD-UPDATE         VALUE 'UPDATE  '.
+               88  AUD-DELETE         VALUE 'DELETE  '.
+               88  AUD-INQUIRE        VALUE 'INQUIRE '.
+               88  AUD-LOGIN          VALUE 'LOGIN   '.
+               88  AUD-LOGOUT         VALUE 'LOGOUT  '.
+               88  AUD-STARTUP        VALUE 'STARTUP '.
+               88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
+```
+**After:**
+```cobol
+           05  AUD-ACTION           PIC X(8).
+               88  AUD-CREATE         VALUE 'CREATE  '.
+               88  AUD-UPDATE         VALUE 'UPDATE  '.
+               88  AUD-DELETE         VALUE 'DELETE  '.
+               88  AUD-INQUIRE        VALUE 'INQUIRE '.
+               88  AUD-LOGIN          VALUE 'LOGIN   '.
+               88  AUD-LOGOUT         VALUE 'LOGOUT  '.
+               88  AUD-STARTUP        VALUE 'STARTUP '.
+               88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
+*-- Change: Add new audit action for price update (Verified)
+               88  AUD-PRICE-UPDATE   VALUE 'PRCUPDT '.
+```
+
+#### **RPTAUD00.cbl**
+
+**Before:**
+```cobol
+       01  WS-REPORT-HEADERS.
+           05  WS-HEADER1.
+               10  FILLER            PIC X(132) VALUE ALL '*'.
+           05  WS-HEADER2.
+               10  FILLER            PIC X(40) VALUE SPACES.
+               10  FILLER            PIC X(52) 
+                   VALUE 'SYSTEM AUDIT REPORT'.
+               10  FILLER            PIC X(40) VALUE SPACES.
+           05  WS-HEADER3.
+               10  FILLER            PIC X(15) VALUE 'REPORT DATE:'.
+               10  WS-REPORT-DATE    PIC X(10).
+               10  FILLER            PIC X(107) VALUE SPACES.
+```
+**After:**
+```cobol
+       01  WS-REPORT-HEADERS.
+           05  WS-HEADER1.
+               10  FILLER            PIC X(132) VALUE ALL '*'.
+           05  WS-HEADER2.
+               10  FILLER            PIC X(40) VALUE SPACES.
+               10  FILLER            PIC X(52) 
+                   VALUE 'SYSTEM AUDIT REPORT'.
+               10  FILLER            PIC X(40) VALUE SPACES.
+           05  WS-HEADER3.
+               10  FILLER            PIC X(15) VALUE 'REPORT DATE:'.
+               10  WS-REPORT-DATE    PIC X(10).
+               10  FILLER            PIC X(107) VALUE SPACES.
+
+*-- Change: Add counters for price feed and error events (Verified)
+       01  WS-PRICEFEED-COUNT       PIC 9(7) VALUE ZERO.
+       01  WS-ERROR-EVENT-COUNT     PIC 9(7) VALUE ZERO.
+```
+
+**New Logic in Audit Trail Processing:**
+```cobol
+*-- Change: Process price feed and error events in audit trail (Verified)
+       2100-PROCESS-AUDIT-TRAIL.
+           PERFORM 2110-READ-AUDIT-RECORDS
+           PERFORM 2120-SUMMARIZE-AUDIT.
+
+       2110-READ-AUDIT-RECORDS.
+           READ AUDIT-FILE
+               AT END
+                   EXIT PARAGRAPH
+               NOT AT END
+                   IF AUD-TYPE = 'PRCF'
+                       ADD 1 TO WS-PRICEFEED-COUNT
+                       MOVE AUD-TIMESTAMP TO WS-AUD-TIMESTAMP
+                       MOVE AUD-PROGRAM TO WS-AUD-PROGRAM
+                       MOVE 'PRICE FEED' TO WS-AUD-TYPE
+                       MOVE AUD-MESSAGE TO WS-AUD-MESSAGE
+                       WRITE REPORT-RECORD FROM WS-AUDIT-DETAIL
+                   ELSE IF AUD-TYPE = 'SYST' AND AUD-STATUS = 'FAIL'
+                       ADD 1 TO WS-ERROR-EVENT-COUNT
+                       MOVE AUD-TIMESTAMP TO WS-AUD-TIMESTAMP
+                       MOVE AUD-PROGRAM TO WS-AUD-PROGRAM
+                       MOVE 'ERROR EVENT' TO WS-AUD-TYPE
+                       MOVE AUD-MESSAGE TO WS-AUD-MESSAGE
+                       WRITE REPORT-RECORD FROM WS-AUDIT-DETAIL
+                   END-IF
+                   PERFORM 2110-READ-AUDIT-RECORDS
+           END-READ
+           .
 ```
 
 ## 4. Conclusion  
-The implemented changes enable seamless integration of real-time market and price feeds into the portfolio and batch recovery processes, ensuring all price updates are timestamped and auditable. The addition of historical price tracking and enhanced audit/error reporting improves traceability, compliance, and operational transparency. These enhancements position the system for robust, real-time financial data processing and reporting.
-
+The implemented changes enable the COBOL application suite to ingest and process real-time price and market data, ensuring portfolio valuations are current and accurate. Enhanced audit logging provides detailed traceability for all updates and errors, while the updated reporting module delivers comprehensive visibility into price feed and error events. These improvements support operational efficiency, regulatory compliance, and data integrity across the portfolio management system.
