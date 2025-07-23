@@ -1,21 +1,20 @@
 **Summary**:
-User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identification in Batch Processing and Reporting  
-- 7 impacted components identified (**High impact only**)  
-- High complexity change affecting transaction data structure, file layouts, batch processing, reporting, test data, and utility programs. All programs and copybooks that define, read, write, or report on transaction data are directly impacted.
+User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates
+
+- 5 impacted components identified (**High impact only**)
+- High complexity change affecting data ingestion, valuation logic, error handling, audit logging, and batch/database update flows
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                               | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                  |
-|-------------------------------------------------|--------|---------|----------------------------------------------|--------------------------------------------------|
-| src/copybook/common/TRNREC.cpy                  | High   | Direct  | All (copybook structure)                     | Used by all transaction-processing programs      |
-| src/programs/portfolio/PORTTRAN.cbl             | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS-TRANSACTIONS, 2100-VALIDATE-TRANSACTION | Reads/writes transaction file, uses TRNREC.cpy   |
-| src/programs/batch/RPTAUD00.cbl                 | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS-REPORT        | Reads transaction data for reporting, uses TRNREC.cpy |
-| src/programs/test/TSTGEN00.cbl                  | High   | Direct  | 2100-GENERATE-TEST-DATA                     | Generates test transaction files, uses TRNREC.cpy|
-| src/programs/utility/UTLVAL00.cbl               | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS               | Validates transaction files, uses TRNREC.cpy     |
-| src/copybook/common/POSREC.cpy                  | High   | Direct  | All (copybook structure)                     | Used in validation/reporting of transaction data |
-| src/programs/utility/UTLMNT00.cbl               | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS               | Utility maintenance, may process transaction files|
+| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections                  | Dependency Path                                   |
+|------------------------------------------|--------|---------|-----------------------------------------------|---------------------------------------------------|
+| src/programs/portfolio/PORTUPDT.cbl      | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS, 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE | Entry point for portfolio updates, valuation logic |
+| src/programs/batch/RCVPRC00.cbl          | High   | Direct  | 1000-INITIALIZE-RECOVERY, 2000-PROCESS-RECOVERY, 2100-RECOVER-PROCESS | Batch ingestion and recovery for price feeds       |
+| src/copybook/common/PORTFLIO.cpy         | High   | Direct  | PORTFOLIO-RECORD, related data structures     | Shared portfolio data structure, used in updates   |
+| src/copybook/common/AUDITLOG.cpy         | High   | Direct  | AUDIT-ENTRY, LOGGING-SECTIONS                 | Audit logging for price feed and error events      |
+| src/programs/batch/RPTAUD00.cbl          | High   | Indirect| 1000-INITIALIZE, 2000-PROCESS-REPORT, 9999-ERROR-HANDLER | Generates audit reports, consumes audit log        |
 
 ---
 
@@ -23,70 +22,52 @@ User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identificat
 ```json
 {
   "impactAnalysis": {
-    "userStory": "Add CHANNEL-CODE Field to Transaction File for Channel Identification in Batch Processing and Reporting",
+    "userStory": "Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates",
     "impactedComponents": [
       {
-        "programFilePath": "src/copybook/common/TRNREC.cpy",
-        "impactScore": 1.0,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": [],
-        "dependencyPath": ["TRNREC.cpy"],
-        "rationale": "Primary copybook defining transaction record structure. All programs using transaction data depend on this definition. Adding CHANNEL-CODE here is foundational."
-      },
-      {
-        "programFilePath": "src/programs/portfolio/PORTTRAN.cbl",
+        "programFilePath": "src/programs/portfolio/PORTUPDT.cbl",
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS-TRANSACTIONS", "2100-VALIDATE-TRANSACTION"],
-        "dependencyPath": ["PORTTRAN.cbl", "TRNREC.cpy"],
-        "rationale": "Reads and writes transaction files using TRNREC.cpy. Must be updated to handle CHANNEL-CODE in file I/O and processing."
+        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS", "2100-PROCESS-UPDATE", "2200-APPLY-UPDATE"],
+        "dependencyPath": ["PORTUPDT"],
+        "rationale": "Primary program for portfolio updates and valuation; must process real-time price changes and recalculate positions."
       },
       {
-        "programFilePath": "src/programs/batch/RPTAUD00.cbl",
-        "impactScore": 0.97,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS-REPORT"],
-        "dependencyPath": ["RPTAUD00.cbl", "TRNREC.cpy"],
-        "rationale": "Batch reporting program that outputs transaction details. Needs to include CHANNEL-CODE in reports and file layouts."
-      },
-      {
-        "programFilePath": "src/programs/test/TSTGEN00.cbl",
+        "programFilePath": "src/programs/batch/RCVPRC00.cbl",
         "impactScore": 0.96,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2100-GENERATE-TEST-DATA"],
-        "dependencyPath": ["TSTGEN00.cbl", "TRNREC.cpy"],
-        "rationale": "Generates test transaction files. Must generate and populate CHANNEL-CODE for test data and adjust file layouts."
+        "affectedParagraphs": ["1000-INITIALIZE-RECOVERY", "2000-PROCESS-RECOVERY", "2100-RECOVER-PROCESS"],
+        "dependencyPath": ["RCVPRC00"],
+        "rationale": "Handles batch ingestion and recovery of price feeds; must be extended for real-time polling and error handling."
       },
       {
-        "programFilePath": "src/programs/utility/UTLVAL00.cbl",
+        "programFilePath": "src/copybook/common/PORTFLIO.cpy",
         "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS"],
-        "dependencyPath": ["UTLVAL00.cbl", "TRNREC.cpy"],
-        "rationale": "Validates transaction files. Needs to validate presence and correctness of CHANNEL-CODE."
+        "affectedParagraphs": ["PORTFOLIO-RECORD"],
+        "dependencyPath": ["PORTUPDT", "PORTFLIO"],
+        "rationale": "Portfolio data structure; will require changes to support timestamped price history and new valuation fields."
       },
       {
-        "programFilePath": "src/copybook/common/POSREC.cpy",
+        "programFilePath": "src/copybook/common/AUDITLOG.cpy",
         "impactScore": 0.93,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [],
-        "dependencyPath": ["POSREC.cpy"],
-        "rationale": "Copybook used in reporting/validation of transaction data. May require CHANNEL-CODE for position or reporting."
+        "affectedParagraphs": ["AUDIT-ENTRY", "LOGGING-SECTIONS"],
+        "dependencyPath": ["PORTUPDT", "RCVPRC00", "AUDITLOG"],
+        "rationale": "Audit log structure; must capture price feed events, errors, and alert triggers."
       },
       {
-        "programFilePath": "src/programs/utility/UTLMNT00.cbl",
-        "impactScore": 0.92,
+        "programFilePath": "src/programs/batch/RPTAUD00.cbl",
+        "impactScore": 0.91,
         "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS"],
-        "dependencyPath": ["UTLMNT00.cbl", "TRNREC.cpy"],
-        "rationale": "Utility maintenance program that may process transaction files. Needs to be updated for new field in file layouts."
+        "impactType": "Indirect",
+        "affectedParagraphs": ["1000-INITIALIZE", "2000-PROCESS-REPORT", "9999-ERROR-HANDLER"],
+        "dependencyPath": ["AUDITLOG", "RPTAUD00"],
+        "rationale": "Generates audit reports; will consume new audit log entries related to price feed and error events."
       }
     ]
   }
@@ -96,44 +77,31 @@ User Story: Add `CHANNEL-CODE` Field to Transaction File for Channel Identificat
 ---
 
 **Visualization**:
+
 ```mermaid
 graph TD
-  subgraph Copybooks
-    TRNREC["src/copybook/common/TRNREC.cpy"]
-    POSREC["src/copybook/common/POSREC.cpy"]
+  subgraph High Impact
+    PORTUPDT["src/programs/portfolio/PORTUPDT.cbl"]
+    RCVPRC00["src/programs/batch/RCVPRC00.cbl"]
+    PORTFLIO["src/copybook/common/PORTFLIO.cpy"]
+    AUDITLOG["src/copybook/common/AUDITLOG.cpy"]
+    RPTAUD00["src/programs/batch/RPTAUD00.cbl"]
   end
 
-  subgraph Programs
-    PORTTRAN["src/programs/portfolio/PORTTRAN.cbl"]
-    RPTAUD["src/programs/batch/RPTAUD00.cbl"]
-    TSTGEN["src/programs/test/TSTGEN00.cbl"]
-    UTLVAL["src/programs/utility/UTLVAL00.cbl"]
-    UTLMNT["src/programs/utility/UTLMNT00.cbl"]
-  end
-
-  TRNREC -- High Impact --> PORTTRAN
-  TRNREC -- High Impact --> RPTAUD
-  TRNREC -- High Impact --> TSTGEN
-  TRNREC -- High Impact --> UTLVAL
-  TRNREC -- High Impact --> UTLMNT
-  POSREC -- High Impact --> UTLVAL
-  POSREC -- High Impact --> RPTAUD
+  PORTUPDT -- uses --> PORTFLIO
+  PORTUPDT -- logs to --> AUDITLOG
+  RCVPRC00 -- logs to --> AUDITLOG
+  RPTAUD00 -- reads --> AUDITLOG
+  PORTUPDT -- triggers --> RCVPRC00
 ```
-
-**Legend:**  
-- All nodes and edges represent **High impact** only.  
-- Arrows indicate direct dependency on copybooks or file layouts that must be updated for `CHANNEL-CODE`.
 
 ---
 
 **Reasoning**:
-- The addition of `CHANNEL-CODE` to the transaction file requires changes to the transaction record copybook (`TRNREC.cpy`), which is included in all programs that process transaction data.
-- All batch, utility, and reporting programs that read/write transaction files must update their FD sections, file layouts, and logic to handle the new field.
-- Test data generation and validation utilities must be updated to generate, validate, and process the new field.
-- Reporting programs must include the new field in outputs.
-- Copybooks like `POSREC.cpy` are also impacted if they define or reference transaction file layouts.
-- Only files present in the repository and directly impacted by the user story are included, as per instructions. No extra files are added.
+- `PORTUPDT.cbl` is the main entry for portfolio updates and will be the focal point for integrating real-time price feeds and recalculating valuations.
+- `RCVPRC00.cbl` is responsible for batch price ingestion and recovery, and will need to be adapted for real-time polling and error handling.
+- `PORTFLIO.cpy` is the shared copybook for portfolio records, which must be extended to store historical prices and timestamps.
+- `AUDITLOG.cpy` is the copybook for audit logging, which must record all price feed events, errors, and alerts.
+- `RPTAUD00.cbl` generates audit reports and will need to process the new types of audit entries.
 
----
-
-**End of Impact Analysis Report**
+No other files in the repository are directly or highly impacted by the user story requirements. No new files are created; all changes are scoped to existing components.
