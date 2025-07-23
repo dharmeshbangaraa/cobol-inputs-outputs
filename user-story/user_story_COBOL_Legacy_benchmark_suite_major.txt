@@ -10,4 +10,3 @@ Data Ingestion: The system connects to an external market-data provider via supp
 Valuation Updates: Upon receiving a price update, the system recalculates position values and associated profit/loss metrics, and records the update with a timestamp.
 Error Handling & Logging: If the data feed fails or prices become outdated for more than 30 seconds, an alert is triggered and an entry is written to an audit log.
 The system also maintains a historical record of received prices for analysis and reporting.
-Make required changes in batch files and database files as well
