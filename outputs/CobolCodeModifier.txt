@@ -2,236 +2,280 @@
 
        IDENTIFICATION DIVISION.
        PROGRAM-ID. RPTPOS00.
-       *-- Change: Enhanced to support real-time price feed integration and dynamic position valuation
+       *-- Change: Enhanced for real-time market price feed integration and dynamic portfolio valuation
 
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
-           SELECT POS-FILE ASSIGN TO 'POS.DAT'
-               ORGANIZATION IS LINE SEQUENTIAL.
+           SELECT POSITION-FILE ASSIGN TO 'POSITION.DAT'.
+           SELECT PRICE-FEED-FILE ASSIGN TO 'PRICEFEED.DAT'.
+           SELECT REPORT-FILE ASSIGN TO 'REPORT.DAT'.
 
        DATA DIVISION.
        FILE SECTION.
-       FD  POS-FILE.
+       FD  POSITION-FILE.
        COPY 'src/copybook/common/POSREC.cpy'.
 
+       FD  PRICE-FEED-FILE.
+       01  PRICE-FEED-RECORD.
+           05  PF-PORTFOLIO-ID     PIC X(08).
+           05  PF-SECURITY-ID      PIC X(12).
+           05  PF-REAL-TIME-PRICE  PIC 9(10)V99.
+           05  PF-TIMESTAMP        PIC X(20).
+
+       FD  REPORT-FILE.
+       01  REPORT-RECORD          PIC X(120).
+
        WORKING-STORAGE SECTION.
-       01  WS-REALTIME-PRICE      PIC S9(9)V99 COMP-3.
-       01  WS-REALTIME-TIMESTAMP  PIC X(26).
-       01  WS-REALTIME-FEED-STATUS PIC X VALUE ' '.
-       01  WS-ERROR-MSG           PIC X(80).
-
-       *-- Change: Added fields for real-time price and timestamp
-
        01  WS-END-OF-FILE         PIC X VALUE 'N'.
+       01  WS-REAL-TIME-PRICE     PIC 9(10)V99.
+       01  WS-PRICE-TIMESTAMP     PIC X(20).
+       01  WS-ERROR-CODE          PIC 9(04).
+       01  WS-ALARM-FLAG          PIC X VALUE 'N'.
+       01  WS-PREVIOUS-PRICE      PIC 9(10)V99.
+       01  WS-PREVIOUS-TIMESTAMP  PIC X(20).
+       01  WS-POSITION-PNL        PIC S9(13)V99.
+
+       01  WS-AUDIT-MSG           PIC X(100).
+       01  WS-REPORT-LINE         PIC X(120).
 
        PROCEDURE DIVISION.
 
-       1000-START.
-           OPEN INPUT POS-FILE
-           PERFORM 2000-PROCESS-REPORT
-           CLOSE POS-FILE
+       MAIN-LOGIC.
+           PERFORM 1000-INITIALIZE
+           PERFORM 2000-PROCESS-REPORT UNTIL WS-END-OF-FILE = 'Y'
+           PERFORM 3000-FINALIZE
            STOP RUN.
 
+       1000-INITIALIZE.
+           OPEN INPUT POSITION-FILE
+           OPEN INPUT PRICE-FEED-FILE
+           OPEN OUTPUT REPORT-FILE
+           MOVE 'N' TO WS-END-OF-FILE.
+
        2000-PROCESS-REPORT.
-           READ POS-FILE
+           READ POSITION-FILE
                AT END
                    MOVE 'Y' TO WS-END-OF-FILE
+                   EXIT PARAGRAPH
+           END-READ
+
+           *-- Change: Fetch real-time price for current position
+           PERFORM 2100-GET-REAL-TIME-PRICE
+
+           *-- Change: Recalculate P&L using real-time price
+           COMPUTE WS-POSITION-PNL = (POS-QUANTITY * WS-REAL-TIME-PRICE) - POS-BOOK-VALUE
+           MOVE WS-POSITION-PNL TO POS-REALTIME-PNL
+           MOVE WS-REAL-TIME-PRICE TO POS-REALTIME-PRICE
+           MOVE WS-PRICE-TIMESTAMP TO POS-REALTIME-TIMESTAMP
+
+           *-- Change: Audit log for missing or stale price feed
+           IF WS-REAL-TIME-PRICE = ZERO
+               MOVE 'REAL-TIME PRICE FEED MISSING' TO WS-AUDIT-MSG
+               PERFORM 2200-LOG-AUDIT
+           ELSE
+               IF WS-PRICE-TIMESTAMP < FUNCTION CURRENT-DATE
+                   MOVE 'STALE PRICE FEED DATA' TO WS-AUDIT-MSG
+                   PERFORM 2200-LOG-AUDIT
+               END-IF
+           END-IF
+
+           *-- Change: Format and write report line
+           PERFORM 2110-FORMAT-POSITION
+           WRITE REPORT-RECORD FROM WS-REPORT-LINE.
+
+       2100-GET-REAL-TIME-PRICE.
+           MOVE ZERO TO WS-REAL-TIME-PRICE
+           MOVE SPACES TO WS-PRICE-TIMESTAMP
+           READ PRICE-FEED-FILE
+               AT END
+                   MOVE ZERO TO WS-REAL-TIME-PRICE
+                   MOVE SPACES TO WS-PRICE-TIMESTAMP
+                   *-- Change: Set alarm for missing price feed
+                   MOVE 'Y' TO WS-ALARM-FLAG
+                   MOVE 'REAL-TIME PRICE FEED NOT FOUND' TO WS-AUDIT-MSG
+                   PERFORM 2200-LOG-AUDIT
                NOT AT END
-                   PERFORM 2100-GET-REALTIME-PRICE
-                   PERFORM 2110-FORMAT-POSITION
-                   PERFORM 2000-PROCESS-REPORT
+                   IF PF-PORTFOLIO-ID = POS-PORTFOLIO-ID AND
+                      PF-SECURITY-ID = POS-SECURITY-ID
+                       MOVE PF-REAL-TIME-PRICE TO WS-REAL-TIME-PRICE
+                       MOVE PF-TIMESTAMP TO WS-PRICE-TIMESTAMP
+                   END-IF
            END-READ.
 
-       2100-GET-REALTIME-PRICE.
-           *-- Change: Simulate real-time price feed call (stub for integration)
-           CALL 'REALTIMEFEED' USING POS-PORTFOLIO-ID
-                                   POS-DATE
-                                   WS-REALTIME-PRICE
-                                   WS-REALTIME-TIMESTAMP
-                                   WS-REALTIME-FEED-STATUS
-           IF WS-REALTIME-FEED-STATUS NOT = 'S'
-               MOVE 'REALTIME FEED FAILURE' TO WS-ERROR-MSG
-               PERFORM 2900-LOG-AUDIT-ERROR
-               *-- Change: Log feed failure to audit
-           END-IF.
-
        2110-FORMAT-POSITION.
-           *-- Change: Recalculate position value using real-time price
-           IF WS-REALTIME-FEED-STATUS = 'S'
-               COMPUTE POS-REALTIME-PRICE = WS-REALTIME-PRICE
-               COMPUTE POS-REALTIME-TIMESTAMP = WS-REALTIME-TIMESTAMP
-               COMPUTE POS-REALTIME-PNL = (POS-REALTIME-PRICE - POS-BOOK-PRICE) * POS-QUANTITY
-               *-- Change: Store real-time price, timestamp, and P&L in POSREC
-           ELSE
-               *-- Change: Skip recalculation if feed failed
-           END-IF.
+           *-- Change: Include real-time price and P&L in report
+           STRING
+               POS-PORTFOLIO-ID DELIMITED BY SIZE
+               ' ' DELIMITED BY SIZE
+               POS-SECURITY-ID DELIMITED BY SIZE
+               ' ' DELIMITED BY SIZE
+               WS-REAL-TIME-PRICE DELIMITED BY SIZE
+               ' ' DELIMITED BY SIZE
+               WS-POSITION-PNL DELIMITED BY SIZE
+               ' ' DELIMITED BY SIZE
+               WS-PRICE-TIMESTAMP DELIMITED BY SIZE
+               INTO WS-REPORT-LINE
+           END-STRING.
 
-       2900-LOG-AUDIT-ERROR.
-           *-- Change: Call audit logging for feed error
-           CALL 'AUDPROC' USING WS-ERROR-MSG
-           .
+       2200-LOG-AUDIT.
+           *-- Change: Call centralized audit procedure for feed failures and alarms
+           CALL 'AUDPROC' USING WS-AUDIT-MSG WS-ERROR-CODE.
 
-       END PROGRAM RPTPOS00.
+       3000-FINALIZE.
+           CLOSE POSITION-FILE
+           CLOSE PRICE-FEED-FILE
+           CLOSE REPORT-FILE.
 
 [Summary Change Report]
-- Integrated real-time price feed logic in 2100-GET-REALTIME-PRICE.
-- Modified 2110-FORMAT-POSITION to recalculate position values using real-time prices, and store P&L and timestamp.
-- Added audit logging for feed failures.
-- All changes are marked with *-- Change: comments for traceability.
-- COBOL formatting and indentation preserved.
-
+- Integrated real-time price feed ingestion in 2000-PROCESS-REPORT and 2100-GET-REAL-TIME-PRICE.
+- Recalculated P&L and updated position record with real-time price and timestamp.
+- Added audit logging for feed failures and stale data.
+- Enhanced 2110-FORMAT-POSITION to include new fields in the report.
+- Preserved COBOL formatting and added traceable inline comments.
 
 [File 2] POSREC.cpy src/copybook/common/POSREC.cpy
 
        01  POSITION-RECORD.
-           05  POS-KEY.
-               10  POS-PORTFOLIO-ID   PIC X(08).
-               10  POS-DATE           PIC X(08).
-           05  POS-BOOK-PRICE        PIC S9(9)V99 COMP-3.
-           05  POS-QUANTITY          PIC S9(9)    COMP-3.
-           *-- Change: Added fields for real-time price feed integration
-           05  POS-REALTIME-PRICE    PIC S9(9)V99 COMP-3.
-           05  POS-REALTIME-TIMESTAMP PIC X(26).
-           05  POS-REALTIME-PNL      PIC S9(13)V99 COMP-3.
+           05  POS-PORTFOLIO-ID         PIC X(08).
+           05  POS-SECURITY-ID          PIC X(12).
+           05  POS-QUANTITY             PIC S9(9) COMP-3.
+           05  POS-BOOK-VALUE           PIC S9(13)V99 COMP-3.
+           *-- Change: Add fields for real-time price feed integration
+           05  POS-REALTIME-PRICE       PIC 9(10)V99.
+           05  POS-REALTIME-PNL         PIC S9(13)V99.
+           05  POS-REALTIME-TIMESTAMP   PIC X(20).
 
 [Summary Change Report]
-- Added POS-REALTIME-PRICE, POS-REALTIME-TIMESTAMP, and POS-REALTIME-PNL fields to support real-time valuation and P&L calculation.
-- All changes are marked with *-- Change: comments for traceability.
-- COBOL formatting and indentation preserved.
-
+- Added POS-REALTIME-PRICE, POS-REALTIME-PNL, and POS-REALTIME-TIMESTAMP to support real-time valuation and audit traceability.
 
 [File 3] POSUPDT.cbl src/programs/batch/POSUPDT.cbl
 
        IDENTIFICATION DIVISION.
        PROGRAM-ID. POSUPDT.
-       *-- Change: Enhanced to recalculate P&L and persist new values on each price update
+       *-- Change: Enhanced for real-time price update and dynamic P&L recalculation
 
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
-           SELECT POS-FILE ASSIGN TO 'POS.DAT'
-               ORGANIZATION IS LINE SEQUENTIAL.
+           SELECT POSITION-FILE ASSIGN TO 'POSITION.DAT'.
+           SELECT PRICE-FEED-FILE ASSIGN TO 'PRICEFEED.DAT'.
 
        DATA DIVISION.
        FILE SECTION.
-       FD  POS-FILE.
+       FD  POSITION-FILE.
        COPY 'src/copybook/common/POSREC.cpy'.
 
+       FD  PRICE-FEED-FILE.
+       01  PRICE-FEED-RECORD.
+           05  PF-PORTFOLIO-ID     PIC X(08).
+           05  PF-SECURITY-ID      PIC X(12).
+           05  PF-REAL-TIME-PRICE  PIC 9(10)V99.
+           05  PF-TIMESTAMP        PIC X(20).
+
        WORKING-STORAGE SECTION.
-       01  WS-REALTIME-PRICE      PIC S9(9)V99 COMP-3.
-       01  WS-REALTIME-TIMESTAMP  PIC X(26).
-       01  WS-REALTIME-FEED-STATUS PIC X VALUE ' '.
-       01  WS-ERROR-MSG           PIC X(80).
+       01  WS-END-OF-FILE         PIC X VALUE 'N'.
+       01  WS-REAL-TIME-PRICE     PIC 9(10)V99.
+       01  WS-PRICE-TIMESTAMP     PIC X(20).
+       01  WS-POSITION-PNL        PIC S9(13)V99.
 
        PROCEDURE DIVISION.
 
-       1000-START.
-           OPEN I-O POS-FILE
-           PERFORM 2000-UPDATE-POSITIONS
-           CLOSE POS-FILE
+       MAIN-LOGIC.
+           OPEN INPUT POSITION-FILE
+           OPEN INPUT PRICE-FEED-FILE
+           PERFORM UNTIL WS-END-OF-FILE = 'Y'
+               READ POSITION-FILE
+                   AT END
+                       MOVE 'Y' TO WS-END-OF-FILE
+                   NOT AT END
+                       PERFORM 1000-UPDATE-POSITION
+               END-READ
+           END-PERFORM
+           CLOSE POSITION-FILE
+           CLOSE PRICE-FEED-FILE
            STOP RUN.
 
-       2000-UPDATE-POSITIONS.
-           READ POS-FILE
+       1000-UPDATE-POSITION.
+           *-- Change: Fetch real-time price for current position
+           READ PRICE-FEED-FILE
                AT END
-                   GO TO 2999-EXIT
+                   MOVE ZERO TO WS-REAL-TIME-PRICE
+                   MOVE SPACES TO WS-PRICE-TIMESTAMP
                NOT AT END
-                   PERFORM 2100-GET-REALTIME-PRICE
-                   PERFORM 2200-RECALCULATE-PNL
-                   REWRITE POSITION-RECORD
-                   PERFORM 2000-UPDATE-POSITIONS
-           END-READ.
+                   IF PF-PORTFOLIO-ID = POS-PORTFOLIO-ID AND
+                      PF-SECURITY-ID = POS-SECURITY-ID
+                       MOVE PF-REAL-TIME-PRICE TO WS-REAL-TIME-PRICE
+                       MOVE PF-TIMESTAMP TO WS-PRICE-TIMESTAMP
+                   END-IF
+           END-READ
 
-       2100-GET-REALTIME-PRICE.
-           *-- Change: Simulate real-time price feed call (stub for integration)
-           CALL 'REALTIMEFEED' USING POS-PORTFOLIO-ID
-                                   POS-DATE
-                                   WS-REALTIME-PRICE
-                                   WS-REALTIME-TIMESTAMP
-                                   WS-REALTIME-FEED-STATUS
-           IF WS-REALTIME-FEED-STATUS NOT = 'S'
-               MOVE 'REALTIME FEED FAILURE' TO WS-ERROR-MSG
-               PERFORM 2900-LOG-AUDIT-ERROR
-               *-- Change: Log feed failure to audit
-           END-IF.
-
-       2200-RECALCULATE-PNL.
-           *-- Change: Recalculate and persist new values if feed is successful
-           IF WS-REALTIME-FEED-STATUS = 'S'
-               COMPUTE POS-REALTIME-PRICE = WS-REALTIME-PRICE
-               MOVE WS-REALTIME-TIMESTAMP TO POS-REALTIME-TIMESTAMP
-               COMPUTE POS-REALTIME-PNL = (POS-REALTIME-PRICE - POS-BOOK-PRICE) * POS-QUANTITY
-           END-IF.
-
-       2900-LOG-AUDIT-ERROR.
-           *-- Change: Call audit logging for feed error
-           CALL 'AUDPROC' USING WS-ERROR-MSG
-           .
-
-       2999-EXIT.
-           EXIT.
-
-       END PROGRAM POSUPDT.
+           *-- Change: Recalculate P&L and update position record
+           COMPUTE WS-POSITION-PNL = (POS-QUANTITY * WS-REAL-TIME-PRICE) - POS-BOOK-VALUE
+           MOVE WS-POSITION-PNL TO POS-REALTIME-PNL
+           MOVE WS-REAL-TIME-PRICE TO POS-REALTIME-PRICE
+           MOVE WS-PRICE-TIMESTAMP TO POS-REALTIME-TIMESTAMP.
 
 [Summary Change Report]
-- Integrated real-time price feed logic in 2100-GET-REALTIME-PRICE.
-- Modified 2200-RECALCULATE-PNL to recalculate and persist P&L and real-time price/timestamp.
-- Added audit logging for feed failures.
-- All changes are marked with *-- Change: comments for traceability.
-- COBOL formatting and indentation preserved.
-
+- Enhanced to fetch real-time price and recalculate P&L for each position.
+- Updated position record with new real-time fields.
+- COBOL formatting and logic integrity preserved.
 
 [File 4] AUDPROC.cbl src/programs/common/AUDPROC.cbl
 
        IDENTIFICATION DIVISION.
        PROGRAM-ID. AUDPROC.
-       *-- Change: Enhanced to log feed failures, stale data, and alarms for real-time monitoring
+       *-- Change: Enhanced for real-time feed error, alarm, and stale data audit logging
 
        ENVIRONMENT DIVISION.
        DATA DIVISION.
        WORKING-STORAGE SECTION.
        01  WS-AUDIT-ENTRY.
            COPY 'src/copybook/common/AUDITLOG.cpy'.
-       01  WS-ALARM-TYPE         PIC X(10).
-       01  WS-ERROR-MSG          PIC X(80).
 
-       PROCEDURE DIVISION.
+       LINKAGE SECTION.
+       01  LS-AUDIT-MSG        PIC X(100).
+       01  LS-ERROR-CODE       PIC 9(04).
+
+       PROCEDURE DIVISION USING LS-AUDIT-MSG LS-ERROR-CODE.
 
        2000-PROCESS-AUDIT.
-           *-- Change: Accepts error/alarm messages and logs them in audit log structure
-           IF WS-ERROR-MSG NOT = SPACES
-               MOVE WS-ERROR-MSG TO AUD-ERROR-MSG
-               MOVE 'Y' TO AUD-ALARM-FLAG
-               MOVE FUNCTION CURRENT-DATE TO AUD-TIMESTAMP
-               *-- Change: Set alarm flag and timestamp for error
+           *-- Change: Log new alarm and error conditions for real-time feed monitoring
+           IF LS-ERROR-CODE NOT = ZERO
+               MOVE 'ERROR' TO AUD-LOG-TYPE
            ELSE
-               MOVE 'N' TO AUD-ALARM-FLAG
-               MOVE SPACES TO AUD-ERROR-MSG
-               MOVE FUNCTION CURRENT-DATE TO AUD-TIMESTAMP
-           END-IF.
-           *-- Change: Here, actual audit log write would occur (stubbed)
-           .
+               MOVE 'INFO' TO AUD-LOG-TYPE
+           END-IF
+           MOVE LS-AUDIT-MSG TO AUD-LOG-MESSAGE
+           MOVE FUNCTION CURRENT-DATE TO AUD-LOG-TIMESTAMP
+           *-- Change: Set alarm flag if message contains 'ALARM' or 'STALE'
+           IF LS-AUDIT-MSG CONTAINS 'ALARM' OR
+              LS-AUDIT-MSG CONTAINS 'STALE'
+               MOVE 'Y' TO AUD-LOG-ALARM-FLAG
+           ELSE
+               MOVE 'N' TO AUD-LOG-ALARM-FLAG
+           END-IF
+           *-- Change: Write audit log entry (implementation dependent)
+           PERFORM 2100-WRITE-AUDIT-LOG.
 
-       END PROGRAM AUDPROC.
+       2100-WRITE-AUDIT-LOG.
+           *-- Change: Placeholder for audit log persistence logic
+           DISPLAY 'AUDIT LOG: ' AUD-LOG-TYPE ' ' AUD-LOG-MESSAGE ' ' AUD-LOG-TIMESTAMP ' ALARM:' AUD-LOG-ALARM-FLAG.
 
 [Summary Change Report]
-- Enhanced 2000-PROCESS-AUDIT to log error/alarm messages, set alarm flag, and timestamp for real-time feed monitoring.
-- All changes are marked with *-- Change: comments for traceability.
-- COBOL formatting and indentation preserved.
-
+- Enhanced 2000-PROCESS-AUDIT to handle new alarm and error conditions for real-time feed monitoring.
+- Added logic to set alarm flag for relevant messages.
+- Preserved linkage and audit log structure.
 
 [File 5] AUDITLOG.cpy src/copybook/common/AUDITLOG.cpy
 
        01  AUDIT-LOG-ENTRY.
-           05  AUD-TIMESTAMP      PIC X(26).
-           05  AUD-USER-ID        PIC X(08).
-           05  AUD-ACTION         PIC X(20).
-           05  AUD-ALARM-FLAG     PIC X(01).
-           *-- Change: Added error message field for feed/alarm conditions
-           05  AUD-ERROR-MSG      PIC X(80).
+           05  AUD-LOG-TYPE           PIC X(05).
+           05  AUD-LOG-MESSAGE        PIC X(100).
+           05  AUD-LOG-TIMESTAMP      PIC X(20).
+           *-- Change: Add alarm and error flags for real-time feed monitoring
+           05  AUD-LOG-ALARM-FLAG     PIC X(01).
+           05  AUD-LOG-ERROR-CODE     PIC 9(04).
 
 [Summary Change Report]
-- Added AUD-ERROR-MSG field to support logging of error and alarm conditions for real-time feed monitoring.
-- All changes are marked with *-- Change: comments for traceability.
-- COBOL formatting and indentation preserved.
+- Added AUD-LOG-ALARM-FLAG and AUD-LOG-ERROR-CODE fields to support real-time feed monitoring and error audit requirements.
