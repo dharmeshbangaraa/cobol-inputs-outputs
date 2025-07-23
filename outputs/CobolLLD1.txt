@@ -1,164 +1,236 @@
-Technical Document and Low-Level Design (LLD)
+# Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document provides a comprehensive technical overview and Low-Level Design (LLD) for the COBOL application modules impacted by the integration of a real-time market price feed for dynamic portfolio valuation. The document details the existing logic, identifies insertion points for the required changes, and provides structured diffs to guide implementation. The goal is to ensure seamless integration of real-time data ingestion, dynamic position/P&L recalculation, audit/error handling, and historical price persistence, while maintaining system integrity and auditability.
-
----
+This document provides a comprehensive technical overview and Low-Level Design (LLD) for the COBOL legacy application modules impacted by the integration of a real-time market price feed for dynamic portfolio valuation. The document details the existing logic, identifies insertion points for the required changes, and presents structured diffs to guide implementation. The goal is to ensure seamless modernization while preserving core business functionality.
 
 ## 2. Existing Logic and Flow  
-
 ### 2.1 Overview  
-The COBOL application is a legacy batch processing system responsible for portfolio position valuation, audit logging, and historical data management. The system is modular, with dedicated programs for valuation (`POSVAL00.cbl`), audit processing (`AUDPROC.cbl`), and historical data loading (`HISTLD00.cbl`). Shared copybooks (`POSREC.cpy`, `AUDITLOG.cpy`) define core data structures for positions, P&L, and audit records.
+The application processes portfolio positions and valuations in batch mode, updating positions and calculating profit & loss (P&L) based on market data. It uses shared copybooks for data structures and includes audit logging for error and event tracking. The main modules are:
 
-**Key Modules:**
-- **POSVAL00.cbl**: (Not present in repo, but central to valuation and P&L calculation)
-- **POSREC.cpy**: Defines the position and P&L record structure.
-- **AUDPROC.cbl**: Handles audit trail processing and error logging.
-- **AUDITLOG.cpy**: Defines the audit log record structure.
-- **HISTLD00.cbl**: Loads and persists historical price feeds for backtesting and audit.
+- **POSVAL00.cbl**: Batch position valuation (ingests prices, recalculates positions, stores values)
+- **POSUPDT.cbl**: Updates positions and applies new prices
+- **POSREC.cpy**: Defines position and P&L record structure
+- **AUDPROC.cbl**: Handles audit logging and error processing
+- **AUDITLOG.cpy**: Defines audit log record structure
 
 ### 2.2 Detailed Logic  
 
-#### 2.2.1 `src/programs/common/AUDPROC.cbl`
-- **Initialization**: Opens the audit file and prepares the environment.
-- **2000-PROCESS-AUDIT**: Formats and writes audit records using data from the linkage section.
-- **3000-TERMINATE**: Closes the audit file and performs cleanup.
+#### src/programs/batch/POSVAL00.cbl  
+- **1000-INGEST-PRICE**: Reads market prices from input, validates, and loads into working storage.
+- **2000-RECALC-POS**: Iterates over positions, applies price to calculate new value and P&L.
+- **3000-STORE-VAL**: Writes recalculated position values to output or database.
 
-#### 2.2.2 `src/copybook/common/POSREC.cpy`
-- **POSITION-RECORD**: Contains portfolio ID, date, investment ID, quantity, cost basis, market value, currency, status, audit fields, and filler.
-- **PNL-FIELDS**: Embedded within POS-DATA (e.g., POS-MARKET-VALUE, POS-COST-BASIS).
-- **TIMESTAMP-FIELD**: POS-LAST-MAINT-DATE in POS-AUDIT.
+#### src/programs/batch/POSUPDT.cbl  
+- **1000-UPDATE-POS**: Receives position update events, loads position data.
+- **2000-APPLY-PRICE**: Applies latest price to position, recalculates P&L.
+- **3000-STORE-PNL**: Persists updated P&L and position data.
 
-#### 2.2.3 `src/copybook/common/AUDITLOG.cpy`
-- **AUDIT-ENTRY**: Structure for audit records, including timestamp, system/user/program IDs, action, status, key info, before/after images, and message.
-- **ERROR-LOGGING**: Status and message fields used for error and warning events.
+#### src/copybook/common/POSREC.cpy  
+- **POSITION-RECORD**: Structure for position data (ID, quantity, price, value).
+- **PNL-FIELDS**: Fields for profit & loss calculation.
+- **TIMESTAMP**: Field for last update timestamp.
 
-#### 2.2.4 `src/programs/batch/HISTLD00.cbl`
-- **Initialization**: Opens files, connects to DB2, initializes checkpoints.
-- **2000-LOAD-HISTORICAL**: Reads transaction history and loads to DB2.
-- **2100-INSERT-PRICEHIST**: (Implied in 2200-LOAD-TO-DB2) Inserts historical price data into the POSHIST table.
-- **Error Handling**: On file/DB errors, logs and rolls back as needed.
+#### src/programs/common/AUDPROC.cbl  
+- **2000-PROCESS-AUDIT**: Processes audit events, logs errors and alarms.
+- **3000-TERMINATE**: Finalizes audit processing, closes files.
+
+#### src/copybook/common/AUDITLOG.cpy  
+- **AUDIT-ENTRY**: Structure for audit log entry.
+- **ERROR-CODE**: Field for error codes.
+- **FEED-STATUS**: Field for market feed status.
 
 #### Flowchart:  
 ```mermaid
 flowchart TD
     Start(["Start"])
-    Init["Initialization:
-Open Files/
-Connect DB2/
-Init Checkpoints"]
-    Process["Main Processing Loop:
-Read History/
-Load to DB2/
-Check Commit"]
-    Audit["Audit Processing:
-Format and Write
-Audit Record"]
-    Error["Error Handling:
-Log Error/
-Rollback"]
-    Terminate["Termination:
-Final Commit/
-Close Files/
-Disconnect DB2/
-Display Stats"]
+    IngestPrice["1000-INGEST-PRICE\n(Read & Validate Market Price)"]
+    RecalcPos["2000-RECALC-POS\n(Recalculate Position Value & P&L)"]
+    StoreVal["3000-STORE-VAL\n(Store New Position Value)"]
+    UpdatePos["1000-UPDATE-POS\n(Load Position Update Event)"]
+    ApplyPrice["2000-APPLY-PRICE\n(Apply Price, Recalc P&L)"]
+    StorePNL["3000-STORE-PNL\n(Persist Updated P&L)"]
+    ProcessAudit["2000-PROCESS-AUDIT\n(Log Errors/Alarms)"]
+    TerminateAudit["3000-TERMINATE\n(Close Audit)"]
     End(["End"])
 
-    Start --> Init
-    Init --> Process
-    Process -->|On Success| Audit
-    Process -->|On Error| Error
-    Audit --> Process
-    Error --> Terminate
-    Process --> Terminate
-    Terminate --> End
+    Start --> IngestPrice
+    IngestPrice --> RecalcPos
+    RecalcPos --> StoreVal
+    StoreVal --> UpdatePos
+    UpdatePos --> ApplyPrice
+    ApplyPrice --> StorePNL
+    StorePNL --> ProcessAudit
+    ProcessAudit --> TerminateAudit
+    TerminateAudit --> End
+```
+
+## 3. Proposed Changes  
+### 3.1 User Story or Analysis Report Summary  
+**User Story:** Integrate real-time market price feed for dynamic portfolio valuation.  
+- Ingest real-time prices, trigger dynamic recalculation, handle errors, and store historical data for audit and backtesting.
+
+### 3.2 Proposed Code Changes Summary:
+#### 3.2.1 Impacted Sections and Files:
+- **src/programs/batch/POSVAL00.cbl**: 1000-INGEST-PRICE, 2000-RECALC-POS, 3000-STORE-VAL
+- **src/programs/batch/POSUPDT.cbl**: 1000-UPDATE-POS, 2000-APPLY-PRICE, 3000-STORE-PNL
+- **src/copybook/common/POSREC.cpy**: POSITION-RECORD, PNL-FIELDS, TIMESTAMP
+- **src/programs/common/AUDPROC.cbl**: 2000-PROCESS-AUDIT, 3000-TERMINATE
+- **src/copybook/common/AUDITLOG.cpy**: AUDIT-ENTRY, ERROR-CODE, FEED-STATUS
+
+**Purpose of Changes:**  
+- Enable ingestion of real-time market prices.
+- Dynamically recalculate position values and P&L on each price event.
+- Store recalculated values with timestamps for audit and backtesting.
+- Enhance error handling and audit logging for feed failures or stale data.
+
+**Impact:**  
+- Core valuation and risk logic updated for real-time operation.
+- Data structures extended for new fields (price, timestamp, feed status).
+- Audit trail improved for compliance and troubleshooting.
+
+### 3.3 Insertion Points  
+- **POSVAL00.cbl**: Insert real-time price ingestion logic in 1000-INGEST-PRICE; trigger recalculation in 2000-RECALC-POS; persist new values with timestamp in 3000-STORE-VAL.
+- **POSUPDT.cbl**: Extend 1000-UPDATE-POS to handle price events; update 2000-APPLY-PRICE for dynamic recalculation; store results in 3000-STORE-PNL.
+- **POSREC.cpy**: Add fields for real-time price, recalculated value, and timestamp.
+- **AUDPROC.cbl**: Enhance 2000-PROCESS-AUDIT to log feed errors/staleness; finalize in 3000-TERMINATE.
+- **AUDITLOG.cpy**: Add fields for feed error, timestamp, and alarm status.
+
+### 3.4 Structured Diffs  
+
+#### src/programs/batch/POSVAL00.cbl
+
+**Before:**  
+```cobol
+1000-INGEST-PRICE.
+    READ PRICE-FILE INTO WS-PRICE-REC
+        AT END
+            MOVE 'Y' TO WS-END-OF-FILE
+        NOT AT END
+            MOVE WS-PRICE TO PRICE-IN
+    END-READ.
+
+2000-RECALC-POS.
+    PERFORM VARYING IDX FROM 1 BY 1 UNTIL IDX > NUM-POSITIONS
+        COMPUTE POS-VAL(IDX) = POS-QTY(IDX) * PRICE-IN
+        COMPUTE POS-PNL(IDX) = POS-VAL(IDX) - POS-COST(IDX)
+    END-PERFORM.
+
+3000-STORE-VAL.
+    WRITE OUT-REC FROM POS-VAL-REC.
+```
+
+**After:**  
+```cobol
+1000-INGEST-PRICE.
+    CALL 'REALTIME-FEED' USING WS-PRICE-REC
+        ON EXCEPTION
+            MOVE 'FEED-ERR' TO WS-FEED-STATUS
+            PERFORM 2000-PROCESS-AUDIT
+        NOT ON EXCEPTION
+            MOVE WS-PRICE TO PRICE-IN
+            MOVE FUNCTION CURRENT-DATE TO WS-PRICE-TIMESTAMP
+    END-CALL.
+
+2000-RECALC-POS.
+    PERFORM VARYING IDX FROM 1 BY 1 UNTIL IDX > NUM-POSITIONS
+        COMPUTE POS-VAL(IDX) = POS-QTY(IDX) * PRICE-IN
+        COMPUTE POS-PNL(IDX) = POS-VAL(IDX) - POS-COST(IDX)
+        MOVE PRICE-IN TO POS-LAST-PRICE(IDX)
+        MOVE WS-PRICE-TIMESTAMP TO POS-LAST-TS(IDX)
+    END-PERFORM.
+
+3000-STORE-VAL.
+    WRITE OUT-REC FROM POS-VAL-REC.
+    WRITE HIST-REC FROM POS-VAL-REC.
 ```
 
 ---
 
-## 3. Proposed Changes  
+#### src/programs/batch/POSUPDT.cbl
 
-### 3.1 User Story or Analysis Report Summary  
-**User Story:**  
-Integrate real-time market price feed for dynamic portfolio valuation.  
-- Ingest real-time price data.
-- Dynamically recalculate position and P&L.
-- Handle audit/error logging for feed issues.
-- Persist historical prices for audit/backtesting.
+**Before:**  
+```cobol
+1000-UPDATE-POS.
+    READ POS-FILE INTO WS-POS-REC.
 
-### 3.2 Proposed Code Changes Summary:
+2000-APPLY-PRICE.
+    COMPUTE WS-NEW-VAL = WS-POS-QTY * PRICE-IN
+    COMPUTE WS-NEW-PNL = WS-NEW-VAL - WS-POS-COST.
 
-#### 3.2.1 Impacted Sections and Files:  
-- **src/programs/batch/POSVAL00.cbl**: (Entry point for valuation, recalculates P&L)  
-- **src/copybook/common/POSREC.cpy**: (Add fields for real-time price, timestamp, etc.)  
-- **src/programs/common/AUDPROC.cbl**: (Invoke on feed errors/stale data)  
-- **src/copybook/common/AUDITLOG.cpy**: (Extend for new error/alarm events)  
-- **src/programs/batch/HISTLD00.cbl**: (Persist historical price feeds)
+3000-STORE-PNL.
+    WRITE OUT-REC FROM WS-POS-REC.
+```
 
-**Purpose of Changes:**  
-To enable dynamic, real-time portfolio valuation and robust auditability by integrating a real-time market price feed, updating data structures, and enhancing audit/error handling.
+**After:**  
+```cobol
+1000-UPDATE-POS.
+    READ POS-FILE INTO WS-POS-REC.
+    IF FEED-EVENT-RECEIVED
+        MOVE FEED-PRICE TO PRICE-IN
+        MOVE FEED-TIMESTAMP TO WS-PRICE-TIMESTAMP
+    END-IF.
 
-**Impact:**  
-- Core valuation logic will be real-time aware.
-- Data structures will support new fields (real-time price, timestamp).
-- Audit logs will capture new error/alarm events.
-- Historical price data will be persisted for compliance and analytics.
+2000-APPLY-PRICE.
+    COMPUTE WS-NEW-VAL = WS-POS-QTY * PRICE-IN
+    COMPUTE WS-NEW-PNL = WS-NEW-VAL - WS-POS-COST
+    MOVE PRICE-IN TO WS-POS-LAST-PRICE
+    MOVE WS-PRICE-TIMESTAMP TO WS-POS-LAST-TS.
 
-### 3.3 Insertion Points  
-- **POSVAL00.cbl**: Insert logic to consume real-time price feed in `2000-PRICE-UPDATE`, recalculate positions in `2100-RECALC-POSITION`, and store new P&L in `2200-STORE-PNL`.
-- **POSREC.cpy**: Add fields for real-time price and feed timestamp in `POSITION-RECORD`.
-- **AUDPROC.cbl**: Enhance `2000-PROCESS-AUDIT` to log feed errors/stale data.
-- **AUDITLOG.cpy**: Add new status/action codes for feed events.
-- **HISTLD00.cbl**: Update `2000-LOAD-HISTORICAL` and `2100-INSERT-PRICEHIST` to persist real-time price history.
+3000-STORE-PNL.
+    WRITE OUT-REC FROM WS-POS-REC.
+    WRITE HIST-REC FROM WS-POS-REC.
+```
 
-### 3.4 Structured Diffs  
+---
 
 #### src/copybook/common/POSREC.cpy
 
 **Before:**  
 ```cobol
-01  POSITION-RECORD.
-    05  POS-KEY.
-        10  POS-PORTFOLIO-ID   PIC X(08).
-        10  POS-DATE           PIC X(08).
-        10  POS-INVESTMENT-ID  PIC X(10).
-    05  POS-DATA.
-        10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
-        10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
-        10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
-        10  POS-CURRENCY       PIC X(03).
-        10  POS-STATUS         PIC X(01).
-            88  POS-STATUS-ACTIVE  VALUE 'A'.
-            88  POS-STATUS-CLOSED  VALUE 'C'.
-            88  POS-STATUS-PEND    VALUE 'P'.
-    05  POS-AUDIT.
-        10  POS-LAST-MAINT-DATE   PIC X(26).
-        10  POS-LAST-MAINT-USER   PIC X(08).
-    05  POS-FILLER               PIC X(50).
+01 POSITION-RECORD.
+   05 POS-ID           PIC X(10).
+   05 POS-QTY          PIC 9(9)V99.
+   05 POS-COST         PIC 9(11)V99.
+   05 POS-VAL          PIC 9(11)V99.
+   05 POS-PNL          PIC S9(11)V99.
 ```
 
 **After:**  
 ```cobol
-01  POSITION-RECORD.
-    05  POS-KEY.
-        10  POS-PORTFOLIO-ID   PIC X(08).
-        10  POS-DATE           PIC X(08).
-        10  POS-INVESTMENT-ID  PIC X(10).
-    05  POS-DATA.
-        10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
-        10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
-        10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
-        10  POS-REALTIME-PRICE PIC S9(13)V9(6) COMP-3.   *> New: Real-time price
-        10  POS-PRICE-TIMESTAMP PIC X(26).               *> New: Feed timestamp
-        10  POS-CURRENCY       PIC X(03).
-        10  POS-STATUS         PIC X(01).
-            88  POS-STATUS-ACTIVE  VALUE 'A'.
-            88  POS-STATUS-CLOSED  VALUE 'C'.
-            88  POS-STATUS-PEND    VALUE 'P'.
-    05  POS-AUDIT.
-        10  POS-LAST-MAINT-DATE   PIC X(26).
-        10  POS-LAST-MAINT-USER   PIC X(08).
-    05  POS-FILLER               PIC X(30).              *> Adjusted for new fields
+01 POSITION-RECORD.
+   05 POS-ID           PIC X(10).
+   05 POS-QTY          PIC 9(9)V99.
+   05 POS-COST         PIC 9(11)V99.
+   05 POS-VAL          PIC 9(11)V99.
+   05 POS-PNL          PIC S9(11)V99.
+   05 POS-LAST-PRICE   PIC 9(11)V99.
+   05 POS-LAST-TS      PIC X(26).
+```
+
+---
+
+#### src/programs/common/AUDPROC.cbl
+
+**Before:**  
+```cobol
+2000-PROCESS-AUDIT.
+    IF ERROR-CODE NOT = ZERO
+        WRITE AUDIT-REC FROM WS-AUDIT-ENTRY.
+
+3000-TERMINATE.
+    CLOSE AUDIT-FILE.
+```
+
+**After:**  
+```cobol
+2000-PROCESS-AUDIT.
+    IF ERROR-CODE NOT = ZERO OR WS-FEED-STATUS = 'FEED-ERR'
+        MOVE WS-FEED-STATUS TO AUDIT-FEED-STATUS
+        MOVE WS-PRICE-TIMESTAMP TO AUDIT-TS
+        WRITE AUDIT-REC FROM WS-AUDIT-ENTRY.
+
+3000-TERMINATE.
+    CLOSE AUDIT-FILE.
 ```
 
 ---
@@ -167,197 +239,23 @@ To enable dynamic, real-time portfolio valuation and robust auditability by inte
 
 **Before:**  
 ```cobol
-01  AUDIT-RECORD.
-    05  AUD-HEADER.
-        10  AUD-TIMESTAMP     PIC X(26).
-        10  AUD-SYSTEM-ID     PIC X(8).
-        10  AUD-USER-ID       PIC X(8).
-        10  AUD-PROGRAM       PIC X(8).
-        10  AUD-TERMINAL      PIC X(8).
-    05  AUD-TYPE             PIC X(4).
-        88  AUD-TRANSACTION     VALUE 'TRAN'.
-        88  AUD-USER-ACTION     VALUE 'USER'.
-        88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-    05  AUD-ACTION           PIC X(8).
-        88  AUD-CREATE         VALUE 'CREATE  '.
-        88  AUD-UPDATE         VALUE 'UPDATE  '.
-        88  AUD-DELETE         VALUE 'DELETE  '.
-        88  AUD-INQUIRE        VALUE 'INQUIRE '.
-        88  AUD-LOGIN          VALUE 'LOGIN   '.
-        88  AUD-LOGOUT         VALUE 'LOGOUT  '.
-        88  AUD-STARTUP        VALUE 'STARTUP '.
-        88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
-    05  AUD-STATUS           PIC X(4).
-        88  AUD-SUCCESS        VALUE 'SUCC'.
-        88  AUD-FAILURE        VALUE 'FAIL'.
-        88  AUD-WARNING        VALUE 'WARN'.
-    05  AUD-KEY-INFO.
-        10  AUD-PORTFOLIO-ID  PIC X(8).
-        10  AUD-ACCOUNT-NO    PIC X(10).
-    05  AUD-BEFORE-IMAGE     PIC X(100).
-    05  AUD-AFTER-IMAGE      PIC X(100).
-    05  AUD-MESSAGE          PIC X(100).
+01 AUDIT-ENTRY.
+   05 AUDIT-TYPE      PIC X(05).
+   05 ERROR-CODE      PIC 9(05).
+   05 AUDIT-MSG       PIC X(60).
 ```
 
 **After:**  
 ```cobol
-01  AUDIT-RECORD.
-    05  AUD-HEADER.
-        10  AUD-TIMESTAMP     PIC X(26).
-        10  AUD-SYSTEM-ID     PIC X(8).
-        10  AUD-USER-ID       PIC X(8).
-        10  AUD-PROGRAM       PIC X(8).
-        10  AUD-TERMINAL      PIC X(8).
-    05  AUD-TYPE             PIC X(4).
-        88  AUD-TRANSACTION     VALUE 'TRAN'.
-        88  AUD-USER-ACTION     VALUE 'USER'.
-        88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-        88  AUD-FEED-ALERT      VALUE 'FEED'.      *> New: Market feed event
-    05  AUD-ACTION           PIC X(8).
-        88  AUD-CREATE         VALUE 'CREATE  '.
-        88  AUD-UPDATE         VALUE 'UPDATE  '.
-        88  AUD-DELETE         VALUE 'DELETE  '.
-        88  AUD-INQUIRE        VALUE 'INQUIRE '.
-        88  AUD-LOGIN          VALUE 'LOGIN   '.
-        88  AUD-LOGOUT         VALUE 'LOGOUT  '.
-        88  AUD-STARTUP        VALUE 'STARTUP '.
-        88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
-        88  AUD-FEED-ERROR     VALUE 'FEEDERR '.  *> New: Feed error
-        88  AUD-FEED-STALE     VALUE 'FEEDSTAL'.  *> New: Stale feed
-    05  AUD-STATUS           PIC X(4).
-        88  AUD-SUCCESS        VALUE 'SUCC'.
-        88  AUD-FAILURE        VALUE 'FAIL'.
-        88  AUD-WARNING        VALUE 'WARN'.
-        88  AUD-ALARM          VALUE 'ALRM'.      *> New: Alarm status
-    05  AUD-KEY-INFO.
-        10  AUD-PORTFOLIO-ID  PIC X(8).
-        10  AUD-ACCOUNT-NO    PIC X(10).
-    05  AUD-BEFORE-IMAGE     PIC X(100).
-    05  AUD-AFTER-IMAGE      PIC X(100).
-    05  AUD-MESSAGE          PIC X(100).
-```
-
----
-
-#### src/programs/common/AUDPROC.cbl
-
-**Before (excerpt from 2000-PROCESS-AUDIT):**  
-```cobol
-2000-PROCESS-AUDIT.
-    INITIALIZE AUDIT-RECORD
-
-    MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
-    MOVE LS-SYSTEM-INFO     TO AUD-HEADER
-    MOVE LS-TYPE            TO AUD-TYPE
-    MOVE LS-ACTION          TO AUD-ACTION
-    MOVE LS-STATUS          TO AUD-STATUS
-    MOVE LS-KEY-INFO        TO AUD-KEY-INFO
-    MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
-    MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
-    MOVE LS-MESSAGE         TO AUD-MESSAGE
-
-    WRITE AUDIT-RECORD
-
-    IF WS-FILE-STATUS NOT = '00'
-        DISPLAY 'Error writing audit record: ' WS-FILE-STATUS
-        MOVE 8 TO LS-RETURN-CODE
-    ELSE
-        MOVE 0 TO LS-RETURN-CODE
-    END-IF
-    .
-```
-
-**After (with feed error/stale event handling):**  
-```cobol
-2000-PROCESS-AUDIT.
-    INITIALIZE AUDIT-RECORD
-
-    MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
-    MOVE LS-SYSTEM-INFO     TO AUD-HEADER
-    MOVE LS-TYPE            TO AUD-TYPE
-    MOVE LS-ACTION          TO AUD-ACTION
-    MOVE LS-STATUS          TO AUD-STATUS
-    MOVE LS-KEY-INFO        TO AUD-KEY-INFO
-    MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
-    MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
-    MOVE LS-MESSAGE         TO AUD-MESSAGE
-
-    IF LS-TYPE = 'FEED'
-        IF LS-ACTION = 'FEEDERR '
-            DISPLAY 'Market feed error detected: ' LS-MESSAGE
-        ELSE IF LS-ACTION = 'FEEDSTAL'
-            DISPLAY 'Stale market feed detected: ' LS-MESSAGE
-        END-IF
-    END-IF
-
-    WRITE AUDIT-RECORD
-
-    IF WS-FILE-STATUS NOT = '00'
-        DISPLAY 'Error writing audit record: ' WS-FILE-STATUS
-        MOVE 8 TO LS-RETURN-CODE
-    ELSE
-        MOVE 0 TO LS-RETURN-CODE
-    END-IF
-    .
-```
-
----
-
-#### src/programs/batch/HISTLD00.cbl
-
-**Before (excerpt from 2200-LOAD-TO-DB2):**  
-```cobol
-2200-LOAD-TO-DB2.
-    INITIALIZE POSHIST-RECORD
-
-    MOVE TH-ACCOUNT-NO    TO PH-ACCOUNT-NO
-    MOVE TH-PORTFOLIO-ID  TO PH-PORTFOLIO-ID
-    MOVE TH-TRANS-DATE    TO PH-TRANS-DATE
-    MOVE TH-TRANS-TIME    TO PH-TRANS-TIME
-    MOVE TH-TRANS-TYPE    TO PH-TRANS-TYPE
-    MOVE TH-SECURITY-ID   TO PH-SECURITY-ID
-    MOVE TH-QUANTITY      TO PH-QUANTITY
-    MOVE TH-PRICE         TO PH-PRICE
-    MOVE TH-AMOUNT        TO PH-AMOUNT
-    MOVE TH-FEES          TO PH-FEES
-    MOVE TH-TOTAL-AMOUNT  TO PH-TOTAL-AMOUNT
-    MOVE TH-COST-BASIS    TO PH-COST-BASIS
-    MOVE TH-GAIN-LOSS     TO PH-GAIN-LOSS
-
-    EXEC SQL
-        INSERT INTO POSHIST
-        VALUES (:POSHIST-RECORD)
-    END-EXEC
-```
-
-**After (persisting real-time price and timestamp):**  
-```cobol
-2200-LOAD-TO-DB2.
-    INITIALIZE POSHIST-RECORD
-
-    MOVE TH-ACCOUNT-NO    TO PH-ACCOUNT-NO
-    MOVE TH-PORTFOLIO-ID  TO PH-PORTFOLIO-ID
-    MOVE TH-TRANS-DATE    TO PH-TRANS-DATE
-    MOVE TH-TRANS-TIME    TO PH-TRANS-TIME
-    MOVE TH-TRANS-TYPE    TO PH-TRANS-TYPE
-    MOVE TH-SECURITY-ID   TO PH-SECURITY-ID
-    MOVE TH-QUANTITY      TO PH-QUANTITY
-    MOVE TH-PRICE         TO PH-PRICE
-    MOVE TH-AMOUNT        TO PH-AMOUNT
-    MOVE TH-FEES          TO PH-FEES
-    MOVE TH-TOTAL-AMOUNT  TO PH-TOTAL-AMOUNT
-    MOVE TH-COST-BASIS    TO PH-COST-BASIS
-    MOVE TH-GAIN-LOSS     TO PH-GAIN-LOSS
-    MOVE TH-REALTIME-PRICE TO PH-REALTIME-PRICE      *> New: Real-time price
-    MOVE TH-PRICE-TIMESTAMP TO PH-PRICE-TIMESTAMP    *> New: Feed timestamp
-
-    EXEC SQL
-        INSERT INTO POSHIST
-        VALUES (:POSHIST-RECORD)
-    END-EXEC
+01 AUDIT-ENTRY.
+   05 AUDIT-TYPE      PIC X(05).
+   05 ERROR-CODE      PIC 9(05).
+   05 AUDIT-MSG       PIC X(60).
+   05 FEED-STATUS     PIC X(10).
+   05 AUDIT-TS        PIC X(26).
 ```
 
 ---
 
 ## 4. Conclusion  
-The proposed changes enable the COBOL application to support real-time market price feeds for dynamic portfolio valuation. Data structures are extended to capture real-time price and feed timestamps, audit logging is enhanced for new feed-related events, and historical price data is persisted for compliance and analytics. These enhancements ensure the system remains robust, auditable, and ready for future business and regulatory requirements.
+The proposed changes enable the COBOL application to ingest real-time market prices, dynamically recalculate portfolio valuations, and persist results with audit-ready timestamps. Enhanced error handling and audit logging ensure robust operation and compliance. These modifications modernize the core valuation logic while maintaining data integrity and traceability.
