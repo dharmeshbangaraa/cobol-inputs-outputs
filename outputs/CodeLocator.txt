@@ -1,18 +1,20 @@
+**Summary**:
 User Story: Integrate real-time market price feed for dynamic portfolio valuation  
-- 5 impacted components identified (**High impact only**)  
-- High complexity: Involves real-time data ingestion, price recalculation, error/audit handling, and new historical storage, affecting core valuation and audit flows.
+- 6 impacted components identified (**High impact only**)  
+- High complexity: Involves real-time data ingestion, position/P&L recalculation, audit/error handling, VSAM integration, and performance-critical batch and reporting flows.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections              | Dependency Path                                  |
-|------------------------------------------|--------|---------|-------------------------------------------|--------------------------------------------------|
-| `src/programs/batch/POSUPDT.cbl`         | High   | Direct  | (entire file, position update logic)      | Entry point for position value recalculation      |
-| `src/copybook/common/POSREC.cpy`         | High   | Direct  | POSITION-RECORD, PNL-FIELDS               | Shared by valuation and reporting programs        |
-| `src/programs/common/AUDPROC.cbl`        | High   | Direct  | 2000-PROCESS-AUDIT, 3000-TERMINATE        | Called for audit logging on feed errors/staleness |
-| `src/copybook/common/AUDITLOG.cpy`       | High   | Direct  | AUDIT-RECORD, LOG-TIMESTAMP               | Used for audit trail on feed failures             |
-| `src/programs/batch/HISTLD00.cbl`        | High   | Direct  | EXEC SQL INSERT INTO POSHIST, 2300-CHECK-COMMIT | Handles historical price feed persistence         |
+| Program File Path                         | Impact | Nature  | Affected Paragraphs/Sections          | Dependency Path                                  |
+|-------------------------------------------|--------|---------|---------------------------------------|--------------------------------------------------|
+| src/programs/batch/POSUPDT.cbl            | High   | Direct  | (all, core logic for position update) | [POSUPDT]                                        |
+| src/copybook/common/POSREC.cpy            | High   | Direct  | (all, position record structure)      | [POSUPDT, POSREC]                                |
+| src/copybook/common/AUDITLOG.cpy          | High   | Direct  | (all, audit logging)                  | [POSUPDT, AUDITLOG]                              |
+| src/programs/batch/HISTLD00.cbl           | High   | Direct  | 2000-LOAD-HISTORY, 2100-INSERT-HIST   | [POSUPDT, HISTLD00]                              |
+| src/copybook/db2/PRICEHIST.cpy            | High   | Direct  | (all, VSAM price history)             | [POSUPDT, HISTLD00, PRICEHIST]                   |
+| src/programs/common/AUDPROC.cbl           | High   | Indirect| 2000-PROCESS-AUDIT                    | [POSUPDT, AUDITLOG, AUDPROC]                     |
 
 ---
 
@@ -20,52 +22,61 @@ User Story: Integrate real-time market price feed for dynamic portfolio valuatio
 ```json
 {
   "impactAnalysis": {
-    "userStory": "Integrate real-time market price feed for dynamic portfolio valuation",
+    "userStory": "COBOL_Legacy_benchmark_suite_major",
     "impactedComponents": [
       {
         "programFilePath": "src/programs/batch/POSUPDT.cbl",
-        "impactScore": 0.99,
+        "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": [],
         "dependencyPath": ["POSUPDT"],
-        "rationale": "Primary batch program for updating position values; must be extended to consume real-time prices and recalculate P&L."
+        "rationale": "Core program for updating position and P&L, must be modified to consume real-time price feed, recalculate values, and trigger downstream processes."
       },
       {
         "programFilePath": "src/copybook/common/POSREC.cpy",
-        "impactScore": 0.97,
+        "impactScore": 0.96,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["POSITION-RECORD", "PNL-FIELDS"],
-        "dependencyPath": ["POSUPDT", "RPTPOS00", "UTLVAL00"],
-        "rationale": "Defines the position record structure, including fields for market price, P&L, and timestamp; must be updated for new real-time fields."
-      },
-      {
-        "programFilePath": "src/programs/common/AUDPROC.cbl",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS-AUDIT", "3000-TERMINATE"],
-        "dependencyPath": ["POSUPDT", "AUDPROC"],
-        "rationale": "Handles audit logging; must be invoked on feed errors or stale data as per new requirements."
+        "affectedParagraphs": [],
+        "dependencyPath": ["POSUPDT", "POSREC"],
+        "rationale": "Defines the position record structure; will be updated to store real-time price, timestamp, and recalculated P&L."
       },
       {
         "programFilePath": "src/copybook/common/AUDITLOG.cpy",
-        "impactScore": 0.93,
+        "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["AUDIT-RECORD", "LOG-TIMESTAMP"],
-        "dependencyPath": ["AUDPROC", "RPTAUD00"],
-        "rationale": "Defines audit log record structure; updated to capture new alarm and feed error events."
+        "affectedParagraphs": [],
+        "dependencyPath": ["POSUPDT", "AUDITLOG"],
+        "rationale": "Audit logging is required for error/stale feed conditions and for tracking price update events."
       },
       {
         "programFilePath": "src/programs/batch/HISTLD00.cbl",
-        "impactScore": 0.91,
+        "impactScore": 0.94,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["EXEC SQL INSERT INTO POSHIST", "2300-CHECK-COMMIT"],
+        "affectedParagraphs": ["2000-LOAD-HISTORY", "2100-INSERT-HIST"],
         "dependencyPath": ["POSUPDT", "HISTLD00"],
-        "rationale": "Handles persistence of historical price feeds into VSAM KSDS; must be updated for new PRICEHIST dataset."
+        "rationale": "Handles loading historical price data into VSAM; must be extended for new PRICEHIST persistence."
+      },
+      {
+        "programFilePath": "src/copybook/db2/PRICEHIST.cpy",
+        "impactScore": 0.93,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [],
+        "dependencyPath": ["POSUPDT", "HISTLD00", "PRICEHIST"],
+        "rationale": "Defines VSAM KSDS structure for historical price feeds, required for new persistence and backtesting."
+      },
+      {
+        "programFilePath": "src/programs/common/AUDPROC.cbl",
+        "impactScore": 0.91,
+        "impactLevel": "High",
+        "impactType": "Indirect",
+        "affectedParagraphs": ["2000-PROCESS-AUDIT"],
+        "dependencyPath": ["POSUPDT", "AUDITLOG", "AUDPROC"],
+        "rationale": "Processes audit records; will be invoked for error and stale feed events as per new requirements."
       }
     ]
   }
@@ -77,27 +88,20 @@ User Story: Integrate real-time market price feed for dynamic portfolio valuatio
 **Visualization**:
 ```mermaid
 graph TD
-    A[src/programs/batch/POSUPDT.cbl]:::high
-    B[src/copybook/common/POSREC.cpy]:::high
-    C[src/programs/common/AUDPROC.cbl]:::high
-    D[src/copybook/common/AUDITLOG.cpy]:::high
-    E[src/programs/batch/HISTLD00.cbl]:::high
-
-    A --> B
-    A --> C
-    C --> D
-    A --> E
-    E --> B
-
-    classDef high fill:#ffcccc,stroke:#d33,stroke-width:2px;
+  POSUPDT["src/programs/batch/POSUPDT.cbl (High)"] --> POSREC["src/copybook/common/POSREC.cpy (High)"]
+  POSUPDT --> AUDITLOG["src/copybook/common/AUDITLOG.cpy (High)"]
+  POSUPDT --> HISTLD00["src/programs/batch/HISTLD00.cbl (High)"]
+  POSUPDT --> PRICEHIST["src/copybook/db2/PRICEHIST.cpy (High)"]
+  POSUPDT --> AUDPROC["src/programs/common/AUDPROC.cbl (High)"]
+  AUDITLOG --> AUDPROC
+  HISTLD00 --> PRICEHIST
+  classDef high fill:#ffcccc,stroke:#b30000,stroke-width:2px;
+  class POSUPDT,POSREC,AUDITLOG,HISTLD00,PRICEHIST,AUDPROC high;
 ```
 
 ---
 
-**Reasoning**:
-- `POSUPDT.cbl` is the main program for position updates and will be the integration point for real-time price feeds and P&L recalculation.
-- `POSREC.cpy` is the copybook defining position records, which must be updated for new fields (real-time price, timestamp, etc.).
-- `AUDPROC.cbl` and `AUDITLOG.cpy` are directly involved in audit logging, which is required for error and stale feed handling.
-- `HISTLD00.cbl` is responsible for loading historical data, and will be updated to persist new price history into the VSAM KSDS.
-
-No extra files are included; all paths are verified against the repository. Only high-impact, directly relevant components are listed.
+**Notes**:
+- Only files present in the repository are included.
+- All components above are directly or indirectly required to meet the user story's acceptance criteria for real-time price ingestion, P&L recalculation, error/audit, and historical persistence.
+- No medium/low impact or extraneous files are included; all paths are as per repo structure.
