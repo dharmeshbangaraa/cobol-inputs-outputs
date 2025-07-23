@@ -14,19 +14,27 @@
          10  POS-QUANTITY       PIC S9(11)V9(4) COMP-3.
          10  POS-COST-BASIS     PIC S9(13)V9(2) COMP-3.
          10  POS-MARKET-VALUE   PIC S9(13)V9(2) COMP-3.
+         10  POS-NEW-PRICE      PIC S9(13)V9(6) COMP-3.
+*-- Change: Added POS-NEW-PRICE for real-time market price feed integration.
+         10  POS-RECALC-VALUE   PIC S9(13)V9(2) COMP-3.
+*-- Change: Added POS-RECALC-VALUE for recalculated position value.
          10  POS-CURRENCY       PIC X(03).
          10  POS-STATUS         PIC X(01).
              88  POS-STATUS-ACTIVE  VALUE 'A'.
              88  POS-STATUS-CLOSED  VALUE 'C'.
              88  POS-STATUS-PEND    VALUE 'P'.
-*-- Change: Added new field for last-ingested real-time market price
-         10  POS-LAST-PRICE      PIC S9(13)V9(6) COMP-3.
-*-- Change: Added new field for real-time valuation timestamp
-         10  POS-PRICE-TIMESTAMP PIC X(26).
+     05  POS-PNL-FIELDS.
+         10  POS-REALIZED-PNL    PIC S9(13)V9(2) COMP-3.
+*-- Change: Added POS-REALIZED-PNL for storing realized P&L per event.
+         10  POS-UNREALIZED-PNL  PIC S9(13)V9(2) COMP-3.
+*-- Change: Added POS-UNREALIZED-PNL for storing unrealized P&L per event.
      05  POS-AUDIT.
          10  POS-LAST-MAINT-DATE   PIC X(26).
          10  POS-LAST-MAINT-USER   PIC X(08).
-     05  POS-FILLER               PIC X(50).
+         10  POS-VAL-TIMESTAMP     PIC X(26).
+*-- Change: Added POS-VAL-TIMESTAMP for audit and backtesting.
+     05  POS-FILLER               PIC X(20).
+*-- Change: Reduced filler to accommodate new fields.
 *****************************************************************
 * FIELD DESCRIPTIONS:
 * POS-PORTFOLIO-ID : PORTFOLIO IDENTIFIER
@@ -35,17 +43,149 @@
 * POS-QUANTITY     : HOLDING QUANTITY
 * POS-COST-BASIS   : TOTAL COST BASIS
 * POS-MARKET-VALUE : CURRENT MARKET VALUE
+* POS-NEW-PRICE    : LATEST MARKET PRICE FROM FEED
+* POS-RECALC-VALUE : RECALCULATED POSITION VALUE
+* POS-REALIZED-PNL : REALIZED PROFIT & LOSS
+* POS-UNREALIZED-PNL: UNREALIZED PROFIT & LOSS
+* POS-VAL-TIMESTAMP: TIMESTAMP OF VALUATION
 * POS-STATUS       : A=ACTIVE, C=CLOSED, P=PENDING
-* POS-LAST-PRICE   : LAST REAL-TIME MARKET PRICE INGESTED
-* POS-PRICE-TIMESTAMP: TIMESTAMP OF LAST PRICE INGESTION
 *****************************************************************
 
 [Summary Change Report]
-- Added `POS-LAST-PRICE` (PIC S9(13)V9(6) COMP-3) to store the most recent real-time market price for the position.
-- Added `POS-PRICE-TIMESTAMP` (PIC X(26)) to store the timestamp of the last price ingestion for audit and backtesting.
-- All changes are inline-commented for traceability and maintain COBOL formatting.
+- Added POS-NEW-PRICE to store the latest real-time market price.
+- Added POS-RECALC-VALUE for recalculated position value based on new price.
+- Added POS-PNL-FIELDS group for realized and unrealized P&L.
+- Added POS-VAL-TIMESTAMP for audit and historical storage.
+- Reduced POS-FILLER to accommodate new fields.
+- All changes are inline-commented for traceability.
 
-[File 2] AUDITLOG.CPY src/copybook/common/AUDITLOG.cpy
+[File 2] AUDPROC.CBL src/programs/common/AUDPROC.cbl
+
+*================================================================*
+* Program Name: AUDPROC
+* Description: Audit Trail Processing Subroutine
+* Author: [Author name]
+* Date Written: 2024-03-20
+*================================================================*
+ IDENTIFICATION DIVISION.
+ PROGRAM-ID. AUDPROC.
+
+ ENVIRONMENT DIVISION.
+ CONFIGURATION SECTION.
+ SOURCE-COMPUTER. IBM-ZOS.
+ OBJECT-COMPUTER. IBM-ZOS.
+
+ INPUT-OUTPUT SECTION.
+ FILE-CONTROL.
+     SELECT AUDIT-FILE
+         ASSIGN TO AUDFILE
+         ORGANIZATION IS SEQUENTIAL
+         FILE STATUS IS WS-FILE-STATUS.
+
+ DATA DIVISION.
+ FILE SECTION.
+ FD  AUDIT-FILE
+     RECORDING MODE IS F
+     BLOCK CONTAINS 0 RECORDS.
+     COPY AUDITLOG.
+
+ WORKING-STORAGE SECTION.
+ 01  WS-FILE-STATUS          PIC X(2).
+ 01  WS-FORMATTED-TIME       PIC X(26).
+ 01  WS-FEED-ERROR           PIC X(1) VALUE 'N'.
+*-- Change: Added WS-FEED-ERROR to flag feed errors.
+ 01  WS-FEED-ALARM           PIC X(1) VALUE 'N'.
+*-- Change: Added WS-FEED-ALARM to flag feed alarms.
+
+ LINKAGE SECTION.
+ 01  LS-AUDIT-REQUEST.
+     05  LS-SYSTEM-INFO.
+         10  LS-SYSTEM-ID    PIC X(8).
+         10  LS-USER-ID      PIC X(8).
+         10  LS-PROGRAM      PIC X(8).
+         10  LS-TERMINAL     PIC X(8).
+     05  LS-TYPE            PIC X(4).
+     05  LS-ACTION          PIC X(8).
+     05  LS-STATUS          PIC X(4).
+     05  LS-KEY-INFO.
+         10  LS-PORT-ID     PIC X(8).
+         10  LS-ACCT-NO     PIC X(10).
+     05  LS-BEFORE-IMAGE    PIC X(100).
+     05  LS-AFTER-IMAGE     PIC X(100).
+     05  LS-MESSAGE         PIC X(100).
+     05  LS-RETURN-CODE     PIC S9(4) COMP.
+     05  LS-FEED-ERROR      PIC X(1).
+*-- Change: Added LS-FEED-ERROR for passing feed error status.
+     05  LS-FEED-ALARM      PIC X(1).
+*-- Change: Added LS-FEED-ALARM for passing feed alarm status.
+
+ PROCEDURE DIVISION USING LS-AUDIT-REQUEST.
+ 0000-MAIN.
+     PERFORM 1000-INITIALIZE
+     PERFORM 2000-PROCESS-AUDIT
+     PERFORM 3000-TERMINATE
+     GOBACK
+     .
+
+ 1000-INITIALIZE.
+     ACCEPT WS-FORMATTED-TIME FROM TIME STAMP
+
+     OPEN EXTEND AUDIT-FILE
+     IF WS-FILE-STATUS NOT = '00'
+         DISPLAY 'Error opening audit file: ' WS-FILE-STATUS
+         MOVE 8 TO LS-RETURN-CODE
+         PERFORM 3000-TERMINATE
+         GOBACK
+     END-IF
+     .
+
+ 2000-PROCESS-AUDIT.
+     INITIALIZE AUDIT-RECORD
+
+     MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
+     MOVE LS-SYSTEM-INFO     TO AUD-HEADER
+     MOVE LS-TYPE            TO AUD-TYPE
+     MOVE LS-ACTION          TO AUD-ACTION
+     MOVE LS-STATUS          TO AUD-STATUS
+     MOVE LS-KEY-INFO        TO AUD-KEY-INFO
+     MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
+     MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
+     MOVE LS-MESSAGE         TO AUD-MESSAGE
+
+     IF LS-FEED-ERROR = 'Y'
+*-- Change: Log feed error in audit record.
+         MOVE 'Y' TO AUD-FEED-ERROR
+         MOVE 'FAIL' TO AUD-STATUS
+         MOVE 'MARKET FEED ERROR' TO AUD-MESSAGE
+     END-IF
+
+     IF LS-FEED-ALARM = 'Y'
+*-- Change: Log feed alarm in audit record.
+         MOVE 'Y' TO AUD-FEED-ALARM
+         MOVE 'WARN' TO AUD-STATUS
+         MOVE 'MARKET FEED STALE' TO AUD-MESSAGE
+     END-IF
+
+     WRITE AUDIT-RECORD
+
+     IF WS-FILE-STATUS NOT = '00'
+         DISPLAY 'Error writing audit record: ' WS-FILE-STATUS
+         MOVE 8 TO LS-RETURN-CODE
+     ELSE
+         MOVE 0 TO LS-RETURN-CODE
+     END-IF
+     .
+
+ 3000-TERMINATE.
+     CLOSE AUDIT-FILE
+     .
+
+[Summary Change Report]
+- Added WS-FEED-ERROR and WS-FEED-ALARM to working-storage for error/alarm tracking.
+- Extended linkage section with LS-FEED-ERROR and LS-FEED-ALARM.
+- Enhanced 2000-PROCESS-AUDIT to log feed errors and alarms in audit records with inline comments for traceability.
+
+[File 3] AUDITLOG.CPY src/copybook/common/AUDITLOG.cpy
 
 *================================================================*
 * Copybook Name: AUDITLOG
@@ -80,151 +220,30 @@
      05  AUD-KEY-INFO.
          10  AUD-PORTFOLIO-ID  PIC X(8).
          10  AUD-ACCOUNT-NO    PIC X(10).
-*-- Change: Added field for market feed error code
-     05  AUD-ERROR-CODE       PIC X(10).
-*-- Change: Added field for market feed status (OK/STALE/FAIL)
-     05  AUD-FEED-STATUS      PIC X(8).
-*-- Change: Added field for feed alarm indicator
-     05  AUD-FEED-ALARM       PIC X(1).
-         88  AUD-ALARM-ON     VALUE 'Y'.
-         88  AUD-ALARM-OFF    VALUE 'N'.
      05  AUD-BEFORE-IMAGE     PIC X(100).
      05  AUD-AFTER-IMAGE      PIC X(100).
-     05  AUD-MESSAGE          PIC X(100). 
+     05  AUD-MESSAGE          PIC X(100).
+     05  AUD-FEED-ERROR       PIC X(1).
+*-- Change: Added AUD-FEED-ERROR to flag market feed errors.
+     05  AUD-FEED-ALARM       PIC X(1).
+*-- Change: Added AUD-FEED-ALARM to flag market feed stale/alarm status.
 
 [Summary Change Report]
-- Added `AUD-ERROR-CODE` (PIC X(10)) for market feed error codes.
-- Added `AUD-FEED-STATUS` (PIC X(8)) for feed status (OK/STALE/FAIL).
-- Added `AUD-FEED-ALARM` (PIC X(1)) with values 'Y'/'N' for alarm state.
-- All changes are inline-commented for traceability and maintain COBOL formatting.
+- Added AUD-FEED-ERROR and AUD-FEED-ALARM fields to record market feed error and alarm status.
+- Inline comments added for traceability.
 
-[File 3] AUDPROC.CBL src/programs/common/AUDPROC.cbl
+```
+[File 4] POSVAL00.CBL src/programs/batch/POSVAL00.cbl
 
-*================================================================*
-* Program Name: AUDPROC
-* Description: Audit Trail Processing Subroutine
-* Author: [Author name]
-* Date Written: 2024-03-20
-*================================================================*
- IDENTIFICATION DIVISION.
- PROGRAM-ID. AUDPROC.
-
- ENVIRONMENT DIVISION.
- CONFIGURATION SECTION.
- SOURCE-COMPUTER. IBM-ZOS.
- OBJECT-COMPUTER. IBM-ZOS.
-
- INPUT-OUTPUT SECTION.
- FILE-CONTROL.
-     SELECT AUDIT-FILE
-         ASSIGN TO AUDFILE
-         ORGANIZATION IS SEQUENTIAL
-         FILE STATUS IS WS-FILE-STATUS.
-
- DATA DIVISION.
- FILE SECTION.
- FD  AUDIT-FILE
-     RECORDING MODE IS F
-     BLOCK CONTAINS 0 RECORDS.
-     COPY AUDITLOG.
-
- WORKING-STORAGE SECTION.
- 01  WS-FILE-STATUS          PIC X(2).
- 01  WS-FORMATTED-TIME       PIC X(26).
-*-- Change: Add working-storage for feed error/alert handling
- 01  WS-FEED-ERROR-CODE      PIC X(10).
- 01  WS-FEED-STATUS          PIC X(8).
- 01  WS-FEED-ALARM           PIC X(1).
-
- LINKAGE SECTION.
- 01  LS-AUDIT-REQUEST.
-     05  LS-SYSTEM-INFO.
-         10  LS-SYSTEM-ID    PIC X(8).
-         10  LS-USER-ID      PIC X(8).
-         10  LS-PROGRAM      PIC X(8).
-         10  LS-TERMINAL     PIC X(8).
-     05  LS-TYPE            PIC X(4).
-     05  LS-ACTION          PIC X(8).
-     05  LS-STATUS          PIC X(4).
-     05  LS-KEY-INFO.
-         10  LS-PORT-ID     PIC X(8).
-         10  LS-ACCT-NO     PIC X(10).
-     05  LS-BEFORE-IMAGE    PIC X(100).
-     05  LS-AFTER-IMAGE     PIC X(100).
-     05  LS-MESSAGE         PIC X(100).
-     05  LS-RETURN-CODE     PIC S9(4) COMP.
-*-- Change: Add linkage for feed error/alert handling
-     05  LS-FEED-ERROR-CODE PIC X(10).
-     05  LS-FEED-STATUS     PIC X(8).
-     05  LS-FEED-ALARM      PIC X(1).
-
- PROCEDURE DIVISION USING LS-AUDIT-REQUEST.
- 0000-MAIN.
-     PERFORM 1000-INITIALIZE
-     PERFORM 2000-PROCESS-AUDIT
-     PERFORM 3000-TERMINATE
-     GOBACK
-     .
-
- 1000-INITIALIZE.
-     ACCEPT WS-FORMATTED-TIME FROM TIME STAMP
-
-     OPEN EXTEND AUDIT-FILE
-     IF WS-FILE-STATUS NOT = '00'
-         DISPLAY 'Error opening audit file: ' WS-FILE-STATUS
-         MOVE 8 TO LS-RETURN-CODE
-         PERFORM 3000-TERMINATE
-         GOBACK
-     END-IF
-     .
-
- 2000-PROCESS-AUDIT.
-     INITIALIZE AUDIT-RECORD
-
-     MOVE WS-FORMATTED-TIME  TO AUD-TIMESTAMP
-     MOVE LS-SYSTEM-INFO     TO AUD-HEADER
-     MOVE LS-TYPE            TO AUD-TYPE
-     MOVE LS-ACTION          TO AUD-ACTION
-     MOVE LS-STATUS          TO AUD-STATUS
-     MOVE LS-KEY-INFO        TO AUD-KEY-INFO
-     MOVE LS-BEFORE-IMAGE    TO AUD-BEFORE-IMAGE
-     MOVE LS-AFTER-IMAGE     TO AUD-AFTER-IMAGE
-     MOVE LS-MESSAGE         TO AUD-MESSAGE
-*-- Change: Move feed error/status/alarm to audit record for traceability
-     MOVE LS-FEED-ERROR-CODE TO AUD-ERROR-CODE
-     MOVE LS-FEED-STATUS     TO AUD-FEED-STATUS
-     MOVE LS-FEED-ALARM      TO AUD-FEED-ALARM
-
-     WRITE AUDIT-RECORD
-
-     IF WS-FILE-STATUS NOT = '00'
-         DISPLAY 'Error writing audit record: ' WS-FILE-STATUS
-         MOVE 8 TO LS-RETURN-CODE
-     ELSE
-         MOVE 0 TO LS-RETURN-CODE
-     END-IF
-     .
-
- 3000-TERMINATE.
-     CLOSE AUDIT-FILE
-     .
+*-- Change: File not found in repository. No changes made.
 
 [Summary Change Report]
-- Added working-storage and linkage for feed error, status, and alarm.
-- Modified 2000-PROCESS-AUDIT to populate new audit fields for feed error handling and alarm logging.
-- All changes are inline-commented for traceability and maintain COBOL formatting.
+- File missing from repository. No changes possible.
 
-[File 4] POSUPDT.CBL src/programs/batch/POSUPDT.cbl
+[File 5] POSUPDT.CBL src/programs/batch/POSUPDT.cbl
 
-*-- Change: File exists but is empty. No legacy logic to update. 
-*-- Change: New logic will be implemented by the next agent as per impact analysis requirements.
+*-- Change: File is empty in repository. No changes made.
 
 [Summary Change Report]
-- File is empty; no legacy code to update. Next agent should implement new logic for real-time price application and P&L storage as per requirements.
-
-[File 5] POSVAL00.CBL src/programs/batch/POSVAL00.cbl
-
-*-- Change: File not found in repository. No changes applied.
-
-[Summary Change Report]
-- File not found in repository; no changes made.
+- File is empty in repository. No changes possible.
+```
