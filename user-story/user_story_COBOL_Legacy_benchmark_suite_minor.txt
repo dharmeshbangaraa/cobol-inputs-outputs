@@ -14,7 +14,7 @@ Acceptance Criteria:
    Transaction input and output files are updated to include the `CHANNEL-CODE` field and corresponding layout adjustments.
 
 3. Program Updates
-   All programs (batch, online, utility) that read or write transaction data are updated to handle the new field appropriately.
+   All programs (batch, utility) that read or write transaction data are updated to handle the new field appropriately.
 
 4. Test Data
    Sample input files and test data include valid `CHANNEL-CODE` values (e.g., `BRCH`, `ATM`, `MOBL`, `NETB`).
