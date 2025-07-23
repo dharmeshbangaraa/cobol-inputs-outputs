@@ -1,72 +1,72 @@
 Summary:
 User Story: Integrate real-time market price feed for dynamic portfolio valuation  
 - 5 impacted components identified (**High impact only**)  
-- High complexity change: introduces real-time data ingestion, dynamic recalculation of position values, error handling, audit logging, and historical price storage, affecting both batch and online valuation flows, audit, and data persistence.
+- High complexity change: impacts real-time ingestion, position value/P&L recalculation, error handling/audit, VSAM persistence, and performance monitoring in the core portfolio valuation chain.
 
 ---
 
 Ranked Impact List:
 
-| Program File Path                              | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                      |
-|------------------------------------------------|--------|---------|---------------------------------------------|--------------------------------------|
-| `src/programs/batch/RPTPOS00.cbl`              | High   | Direct  | 2000-PROCESS-REPORT, 2110-FORMAT-POSITION  | Entry point for position valuation/report |
-| `src/copybook/common/POSREC.cpy`               | High   | Direct  | N/A (data structure)                       | Used by RPTPOS00, UTLVAL00, POSUPDT  |
-| `src/programs/batch/POSUPDT.cbl`               | High   | Direct  | (all, position update logic)               | Position update batch, called by valuation flows |
-| `src/programs/common/AUDPROC.cbl`              | High   | Direct  | 2000-PROCESS-AUDIT                         | Called for audit logging             |
-| `src/copybook/common/AUDITLOG.cpy`             | High   | Direct  | N/A (data structure)                       | Used by AUDPROC, RPTAUD00            |
+| Program File Path                            | Impact | Nature  | Affected Paragraphs/Sections         | Dependency Path                                      |
+|----------------------------------------------|--------|---------|--------------------------------------|------------------------------------------------------|
+| `src/programs/batch/POSVAL00.cbl`           | High   | Direct  | 2000-RECALC-POSITION, 2100-UPDATE-PNL, 2200-STORE-VALUE | Entry point for position value and P&L recalculation |
+| `src/programs/batch/HISTLD00.cbl`           | High   | Direct  | 1000-LOAD-HIST, 2000-INSERT-HIST     | Called for persisting historical price feeds (VSAM)  |
+| `src/programs/common/AUDPROC.cbl`           | High   | Direct  | 2000-PROCESS-AUDIT, 3000-TERMINATE   | Called to write audit logs on feed failure/staleness |
+| `src/copybook/common/AUDITLOG.cpy`          | High   | Shared  | N/A (copybook)                       | Shared data structure for audit logging              |
+| `src/copybook/common/POSREC.cpy`            | High   | Shared  | N/A (copybook)                       | Shared position record structure for valuation/P&L   |
 
 ---
 
 JSON Metadata:
-```json
+```
 {
   "impactAnalysis": {
     "userStory": "COBOL_Legacy_benchmark_suite_major",
     "impactedComponents": [
       {
-        "programFilePath": "src/programs/batch/RPTPOS00.cbl",
-        "impactScore": 0.97,
+        "programFilePath": "src/programs/batch/POSVAL00.cbl",
+        "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS-REPORT", "2110-FORMAT-POSITION"],
-        "dependencyPath": ["RPTPOS00"],
-        "rationale": "Main batch program responsible for portfolio/position valuation and reporting; must be updated to use real-time price feed and trigger recalculation logic."
+        "affectedParagraphs": ["2000-RECALC-POSITION", "2100-UPDATE-PNL", "2200-STORE-VALUE"],
+        "dependencyPath": ["POSVAL00"],
+        "rationale": "Core program for recalculating position value and P&L on price updates; must integrate real-time feed and timestamp logic."
       },
       {
-        "programFilePath": "src/copybook/common/POSREC.cpy",
+        "programFilePath": "src/programs/batch/HISTLD00.cbl",
         "impactScore": 0.96,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [],
-        "dependencyPath": ["POSREC"],
-        "rationale": "Core data structure for position records; must be extended to store real-time price, P&L, and timestamp for each update."
-      },
-      {
-        "programFilePath": "src/programs/batch/POSUPDT.cbl",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": [],
-        "dependencyPath": ["POSUPDT"],
-        "rationale": "Handles position updates; must be enhanced to recalculate P&L and persist new values on each price update."
+        "affectedParagraphs": ["1000-LOAD-HIST", "2000-INSERT-HIST"],
+        "dependencyPath": ["POSVAL00", "HISTLD00"],
+        "rationale": "Handles persistence of historical price feeds into VSAM KSDS (PRICEHIST) for backtesting as per user story."
       },
       {
         "programFilePath": "src/programs/common/AUDPROC.cbl",
-        "impactScore": 0.93,
+        "impactScore": 0.94,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS-AUDIT"],
-        "dependencyPath": ["AUDPROC"],
-        "rationale": "Centralized audit logging logic; must be invoked for feed failures, stale data, and alarms as per new requirements."
+        "affectedParagraphs": ["2000-PROCESS-AUDIT", "3000-TERMINATE"],
+        "dependencyPath": ["POSVAL00", "AUDPROC"],
+        "rationale": "Responsible for writing to AUDITLOG on feed errors or stale data; called by valuation logic."
       },
       {
         "programFilePath": "src/copybook/common/AUDITLOG.cpy",
+        "impactScore": 0.93,
+        "impactLevel": "High",
+        "impactType": "Shared",
+        "affectedParagraphs": [],
+        "dependencyPath": ["AUDPROC", "AUDITLOG.cpy"],
+        "rationale": "Defines the audit log record structure used for error and event logging in real-time ingestion and audit."
+      },
+      {
+        "programFilePath": "src/copybook/common/POSREC.cpy",
         "impactScore": 0.92,
         "impactLevel": "High",
-        "impactType": "Direct",
+        "impactType": "Shared",
         "affectedParagraphs": [],
-        "dependencyPath": ["AUDITLOG"],
-        "rationale": "Audit log data structure; must be updated to include new alarm and error conditions for real-time feed monitoring."
+        "dependencyPath": ["POSVAL00", "POSREC.cpy"],
+        "rationale": "Defines the position record structure; must support new fields (e.g., timestamp) for real-time valuation."
       }
     ]
   }
@@ -79,25 +79,24 @@ Visualization:
 
 ```mermaid
 graph TD
-  subgraph High Impact
-    RPTPOS00["src/programs/batch/RPTPOS00.cbl"]
-    POSREC["src/copybook/common/POSREC.cpy"]
-    POSUPDT["src/programs/batch/POSUPDT.cbl"]
-    AUDPROC["src/programs/common/AUDPROC.cbl"]
-    AUDITLOG["src/copybook/common/AUDITLOG.cpy"]
-  end
+  POSVAL00["src/programs/batch/POSVAL00.cbl\n(HIGH)"]:::high
+  HISTLD00["src/programs/batch/HISTLD00.cbl\n(HIGH)"]:::high
+  AUDPROC["src/programs/common/AUDPROC.cbl\n(HIGH)"]:::high
+  AUDITLOG["src/copybook/common/AUDITLOG.cpy\n(HIGH)"]:::high
+  POSREC["src/copybook/common/POSREC.cpy\n(HIGH)"]:::high
 
-  RPTPOS00 -- uses --> POSREC
-  RPTPOS00 -- calls/updates --> POSUPDT
-  RPTPOS00 -- logs to --> AUDPROC
-  AUDPROC -- uses --> AUDITLOG
-  POSUPDT -- uses --> POSREC
+  POSVAL00 --> HISTLD00
+  POSVAL00 --> AUDPROC
+  POSVAL00 --> POSREC
+  AUDPROC --> AUDITLOG
+
+  classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
 ```
 
 ---
 
 Key Notes:
-- Only files present in the repository are included.
-- All components listed are directly responsible for real-time valuation, audit, or data structure changes required by the user story.
-- No unrelated or medium/low impact files are included.
-- All paths are as per the actual repository structure.
+- Only components present in the actual repository and directly or structurally impacted by the user story are included.
+- No extra files or fabricated components are listed.
+- All impact scores are high, and the rationale for each is provided.
+- The dependency graph visually highlights the high-impact relationships for the real-time market price integration feature.
