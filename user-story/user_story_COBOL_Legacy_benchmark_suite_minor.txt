@@ -27,31 +27,3 @@ Acceptance Criteria:
 
 7. Reporting
    Any reports or logs that output transaction details include the `CHANNEL-CODE` field where applicable.
-
-Validation Notes:
-- Structure: The story clearly outlines the requirement, acceptance criteria, and justification.
-- Completeness: Covers definition, implementation, testing, documentation, and reporting.
-- Spelling & Grammar: Minor refinements made for clarity and consistency.
-
-Next Steps:
-1. Repo Scan:
-   Check `TRANSACTION.CPY` (or equivalent) for the presence of `CHANNEL-CODE`.
-   If not present, add the field:
-     05 CHANNEL-CODE PIC X(04). *> BRCH, ATM, MOBL, NETB
-
-2. Code Changes:
-   - Update relevant copybooks
-   - Modify file layouts
-   - Adjust LRECL and FD definitions
-
-3. Testing:
-   - Update input files
-   - Include diverse test values for `CHANNEL-CODE`
-
-4. Documentation:
-   - Update README
-   - Refresh the data dictionary
-   - Comment changes in COBOL programs
-
-5. Reporting:
-   - Ensure reports/logs show `CHANNEL-CODE` wherever transaction details are printed
