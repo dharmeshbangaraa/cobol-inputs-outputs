@@ -1,233 +1,284 @@
-[File 1] POSVAL00.cbl src/programs/batch/POSVAL00.cbl
+[File 1] POSVAL00.CBL src/programs/batch/POSVAL00.cbl
 
        IDENTIFICATION DIVISION.
        PROGRAM-ID. POSVAL00.
-       *-- Change: Integrated real-time market price feed for dynamic portfolio valuation
+      *-- Change: Added real-time market price ingestion, dynamic recalculation, and persistence with timestamp
 
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
-           SELECT PRICEFEED-FILE ASSIGN TO 'PRICEFEED.DAT'.
-           *-- Change: Added real-time price feed input file
+           SELECT PRICE-FEED-FILE ASSIGN TO 'PRICEFEED.DAT'
+               ORGANIZATION IS LINE SEQUENTIAL.
+           SELECT POSITION-FILE ASSIGN TO 'POSITION.DAT'
+               ORGANIZATION IS LINE SEQUENTIAL.
+           SELECT VALUATION-FILE ASSIGN TO 'VALUATION.DAT'
+               ORGANIZATION IS LINE SEQUENTIAL.
 
        DATA DIVISION.
        FILE SECTION.
-       FD  PRICEFEED-FILE.
-       01  PRICEFEED-REC.
-           05  PF-PORTFOLIO-ID      PIC X(08).
-           05  PF-SECURITY-ID       PIC X(12).
-           05  PF-PRICE             PIC 9(09)V99.
-           05  PF-TIMESTAMP         PIC X(20).
-           *-- Change: Defined structure for real-time price feed
+       FD  PRICE-FEED-FILE.
+       01  PRICE-FEED-REC.
+           05  FEED-SECURITY-ID      PIC X(12).
+           05  FEED-PRICE            PIC 9(10)V99.
+           05  FEED-TIMESTAMP        PIC X(20).
 
-       WORKING-STORAGE SECTION.
-       01  WS-REALTIME-PRICE        PIC 9(09)V99 VALUE 0.
-       01  WS-PRICE-TIMESTAMP       PIC X(20) VALUE SPACES.
-       01  WS-FEED-STATUS           PIC X(10) VALUE 'OK'.
-       01  WS-FEED-ERROR            PIC X(80) VALUE SPACES.
-       *-- Change: Added working-storage for real-time price and status
-
+       FD  POSITION-FILE.
        COPY POSREC.
 
+       FD  VALUATION-FILE.
+       01  VALUATION-REC.
+           05  VAL-SECURITY-ID       PIC X(12).
+           05  VAL-PORTFOLIO-ID      PIC X(08).
+           05  VAL-QUANTITY          PIC S9(9) COMP-3.
+           05  VAL-PRICE             PIC 9(10)V99.
+           05  VAL-VALUE             PIC 9(15)V99.
+           05  VAL-TIMESTAMP         PIC X(20).
+
+       WORKING-STORAGE SECTION.
+       01  WS-EOF-FLAG               PIC X VALUE 'N'.
+       01  WS-PRICE-FOUND            PIC X VALUE 'N'.
+       01  WS-ERROR-FLAG             PIC X VALUE 'N'.
+       01  WS-CURRENT-TIMESTAMP      PIC X(20).
+      *-- Change: Added working-storage for new price and timestamp fields
+
        PROCEDURE DIVISION.
-
        MAIN-LOGIC.
-           PERFORM 1000-READ-PRICEFEED
-           PERFORM 2000-PRICE-UPDATE
-           PERFORM 2100-RECALC-POSITION
-           PERFORM 2200-STORE-PNL
-           GOBACK.
+           PERFORM 1000-INGEST-PRICE
+           PERFORM 2000-RECALC-POS
+           PERFORM 3000-STORE-VAL
+           STOP RUN.
 
-       1000-READ-PRICEFEED.
-           OPEN INPUT PRICEFEED-FILE
-           READ PRICEFEED-FILE
+       1000-INGEST-PRICE.
+      *-- Change: Ingest real-time price feed and store in WS fields
+           OPEN INPUT PRICE-FEED-FILE
+           READ PRICE-FEED-FILE
                AT END
-                   MOVE 'NOFEED' TO WS-FEED-STATUS
-                   MOVE 'Real-time price feed missing' TO WS-FEED-ERROR
-                   PERFORM 9000-LOG-FEED-ERROR
-                   GO TO 9999-EXIT
+                   MOVE 'Y' TO WS-EOF-FLAG
            END-READ
-           MOVE PF-PRICE TO WS-REALTIME-PRICE
-           MOVE PF-TIMESTAMP TO WS-PRICE-TIMESTAMP
-           CLOSE PRICEFEED-FILE
-           *-- Change: Reads real-time price and timestamp, logs error if feed missing
-
-       2000-PRICE-UPDATE.
-           IF WS-FEED-STATUS = 'OK'
-               MOVE WS-REALTIME-PRICE TO POS-REALTIME-PRICE
-               MOVE WS-PRICE-TIMESTAMP TO POS-PRICE-TIMESTAMP
-               *-- Change: Updates position record with real-time price and timestamp
+           IF WS-EOF-FLAG = 'N'
+               MOVE FEED-PRICE TO WS-FEED-PRICE
+               MOVE FEED-TIMESTAMP TO WS-CURRENT-TIMESTAMP
+               MOVE 'Y' TO WS-PRICE-FOUND
            ELSE
-               PERFORM 9000-LOG-FEED-ERROR
+               MOVE 'Y' TO WS-ERROR-FLAG
+               CALL 'AUDPROC' USING 'FEED-ERROR'
+           END-IF
+           CLOSE PRICE-FEED-FILE.
+
+       2000-RECALC-POS.
+      *-- Change: Recalculate position value using real-time price
+           IF WS-PRICE-FOUND = 'Y'
+               OPEN INPUT POSITION-FILE
+               READ POSITION-FILE
+                   AT END
+                       MOVE 'Y' TO WS-EOF-FLAG
+               END-READ
+               IF WS-EOF-FLAG = 'N'
+                   COMPUTE POSITION-VALUE = WS-FEED-PRICE * POS-QUANTITY
+                   MOVE WS-FEED-PRICE TO POS-LAST-PRICE
+                   MOVE WS-CURRENT-TIMESTAMP TO POS-LAST-PRICE-TIME
+               END-IF
+               CLOSE POSITION-FILE
+           ELSE
+               CALL 'AUDPROC' USING 'FEED-ERROR'
            END-IF.
 
-       2100-RECALC-POSITION.
-           IF WS-FEED-STATUS = 'OK'
-               COMPUTE POS-MARKET-VALUE = POS-QUANTITY * POS-REALTIME-PRICE
-               COMPUTE POS-PNL = POS-MARKET-VALUE - POS-COST-BASIS
-               *-- Change: Recalculates position value and P&L with real-time price
-           ELSE
-               MOVE 0 TO POS-MARKET-VALUE
-               MOVE 0 TO POS-PNL
-               *-- Change: Sets values to zero if feed error
-           END-IF.
+       3000-STORE-VAL.
+      *-- Change: Store recalculated value and timestamp for audit/backtesting
+           OPEN OUTPUT VALUATION-FILE
+           MOVE POS-SECURITY-ID TO VAL-SECURITY-ID
+           MOVE POS-PORTFOLIO-ID TO VAL-PORTFOLIO-ID
+           MOVE POS-QUANTITY TO VAL-QUANTITY
+           MOVE POS-LAST-PRICE TO VAL-PRICE
+           MOVE POSITION-VALUE TO VAL-VALUE
+           MOVE POS-LAST-PRICE-TIME TO VAL-TIMESTAMP
+           WRITE VALUATION-REC
+           CLOSE VALUATION-FILE.
 
-       2200-STORE-PNL.
-           MOVE WS-PRICE-TIMESTAMP TO POS-LAST-VALUED-TIMESTAMP
-           *-- Change: Stores valuation timestamp in position record
-
-       9000-LOG-FEED-ERROR.
-           CALL 'AUDPROC' USING WS-FEED-ERROR
-           *-- Change: Calls audit logging on feed error
-
-       9999-EXIT.
-           EXIT PROGRAM.
+      *-- End of program
 
 [Summary Change Report]
-- Integrated real-time price feed ingestion (new FD, file read logic)
-- Updated affected paragraphs to use real-time price and timestamp
-- Added error handling and audit logging for feed errors
-- Preserved original business logic and COBOL formatting
+- Added logic to ingest real-time price feed and timestamp (1000-INGEST-PRICE).
+- Modified recalculation logic to use real-time price and update position value and timestamp (2000-RECALC-POS).
+- Persisted recalculated value and timestamp for audit/backtesting (3000-STORE-VAL).
+- Inline comments for traceability and reversibility.
 
-[File 2] POSREC.cpy src/copybook/common/POSREC.cpy
+[File 2] POSUPDT.CBL src/programs/batch/POSUPDT.cbl
 
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. POSUPDT.
+      *-- Change: Extended to apply new price, recalculate P&L, and store with timestamp on every feed event
+
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT POSITION-FILE ASSIGN TO 'POSITION.DAT'
+               ORGANIZATION IS LINE SEQUENTIAL.
+           SELECT PRICE-FEED-FILE ASSIGN TO 'PRICEFEED.DAT'
+               ORGANIZATION IS LINE SEQUENTIAL.
+           SELECT PNL-FILE ASSIGN TO 'PNL.DAT'
+               ORGANIZATION IS LINE SEQUENTIAL.
+
+       DATA DIVISION.
+       FILE SECTION.
+       FD  POSITION-FILE.
+       COPY POSREC.
+
+       FD  PRICE-FEED-FILE.
+       01  PRICE-FEED-REC.
+           05  FEED-SECURITY-ID      PIC X(12).
+           05  FEED-PRICE            PIC 9(10)V99.
+           05  FEED-TIMESTAMP        PIC X(20).
+
+       FD  PNL-FILE.
+       01  PNL-REC.
+           05  PNL-SECURITY-ID       PIC X(12).
+           05  PNL-PORTFOLIO-ID      PIC X(08).
+           05  PNL-QUANTITY          PIC S9(9) COMP-3.
+           05  PNL-PRICE             PIC 9(10)V99.
+           05  PNL-PREV-VALUE        PIC 9(15)V99.
+           05  PNL-NEW-VALUE         PIC 9(15)V99.
+           05  PNL-PNL               PIC S9(15)V99.
+           05  PNL-TIMESTAMP         PIC X(20).
+
+       WORKING-STORAGE SECTION.
+       01  WS-EOF-FLAG               PIC X VALUE 'N'.
+       01  WS-PRICE-FOUND            PIC X VALUE 'N'.
+       01  WS-ERROR-FLAG             PIC X VALUE 'N'.
+       01  WS-CURRENT-TIMESTAMP      PIC X(20).
+      *-- Change: Added working-storage for new price, P&L, and timestamp fields
+
+       PROCEDURE DIVISION.
+       MAIN-LOGIC.
+           PERFORM 1000-UPDATE-POS
+           PERFORM 2000-APPLY-PRICE
+           PERFORM 3000-STORE-PNL
+           STOP RUN.
+
+       1000-UPDATE-POS.
+      *-- Change: Update position on price event
+           OPEN INPUT POSITION-FILE
+           READ POSITION-FILE
+               AT END
+                   MOVE 'Y' TO WS-EOF-FLAG
+           END-READ
+           CLOSE POSITION-FILE.
+
+       2000-APPLY-PRICE.
+      *-- Change: Apply new price and recalculate P&L
+           OPEN INPUT PRICE-FEED-FILE
+           READ PRICE-FEED-FILE
+               AT END
+                   MOVE 'Y' TO WS-EOF-FLAG
+           END-READ
+           IF WS-EOF-FLAG = 'N'
+               MOVE FEED-PRICE TO POS-LAST-PRICE
+               MOVE FEED-TIMESTAMP TO POS-LAST-PRICE-TIME
+               COMPUTE POS-NEW-VALUE = POS-LAST-PRICE * POS-QUANTITY
+               COMPUTE POS-PNL = POS-NEW-VALUE - POS-PREV-VALUE
+               MOVE 'Y' TO WS-PRICE-FOUND
+           ELSE
+               MOVE 'Y' TO WS-ERROR-FLAG
+               CALL 'AUDPROC' USING 'FEED-ERROR'
+           END-IF
+           CLOSE PRICE-FEED-FILE.
+
+       3000-STORE-PNL.
+      *-- Change: Store recalculated P&L and timestamp
+           IF WS-PRICE-FOUND = 'Y'
+               OPEN OUTPUT PNL-FILE
+               MOVE POS-SECURITY-ID TO PNL-SECURITY-ID
+               MOVE POS-PORTFOLIO-ID TO PNL-PORTFOLIO-ID
+               MOVE POS-QUANTITY TO PNL-QUANTITY
+               MOVE POS-LAST-PRICE TO PNL-PRICE
+               MOVE POS-PREV-VALUE TO PNL-PREV-VALUE
+               MOVE POS-NEW-VALUE TO PNL-NEW-VALUE
+               MOVE POS-PNL TO PNL-PNL
+               MOVE POS-LAST-PRICE-TIME TO PNL-TIMESTAMP
+               WRITE PNL-REC
+               CLOSE PNL-FILE
+           ELSE
+               CALL 'AUDPROC' USING 'FEED-ERROR'
+           END-IF.
+
+      *-- End of program
+
+[Summary Change Report]
+- Extended logic to apply new price, recalculate P&L, and store with timestamp (2000-APPLY-PRICE, 3000-STORE-PNL).
+- Inline comments for traceability and reversibility.
+
+[File 3] POSREC.CPY src/copybook/common/POSREC.cpy
+
+      *-- Change: Extended for new price, recalculated value, and timestamp fields for audit/backtesting
        01  POSITION-RECORD.
-           05  POS-KEY.
-               10  POS-PORTFOLIO-ID      PIC X(08).
-               10  POS-SECURITY-ID       PIC X(12).
-           05  POS-QUANTITY              PIC S9(09)V99.
-           05  POS-COST-BASIS            PIC S9(13)V99.
-           05  POS-REALTIME-PRICE        PIC 9(09)V99.
-               *-- Change: Added real-time price field for dynamic valuation
-           05  POS-MARKET-VALUE          PIC S9(13)V99.
-           05  POS-PNL                   PIC S9(13)V99.
-               *-- Change: Added/updated PNL field for real-time calculation
-           05  POS-LAST-VALUED-TIMESTAMP PIC X(20).
-               *-- Change: Added timestamp field for real-time price valuation
+           05  POS-SECURITY-ID        PIC X(12).
+           05  POS-PORTFOLIO-ID       PIC X(08).
+           05  POS-QUANTITY           PIC S9(9) COMP-3.
+           05  POS-PREV-VALUE         PIC 9(15)V99.
+           05  POS-NEW-VALUE          PIC 9(15)V99.      *-- Change: Added for recalculated value
+           05  POS-LAST-PRICE         PIC 9(10)V99.      *-- Change: Added for real-time price
+           05  POS-LAST-PRICE-TIME    PIC X(20).         *-- Change: Added for timestamp
+           05  POS-PNL                PIC S9(15)V99.     *-- Change: Added for P&L calculation
 
 [Summary Change Report]
-- Added POS-REALTIME-PRICE for real-time market price
-- Updated/clarified POS-PNL for real-time P&L
-- Added POS-LAST-VALUED-TIMESTAMP for audit and traceability
+- Added POS-NEW-VALUE, POS-LAST-PRICE, POS-LAST-PRICE-TIME, and POS-PNL fields for real-time valuation, audit, and P&L.
 
-[File 3] AUDPROC.cbl src/programs/common/AUDPROC.cbl
+[File 4] AUDPROC.CBL src/programs/common/AUDPROC.cbl
 
        IDENTIFICATION DIVISION.
        PROGRAM-ID. AUDPROC.
-
-       ENVIRONMENT DIVISION.
-       DATA DIVISION.
-       WORKING-STORAGE SECTION.
-       01  WS-AUDIT-MSG         PIC X(80).
-       01  WS-ERROR-CODE        PIC X(10).
-       01  WS-TIMESTAMP         PIC X(20).
-
-       COPY AUDITLOG.
-
-       PROCEDURE DIVISION USING WS-AUDIT-MSG.
-
-       2000-PROCESS-AUDIT.
-           IF WS-AUDIT-MSG NOT = SPACES
-               MOVE WS-AUDIT-MSG TO AUDIT-ENTRY-MSG
-               MOVE FUNCTION CURRENT-DATE TO AUDIT-ENTRY-TIMESTAMP
-               PERFORM 2500-WRITE-AUDIT-LOG
-               *-- Change: Enhanced to log new feed error/stale data events
-           END-IF.
-
-       2500-WRITE-AUDIT-LOG.
-           WRITE AUDIT-LOG-REC.
-           *-- Change: Ensures audit log record is written for all error events
-
-       3000-TERMINATE.
-           EXIT PROGRAM.
-
-[Summary Change Report]
-- Enhanced audit processing to capture new feed error/stale data events
-- Ensured audit log records are written for all error events
-- Preserved original logic and structure
-
-[File 4] AUDITLOG.cpy src/copybook/common/AUDITLOG.cpy
-
-       01  AUDIT-LOG-REC.
-           05  AUDIT-ENTRY.
-               10  AUDIT-ENTRY-MSG        PIC X(80).
-                   *-- Change: Accepts new feed error/stale data messages
-               10  AUDIT-ENTRY-TIMESTAMP  PIC X(20).
-                   *-- Change: Stores timestamp for audit traceability
-           05  ERROR-LOGGING.
-               10  ERROR-TYPE             PIC X(20).
-                   *-- Change: Added for new alarm/error event types (e.g., FEED-ERROR, STALE-DATA)
-               10  ERROR-DETAILS          PIC X(80).
-                   *-- Change: Added for detailed error context
-
-[Summary Change Report]
-- Updated audit log structure for new alarm/error event types
-- Added fields for error details and timestamps
-- Preserved copybook structure and formatting
-
-[File 5] HISTLD00.cbl src/programs/batch/HISTLD00.cbl
-
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. HISTLD00.
+      *-- Change: Enhanced to log alarms and errors when feed is stale or fails
 
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
-           SELECT PRICEFEED-FILE ASSIGN TO 'PRICEFEED.DAT'.
-           SELECT PRICEHIST-FILE ASSIGN TO 'PRICEHIST.KSDS'.
-           *-- Change: Added input and output files for historical price persistence
+           SELECT AUDIT-LOG-FILE ASSIGN TO 'AUDITLOG.DAT'
+               ORGANIZATION IS LINE SEQUENTIAL.
 
        DATA DIVISION.
        FILE SECTION.
-       FD  PRICEFEED-FILE.
-       01  PRICEFEED-REC.
-           05  PF-PORTFOLIO-ID      PIC X(08).
-           05  PF-SECURITY-ID       PIC X(12).
-           05  PF-PRICE             PIC 9(09)V99.
-           05  PF-TIMESTAMP         PIC X(20).
-           *-- Change: Structure for incoming price feed
-
-       FD  PRICEHIST-FILE.
-       01  PRICEHIST-REC.
-           05  PH-PORTFOLIO-ID      PIC X(08).
-           05  PH-SECURITY-ID       PIC X(12).
-           05  PH-PRICE             PIC 9(09)V99.
-           05  PH-TIMESTAMP         PIC X(20).
-           *-- Change: Structure for historical price persistence
+       FD  AUDIT-LOG-FILE.
+       COPY AUDITLOG.
 
        WORKING-STORAGE SECTION.
-       01  WS-EOF                  PIC X VALUE 'N'.
+       01  WS-ERROR-CODE             PIC X(10).
+       01  WS-FEED-STATUS            PIC X(10).
+       01  WS-ALARM-STATUS           PIC X(10).
+       01  WS-TIMESTAMP              PIC X(20).
+      *-- Change: Added working-storage for feed error, status, and alarm
 
        PROCEDURE DIVISION.
+       2000-PROCESS-AUDIT.
+      *-- Change: Log market feed errors, timestamps, and alarm status
+           IF WS-ERROR-CODE = 'FEED-ERROR'
+               MOVE 'ERROR' TO AUD-ENTRY-ERROR-CODE
+               MOVE 'STALE' TO AUD-ENTRY-FEED-STATUS
+               MOVE 'ALARM' TO AUD-ENTRY-ALARM-STATUS
+               MOVE FUNCTION CURRENT-DATE TO AUD-ENTRY-TIMESTAMP
+               WRITE AUDIT-ENTRY
+           END-IF.
 
-       MAIN-LOGIC.
-           PERFORM 2000-LOAD-HISTORICAL
-           GOBACK.
+       3000-TERMINATE.
+      *-- Change: Terminate audit process after logging
+           CLOSE AUDIT-LOG-FILE
+           STOP RUN.
 
-       2000-LOAD-HISTORICAL.
-           OPEN INPUT PRICEFEED-FILE
-           OPEN OUTPUT PRICEHIST-FILE
-           PERFORM UNTIL WS-EOF = 'Y'
-               READ PRICEFEED-FILE
-                   AT END
-                       MOVE 'Y' TO WS-EOF
-                   NOT AT END
-                       PERFORM 2100-INSERT-PRICEHIST
-               END-READ
-           END-PERFORM
-           CLOSE PRICEFEED-FILE
-           CLOSE PRICEHIST-FILE
-           *-- Change: Loads and persists historical price feeds
-
-       2100-INSERT-PRICEHIST.
-           MOVE PF-PORTFOLIO-ID TO PH-PORTFOLIO-ID
-           MOVE PF-SECURITY-ID TO PH-SECURITY-ID
-           MOVE PF-PRICE TO PH-PRICE
-           MOVE PF-TIMESTAMP TO PH-TIMESTAMP
-           WRITE PRICEHIST-REC
-           *-- Change: Inserts real-time price record into VSAM KSDS PRICEHIST
+      *-- End of program
 
 [Summary Change Report]
-- Added logic to load and persist historical price feeds into VSAM KSDS PRICEHIST
-- Ensured all records are timestamped for audit/backtesting
-- Preserved COBOL formatting and business logic
+- Enhanced to log alarms and errors when feed is stale or fails (2000-PROCESS-AUDIT).
+- Inline comments for traceability and reversibility.
+
+[File 5] AUDITLOG.CPY src/copybook/common/AUDITLOG.cpy
+
+      *-- Change: Added new fields for market feed errors, timestamps, and alarm status
+       01  AUDIT-ENTRY.
+           05  AUD-ENTRY-SECURITY-ID   PIC X(12).
+           05  AUD-ENTRY-PORTFOLIO-ID  PIC X(08).
+           05  AUD-ENTRY-ERROR-CODE    PIC X(10).   *-- Change: Added for error code
+           05  AUD-ENTRY-FEED-STATUS   PIC X(10).   *-- Change: Added for feed status
+           05  AUD-ENTRY-ALARM-STATUS  PIC X(10).   *-- Change: Added for alarm status
+           05  AUD-ENTRY-TIMESTAMP     PIC X(20).   *-- Change: Added for timestamp
+
+[Summary Change Report]
+- Added fields for error code, feed status, alarm status, and timestamp to support audit logging of market feed errors.
