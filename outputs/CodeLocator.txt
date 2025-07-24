@@ -1,18 +1,18 @@
 **Summary**:
 User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates  
 - 4 impacted components identified (**High impact only**)  
-- High complexity change involving real-time data ingestion, valuation recalculation, error handling, and audit logging across portfolio management and reporting modules.
+- High complexity change affecting portfolio update, valuation, audit logging, and error handling across batch and portfolio modules.
 
 ---
 
 **Ranked Impact List**:
 
-| Program File Path                          | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                  |
-|--------------------------------------------|--------|---------|---------------------------------------------|--------------------------------------------------|
-| `src/programs/portfolio/PORTUPDT.cbl`      | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS, 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE | Entry point for portfolio updates; will process real-time price updates |
-| `src/copybook/common/PORTFLIO.cpy`         | High   | Direct  | N/A (Copybook)                             | Used by PORTUPDT for portfolio structure         |
-| `src/programs/batch/RPTAUD00.cbl`          | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS-REPORT, 9999-ERROR-HANDLER | Generates audit logs and historical records for price updates and errors |
-| `src/copybook/common/AUDITLOG.cpy`         | High   | Direct  | N/A (Copybook)                             | Used by RPTAUD00 and other programs for audit logging |
+| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                  |
+|------------------------------------------|--------|---------|---------------------------------------------|--------------------------------------------------|
+| `src/programs/portfolio/PORTUPDT.cbl`    | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS, 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE | Entry point for portfolio updates; must process real-time price feed and trigger recalculations |
+| `src/copybook/common/PORTFLIO.cpy`       | High   | Direct  | N/A (data structure)                        | Shared portfolio data structure; must support new price/time fields and real-time updates      |
+| `src/programs/batch/RPTAUD00.cbl`        | High   | Direct  | 1000-INITIALIZE, 1100-OPEN-FILES, 2000-PROCESS-REPORT, 9999-ERROR-HANDLER | Generates audit logs and must record price feed events, errors, and alerts                     |
+| `src/copybook/common/AUDITLOG.cpy`       | High   | Direct  | N/A (data structure)                        | Audit log structure; must support new event types and timestamps for price feed integration    |
 
 ---
 
@@ -36,11 +36,11 @@ User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio
         "dependencyPath": [
           "PORTUPDT"
         ],
-        "rationale": "Primary program for updating portfolio records; must ingest and apply real-time price updates, recalculate valuations, and trigger downstream processes."
+        "rationale": "Main program for portfolio updates; must ingest real-time price data, recalculate valuations, and trigger downstream updates."
       },
       {
         "programFilePath": "src/copybook/common/PORTFLIO.cpy",
-        "impactScore": 0.96,
+        "impactScore": 0.97,
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": [],
@@ -48,22 +48,23 @@ User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio
           "PORTUPDT",
           "PORTFLIO"
         ],
-        "rationale": "Defines portfolio data structures that will be updated with new price fields and timestamps for real-time integration."
+        "rationale": "Portfolio data structure used by update and valuation logic; must be extended for real-time price and timestamp fields."
       },
       {
         "programFilePath": "src/programs/batch/RPTAUD00.cbl",
-        "impactScore": 0.94,
+        "impactScore": 0.95,
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": [
           "1000-INITIALIZE",
+          "1100-OPEN-FILES",
           "2000-PROCESS-REPORT",
           "9999-ERROR-HANDLER"
         ],
         "dependencyPath": [
           "RPTAUD00"
         ],
-        "rationale": "Responsible for generating audit logs and historical records of price updates and error events, as required by the user story."
+        "rationale": "Batch audit report generator; must log price feed events, errors, and alert triggers for compliance and monitoring."
       },
       {
         "programFilePath": "src/copybook/common/AUDITLOG.cpy",
@@ -75,7 +76,7 @@ User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio
           "RPTAUD00",
           "AUDITLOG"
         ],
-        "rationale": "Defines the audit log structure used for error and update logging, critical for compliance with audit and alerting requirements."
+        "rationale": "Audit log copybook; must support new event types and timestamp fields for real-time price feed integration."
       }
     ]
   }
@@ -96,16 +97,16 @@ graph TD
     end
 
     PORTUPDT -- uses --> PORTFLIO
+    PORTUPDT -- triggers events --> RPTAUD00
     RPTAUD00 -- uses --> AUDITLOG
-    PORTUPDT -. triggers audit .-> RPTAUD00
 ```
 
 ---
 
 **Reasoning**:
-- `PORTUPDT.cbl` is the main entry for portfolio updates and will be the focal point for ingesting and applying real-time price feeds, recalculating valuations, and updating records.
-- `PORTFLIO.cpy` is the copybook defining portfolio structures, which will require updates to support new price fields, timestamps, and possibly status flags for real-time integration.
-- `RPTAUD00.cbl` is responsible for audit reporting and will need to log price update events, errors, and maintain historical records as per the user story.
-- `AUDITLOG.cpy` is the copybook for audit log records, which will be extended or heavily used for the new logging and alerting requirements.
+- `PORTUPDT.cbl` is the main entry for portfolio updates and will be responsible for ingesting and processing real-time price feeds, recalculating valuations, and updating risk metrics.
+- `PORTFLIO.cpy` is the shared portfolio data structure, which must be extended to store new price and timestamp fields for real-time updates.
+- `RPTAUD00.cbl` is the batch audit report generator, which must log all price feed events, errors, and alert triggers as per the user story's error handling and audit requirements.
+- `AUDITLOG.cpy` is the audit log copybook, which must be updated to support new event types and timestamps for compliance and traceability.
 
-No unrelated files or programs are included. Only components with a direct, high-impact relationship to the user story are listed, with precise file paths as found in the repository.
+No unrelated programs or copybooks are included. Only components with a direct, high-impact relationship to the real-time price feed integration and dynamic portfolio update feature are listed. All file paths are as per the repository structure.
