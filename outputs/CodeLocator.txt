@@ -1,23 +1,23 @@
-**Summary**:
+Summary:
 User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates  
 - 4 impacted components identified (**High impact only**)  
-- High complexity change involving real-time data ingestion, portfolio valuation recalculation, error handling, and audit logging across multiple core modules.
+- High complexity change involving real-time data ingestion, portfolio valuation recalculation, error handling, and audit logging. The change affects core portfolio update logic, audit logging, and data structures shared across the system.
 
 ---
 
-**Ranked Impact List**:
+Ranked Impact List:
 
-| Program File Path                          | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                  |
-|--------------------------------------------|--------|---------|---------------------------------------------|--------------------------------------------------|
-| `src/programs/portfolio/PORTUPDT.cbl`      | High   | Direct  | 2000-PROCESS, 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE | Entry point for portfolio updates; must process real-time price feeds and trigger recalculation |
-| `src/programs/batch/RCVPRC00.cbl`          | High   | Direct  | 2000-PROCESS-RECOVERY, 2100-RECOVER-PROCESS | Candidate for real-time price ingestion and error handling logic integration                |
-| `src/copybook/common/AUDITLOG.cpy`         | High   | Direct  | N/A (copybook)                              | Shared audit logging structure for error and update tracking                              |
-| `src/programs/batch/RPTAUD00.cbl`          | High   | Indirect| 2000-PROCESS-REPORT, 2100-WRITE-AUDIT       | Generates audit reports from historical price and update logs                             |
+| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                  |
+|------------------------------------------|--------|---------|---------------------------------------------|--------------------------------------------------|
+| `src/programs/portfolio/PORTUPDT.cbl`    | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS, 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE | Entry point for portfolio updates; will process real-time price feed |
+| `src/copybook/common/PORTFLIO.cpy`       | High   | Direct  | N/A (Copybook)                             | Shared data structure for portfolio records      |
+| `src/copybook/common/AUDITLOG.cpy`       | High   | Direct  | N/A (Copybook)                             | Used for audit logging of price feed and errors  |
+| `src/programs/batch/RPTAUD00.cbl`        | High   | Indirect| 1000-INITIALIZE, 1100-OPEN-FILES, 2000-PROCESS-REPORT | Consumes audit log for reporting; reflects new audit entries from feed integration |
 
 ---
 
-**JSON Metadata**:
-```json
+JSON Metadata:
+```
 {
   "impactAnalysis": {
     "userStory": "Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates",
@@ -27,18 +27,23 @@ User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS", "2100-PROCESS-UPDATE", "2200-APPLY-UPDATE"],
+        "affectedParagraphs": [
+          "1000-INITIALIZE",
+          "2000-PROCESS",
+          "2100-PROCESS-UPDATE",
+          "2200-APPLY-UPDATE"
+        ],
         "dependencyPath": ["PORTUPDT"],
-        "rationale": "Core portfolio update logic must be extended to process real-time price feeds, recalculate valuations, and trigger downstream updates."
+        "rationale": "Core program for portfolio updates; must be extended to process real-time price feeds, trigger recalculation, and handle error/audit logic."
       },
       {
-        "programFilePath": "src/programs/batch/RCVPRC00.cbl",
-        "impactScore": 0.95,
+        "programFilePath": "src/copybook/common/PORTFLIO.cpy",
+        "impactScore": 0.96,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["2000-PROCESS-RECOVERY", "2100-RECOVER-PROCESS"],
-        "dependencyPath": ["RCVPRC00"],
-        "rationale": "Likely candidate for implementing the real-time market data ingestion and polling mechanism, as well as error handling for feed failures."
+        "affectedParagraphs": [],
+        "dependencyPath": ["PORTUPDT", "PORTFLIO"],
+        "rationale": "Portfolio data structure; will be updated to store latest prices, timestamps, and possibly historical price records."
       },
       {
         "programFilePath": "src/copybook/common/AUDITLOG.cpy",
@@ -46,17 +51,21 @@ User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio
         "impactLevel": "High",
         "impactType": "Direct",
         "affectedParagraphs": [],
-        "dependencyPath": ["AUDITLOG"],
-        "rationale": "Audit logging structure is used for recording price update events, errors, and maintaining historical records as required by the user story."
+        "dependencyPath": ["PORTUPDT", "AUDITLOG"],
+        "rationale": "Audit log structure; required for logging feed errors, stale data, and update events as per acceptance criteria."
       },
       {
         "programFilePath": "src/programs/batch/RPTAUD00.cbl",
         "impactScore": 0.91,
         "impactLevel": "High",
         "impactType": "Indirect",
-        "affectedParagraphs": ["2000-PROCESS-REPORT", "2100-WRITE-AUDIT"],
-        "dependencyPath": ["RPTAUD00"],
-        "rationale": "Responsible for generating audit and historical reports, which will now include real-time price update events and error logs."
+        "affectedParagraphs": [
+          "1000-INITIALIZE",
+          "1100-OPEN-FILES",
+          "2000-PROCESS-REPORT"
+        ],
+        "dependencyPath": ["PORTUPDT", "AUDITLOG", "RPTAUD00"],
+        "rationale": "Batch audit report program; will reflect new audit entries related to real-time feed integration and error handling."
       }
     ]
   }
@@ -65,29 +74,27 @@ User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio
 
 ---
 
-**Visualization**:
-
+Visualization:
 ```mermaid
 graph TD
-  subgraph High Impact
-    PORTUPDT["src/programs/portfolio/PORTUPDT.cbl"]
-    RCVPRC00["src/programs/batch/RCVPRC00.cbl"]
-    AUDITLOG["src/copybook/common/AUDITLOG.cpy"]
-    RPTAUD00["src/programs/batch/RPTAUD00.cbl"]
-  end
+  A[src/programs/portfolio/PORTUPDT.cbl]:::high
+  B[src/copybook/common/PORTFLIO.cpy]:::high
+  C[src/copybook/common/AUDITLOG.cpy]:::high
+  D[src/programs/batch/RPTAUD00.cbl]:::high
 
-  RCVPRC00 -- feeds price updates --> PORTUPDT
-  PORTUPDT -- writes logs --> AUDITLOG
-  RCVPRC00 -- writes logs --> AUDITLOG
-  AUDITLOG -- used by --> RPTAUD00
+  A --> B
+  A --> C
+  C --> D
+
+  classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
 ```
 
 ---
 
-**Reasoning**:
-- `PORTUPDT.cbl` is the main portfolio update program and must be extended to process real-time price updates and recalculate valuations.
-- `RCVPRC00.cbl` is a batch receiver program, suitable for implementing the polling and ingestion of external market data, as well as error handling and alerting.
-- `AUDITLOG.cpy` is the shared copybook for audit logging, which will be used to record all price updates, errors, and maintain historical records.
-- `RPTAUD00.cbl` generates audit reports and will be impacted as it must now include new types of audit records related to real-time price updates and errors.
+Reasoning:
+- `PORTUPDT.cbl` is the main entry for portfolio updates and will be the integration point for real-time price feeds, requiring significant changes to initialization, processing, and update logic.
+- `PORTFLIO.cpy` is the shared copybook for portfolio data; it will need to accommodate new fields for real-time prices, timestamps, and possibly historical data.
+- `AUDITLOG.cpy` is the shared audit log structure, essential for logging feed errors, stale data, and update events as required by the user story.
+- `RPTAUD00.cbl` is the batch reporting program that consumes the audit log and will reflect new types of audit entries generated by the real-time integration.
 
-No unrelated files are included. Only existing files in the repository are considered, and only those with a direct or critical indirect relationship to the user story are listed. All paths are as per the repository structure.
+**No other files in the repository are directly or indirectly HIGH impact for this user story.**
