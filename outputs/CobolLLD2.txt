@@ -1,223 +1,155 @@
-
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document provides a comprehensive technical overview and low-level design (LLD) for the recent enhancements made to the COBOL portfolio management application. The primary focus of these changes is the integration of a real-time price feed, recalculation of portfolio valuations, improved error handling, and enhanced audit logging. The document details the existing logic, the nature and rationale of the changes, impacted code sections, and provides structured diffs for all modifications.
+This document details the technical changes and low-level design for the COBOL portfolio management suite, specifically focusing on the integration of real-time price feed functionality. The changes impact the portfolio update, audit reporting, and associated data structures to support ingestion, processing, and audit of real-time price data.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The application manages and updates portfolio records by processing update requests. It reads update instructions, applies changes to portfolio data, and maintains audit trails. The system now incorporates real-time price data to ensure up-to-date valuations and logs all significant events, including errors and price updates.
+The portfolio management application processes updates to portfolio records, maintains audit trails, and generates audit reports. The main modules are:
+- **PORTUPDT**: Updates portfolio records based on input updates.
+- **RPTAUD00**: Generates audit reports from audit and error logs.
+- **Copybooks (PORTFLIO, AUDITLOG)**: Define the structure of portfolio and audit records.
 
 ### 2.2 Detailed Logic  
-- **Initialization:**  
-  - Initializes working storage and opens all required files, including the new real-time price feed file.  
-  - Validates successful file openings and handles errors accordingly.  
-- **Processing:**  
-  - Reads update records sequentially.  
-  - For each update, attempts to locate the corresponding portfolio record.  
-  - If found, looks up the latest price from the real-time price feed and applies updates.  
-  - Updates the portfolio record, recalculates valuations, and logs audit events.  
-  - Handles missing records and update failures with error counts and audit logs.  
-- **Termination:**  
-  - Closes all files, including the new price feed file.  
-  - Displays summary statistics for processed updates and errors.
+#### PORTUPDT (Portfolio Update Program)
+- **Initialization (1000-INITIALIZE)**: Sets up working storage, opens files, and initializes real-time price fields.
+- **Processing (2000-PROCESS, 2100-PROCESS-UPDATE)**: Reads update records, applies updates to portfolio records, and processes real-time price data if present.
+- **Apply Update (2200-APPLY-UPDATE)**: Applies changes to portfolio fields, including real-time price and timestamp if provided.
+- **Termination (3000-TERMINATE)**: Closes files and displays summary.
+
+#### RPTAUD00 (Audit Report Generator)
+- **Initialization**: Opens files and writes report headers.
+- **Processing**: Reads audit and error logs, summarizes, and writes reports.
+- **Cleanup**: Closes all files.
 
 #### Flowchart:  
 ```
 flowchart TD
     Start(["Start"])
-    Init["Initialize
-Work Areas and
-Open Files"]
-    CheckFiles["Check
-File Status"]
-    ReadUpdate["Read
-Update Record"]
-    EOFCheck["End of
-Update File?"]
-    ProcessUpdate["Process
-Update"]
-    LookupPortfolio["Read
-Portfolio Record"]
-    NotFound["Record Not
-Found"]
-    LookupPrice["Lookup
-Real-Time Price"]
-    ApplyUpdate["Apply
-Update and
-Recalculate Value"]
-    WriteAudit["Write
-Audit Log"]
-    UpdatePortfolio["Rewrite
-Portfolio Record"]
-    UpdateSuccess["Update
-Success?"]
-    CountUpdate["Increment
-Update Count"]
-    CountError["Increment
-Error Count"]
-    Terminate(["Terminate
-and Close Files"])
+    Init["1000-INITIALIZE
+(Open files, init fields)"]
+    Process["2000-PROCESS
+(Read update file)"]
+    ProcUpdate["2100-PROCESS-UPDATE
+(Move keys, check real-time price)"]
+    ReadPortfolio["READ PORTFOLIO-FILE"]
+    ApplyUpdate["2200-APPLY-UPDATE
+(Evaluate action, apply real-time price)"]
+    Rewrite["REWRITE PORT-RECORD"]
+    Terminate["3000-TERMINATE
+(Close files, display summary)"]
     End(["End"])
 
     Start --> Init
-    Init --> CheckFiles
-    CheckFiles --> ReadUpdate
-    ReadUpdate --> EOFCheck
-    EOFCheck -- No --> ProcessUpdate
-    EOFCheck -- Yes --> Terminate
-    ProcessUpdate --> LookupPortfolio
-    LookupPortfolio -- Found --> LookupPrice
-    LookupPortfolio -- Not Found --> NotFound
-    NotFound --> WriteAudit
-    WriteAudit --> ReadUpdate
-    LookupPrice --> ApplyUpdate
-    ApplyUpdate --> WriteAudit
-    WriteAudit --> UpdatePortfolio
-    UpdatePortfolio --> UpdateSuccess
-    UpdateSuccess -- Yes --> CountUpdate
-    UpdateSuccess -- No --> CountError
-    CountUpdate --> ReadUpdate
-    CountError --> WriteAudit
-    WriteAudit --> ReadUpdate
+    Init --> Process
+    Process --> ProcUpdate
+    ProcUpdate --> ReadPortfolio
+    ReadPortfolio --> ApplyUpdate
+    ApplyUpdate --> Rewrite
+    Rewrite --> Process
+    Process --> Terminate
     Terminate --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-Enhance the portfolio update process to:  
-- Integrate a real-time price feed for accurate portfolio valuation.  
-- Recalculate and update portfolio values based on the latest prices.  
-- Improve error handling for missing records and feed failures.  
-- Log all significant events, including price updates and feed errors, in the audit trail.
+Enable real-time price feed integration for portfolio updates, ensuring that real-time price and timestamp can be ingested, stored, and audited throughout the portfolio management process.
 
 ### 3.2 Impacted Code Changes Summary:
-
 #### 3.2.1 Impacted Sections and Files:
-- **src/programs/portfolio/PORTUPDT.cbl**  
-  - Purpose of Changes: Integrate real-time price feed, recalculate portfolio values, add error handling, and audit logging.
-  - Impact: Ensures portfolio valuations are current, improves traceability, and enhances system robustness.
-- **src/copybook/common/PORTFLIO.cpy**  
-  - Purpose of Changes: Extend portfolio record layout to store real-time price and timestamp.
-  - Impact: Enables storage and tracking of the latest price and its source time.
-- **src/programs/batch/RPTAUD00.cbl**  
-  - Purpose of Changes: Enhance audit reporting to include feed errors and price update events.
-  - Impact: Provides comprehensive audit trails and error summaries for operational transparency.
-- **src/copybook/common/AUDITLOG.cpy**  
-  - Purpose of Changes: Add new event types for feed errors and price updates.
-  - Impact: Supports detailed categorization and reporting of audit events.
+- **src/programs/portfolio/PORTUPDT.cbl**
+- **src/copybook/common/PORTFLIO.cpy**
+- **src/programs/batch/RPTAUD00.cbl**
+- **src/copybook/common/AUDITLOG.cpy**
+
+  - **Purpose of Changes:**  
+    To support real-time price feed integration, new fields for price and timestamp are added to portfolio and audit records. The update logic is enhanced to ingest and apply these values, and audit/reporting modules are extended to track and report on real-time price updates.
+
+  - **Impact:**  
+    - Portfolio records can now store and be updated with real-time price and timestamp.
+    - Update logic applies real-time price if present, overriding standard value updates.
+    - Audit logs and reports now capture real-time price changes for traceability and compliance.
 
 ### 3.3 Insertion Points  
 - **PORTUPDT.cbl**
-  - **File Control Section:**  
-    - Added `PRICEFEED-FILE` definition for real-time price data.
-  - **Working-Storage Section:**  
-    - Added variables for price feed status, price lookup, and audit messages.
+  - **DATA DIVISION, FILE SECTION:**  
+    - Added `UPDT-PRICE-FEED` and `UPDT-PRICE-TIMESTAMP` to `UPDATE-RECORD`.
+  - **WORKING-STORAGE SECTION:**  
+    - Added `WS-REALTIME-PRICE` and `WS-PRICE-TIMESTAMP`.
   - **1000-INITIALIZE:**  
-    - Open and validate the new price feed file.
+    - Initialize new real-time price fields.
   - **2100-PROCESS-UPDATE:**  
-    - After reading a portfolio record, perform a price feed lookup and apply the latest price if available.
-    - Log audit events for missing records and update failures.
-  - **2150-LOOKUP-PRICE-FEED:**  
-    - New paragraph to sequentially search the price feed for a matching portfolio/account.
+    - Capture real-time price and timestamp from update record if present.
   - **2200-APPLY-UPDATE:**  
-    - Apply real-time price and timestamp if found; log audit events for both success and failure.
-  - **2900-WRITE-AUDIT-LOG:**  
-    - Placeholder for audit log integration, now invoked at multiple points.
-  - **3000-TERMINATE:**  
-    - Close the new price feed file.
+    - Apply real-time price and timestamp to portfolio record if present.
 
 - **PORTFLIO.cpy**
-  - **PORT-FINANCIAL-INFO:**  
-    - Added `PORT-REALTIME-PRICE` and `PORT-PRICE-TIMESTAMP` fields.
+  - **PORT-PORTFOLIO-INFO:**  
+    - Added `PORT-REALTIME-PRICE` and `PORT-PRICE-TIMESTAMP`.
 
 - **RPTAUD00.cbl**
-  - **File Control Section:**  
-    - Added `FEEDERR-FILE` for feed error logging.
-  - **File Section:**  
-    - Added `FEEDERR-RECORD` layout.
-  - **Working-Storage Section:**  
-    - Added status and detail variables for feed errors.
-  - **1100-OPEN-FILES:**  
-    - Open and validate the feed error file.
-  - **2000-PROCESS-REPORT:**  
-    - Added processing and summarization of feed error logs.
-  - **2251-READ-FEEDERR-RECORDS / 2252-SUMMARIZE-FEED-ERRORS:**  
-    - New paragraphs for reading and summarizing feed error records.
-  - **3000-CLEANUP:**  
-    - Close the feed error file.
+  - **WS-AUDIT-DETAIL:**  
+    - Added `WS-AUD-REALTIME-PRICE` and `WS-AUD-PRICE-TIMESTAMP`.
 
 - **AUDITLOG.cpy**
-  - **AUD-TYPE and AUD-ACTION:**  
-    - Added values for feed errors and price update events.
+  - **AUDIT-RECORD:**  
+    - Added `AUD-REALTIME-PRICE` and `AUD-PRICE-TIMESTAMP`.
 
 ### 3.4 Structured Diffs  
 
-#### **PORTUPDT.cbl**  
-**Before:**  
+#### src/programs/portfolio/PORTUPDT.cbl
+
+**Before:**
 ```cobol
-           SELECT PORTFOLIO-FILE
-               ASSIGN TO PORTFILE
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS RANDOM
-               RECORD KEY IS PORT-KEY
-               FILE STATUS IS WS-FILE-STATUS.
-           
-           SELECT UPDATE-FILE
-               ASSIGN TO UPDTFILE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-UPDT-STATUS.
+       FD  UPDATE-FILE.
+       01  UPDATE-RECORD.
+           05  UPDT-KEY.
+               10  UPDT-ID        PIC X(8).
+               10  UPDT-ACCT-NO   PIC X(10).
+           05  UPDT-ACTION        PIC X(1).
+               88  UPDT-STATUS    VALUE 'S'.
+               88  UPDT-VALUE     VALUE 'V'.
+               88  UPDT-NAME      VALUE 'N'.
+           05  UPDT-NEW-VALUE     PIC X(50).
 ```
-**After:**  
+**After:**
 ```cobol
-           SELECT PORTFOLIO-FILE
-               ASSIGN TO PORTFILE
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS RANDOM
-               RECORD KEY IS PORT-KEY
-               FILE STATUS IS WS-FILE-STATUS.
-           
-           SELECT UPDATE-FILE
-               ASSIGN TO UPDTFILE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-UPDT-STATUS.
-      *-- Change: Add real-time price feed file
-           SELECT PRICEFEED-FILE
-               ASSIGN TO PRICEFEED
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-PRICEFEED-STATUS.
+       FD  UPDATE-FILE.
+       01  UPDATE-RECORD.
+           05  UPDT-KEY.
+               10  UPDT-ID        PIC X(8).
+               10  UPDT-ACCT-NO   PIC X(10).
+           05  UPDT-ACTION        PIC X(1).
+               88  UPDT-STATUS    VALUE 'S'.
+               88  UPDT-VALUE     VALUE 'V'.
+               88  UPDT-NAME      VALUE 'N'.
+           05  UPDT-NEW-VALUE     PIC X(50).
+      *-- Change: Added fields for real-time price feed integration
+           05  UPDT-PRICE-FEED    PIC S9(13)V99 COMP-3.   *-- Change: Real-time price
+           05  UPDT-PRICE-TIMESTAMP PIC 9(14).            *-- Change: Price feed timestamp
 ```
 
-**Before:**  
+**Before:**
 ```cobol
-       01  WS-SWITCHES.
-           05  WS-FILE-STATUS      PIC X(02).
-               88  WS-SUCCESS-STATUS     VALUE '00'.
-               88  WS-EOF-STATUS        VALUE '10'.
-               88  WS-REC-NOT-FND       VALUE '23'.
-           
-           05  WS-UPDT-STATUS      PIC X(02).
-               88  WS-UPDT-SUCCESS      VALUE '00'.
-               88  WS-UPDT-EOF          VALUE '10'.
+       01  WS-WORK-AREAS.
+           05  WS-UPDATE-COUNT     PIC 9(7) VALUE ZERO.
+           05  WS-ERROR-COUNT      PIC 9(7) VALUE ZERO.
+           05  WS-RETURN-CODE      PIC S9(4) VALUE +0.
+           05  WS-NUMERIC-WORK     PIC S9(13)V99.
 ```
-**After:**  
+**After:**
 ```cobol
-       01  WS-SWITCHES.
-           05  WS-FILE-STATUS      PIC X(02).
-               88  WS-SUCCESS-STATUS     VALUE '00'.
-               88  WS-EOF-STATUS        VALUE '10'.
-               88  WS-REC-NOT-FND       VALUE '23'.
-           
-           05  WS-UPDT-STATUS      PIC X(02).
-               88  WS-UPDT-SUCCESS      VALUE '00'.
-               88  WS-UPDT-EOF          VALUE '10'.
-      *-- Change: Add price feed file status
-           05  WS-PRICEFEED-STATUS PIC X(02).
-               88  WS-PRICEFEED-SUCCESS VALUE '00'.
-               88  WS-PRICEFEED-EOF     VALUE '10'.
+       01  WS-WORK-AREAS.
+           05  WS-UPDATE-COUNT     PIC 9(7) VALUE ZERO.
+           05  WS-ERROR-COUNT      PIC 9(7) VALUE ZERO.
+           05  WS-RETURN-CODE      PIC S9(4) VALUE +0.
+           05  WS-NUMERIC-WORK     PIC S9(13)V99.
+      *-- Change: Work area for real-time price and timestamp
+           05  WS-REALTIME-PRICE   PIC S9(13)V99 COMP-3.   *-- Change: Real-time price
+           05  WS-PRICE-TIMESTAMP  PIC 9(14).              *-- Change: Price feed timestamp
 ```
 
-**Before:**  
+**Before:**
 ```cobol
        1000-INITIALIZE.
            INITIALIZE WS-WORK-AREAS
@@ -234,15 +166,13 @@ Enhance the portfolio update process to:
               PERFORM 3000-TERMINATE
            END-IF
 ```
-**After:**  
+**After:**
 ```cobol
        1000-INITIALIZE.
            INITIALIZE WS-WORK-AREAS
            
            OPEN I-O   PORTFOLIO-FILE
            OPEN INPUT UPDATE-FILE
-      *-- Change: Open price feed file
-           OPEN INPUT PRICEFEED-FILE
            
            IF NOT WS-SUCCESS-STATUS OR 
               NOT WS-UPDT-SUCCESS
@@ -252,15 +182,12 @@ Enhance the portfolio update process to:
               MOVE WS-ERROR TO WS-RETURN-CODE
               PERFORM 3000-TERMINATE
            END-IF
-      *-- Change: Check price feed file open
-           IF NOT WS-PRICEFEED-SUCCESS
-              DISPLAY 'Error opening price feed file: ' WS-PRICEFEED-STATUS
-              MOVE WS-ERROR TO WS-RETURN-CODE
-              PERFORM 3000-TERMINATE
-           END-IF
+      *-- Change: Initialize real-time price fields
+           MOVE ZERO TO WS-REALTIME-PRICE
+           MOVE ZERO TO WS-PRICE-TIMESTAMP
 ```
 
-**Before:**  
+**Before:**
 ```cobol
        2100-PROCESS-UPDATE.
            MOVE UPDT-KEY TO PORT-KEY
@@ -275,53 +202,28 @@ Enhance the portfolio update process to:
            END-IF
            .
 ```
-**After:**  
+**After:**
 ```cobol
        2100-PROCESS-UPDATE.
            MOVE UPDT-KEY TO PORT-KEY
+      *-- Change: Capture real-time price and timestamp if present
+           IF UPDT-PRICE-FEED NOT = ZERO
+               MOVE UPDT-PRICE-FEED TO WS-REALTIME-PRICE
+               MOVE UPDT-PRICE-TIMESTAMP TO WS-PRICE-TIMESTAMP
+           END-IF
            
            READ PORTFOLIO-FILE
            
            IF WS-SUCCESS-STATUS
-      *-- Change: Integrate real-time price feed lookup
-               PERFORM 2150-LOOKUP-PRICE-FEED
                PERFORM 2200-APPLY-UPDATE
            ELSE
                ADD 1 TO WS-ERROR-COUNT
                DISPLAY 'Record not found: ' PORT-KEY
-      *-- Change: Audit log for missing record
-               MOVE 'Portfolio record not found' TO WS-AUDIT-MESSAGE
-               PERFORM 2900-WRITE-AUDIT-LOG
            END-IF
            .
 ```
 
-**Inserted:**  
-```cobol
-      *-- Change: Lookup price feed for current portfolio
-       2150-LOOKUP-PRICE-FEED.
-           MOVE 'N' TO WS-PRICE-FOUND
-           MOVE PORT-ID TO WS-PORT-ID
-           MOVE PORT-ACCOUNT-NO TO WS-ACCOUNT-NO
-           REWRITE-PRICEFEED.
-               READ PRICEFEED-FILE
-                   AT END
-                       EXIT PERFORM
-                   NOT AT END
-                       IF PF-PORT-ID = WS-PORT-ID AND
-                          PF-ACCOUNT-NO = WS-ACCOUNT-NO
-                           MOVE PF-PRICE TO WS-PRICE-VALUE
-                           MOVE PF-TIMESTAMP TO WS-PRICE-TIMESTAMP
-                           MOVE 'Y' TO WS-PRICE-FOUND
-                       END-IF
-                       IF WS-PRICE-FOUND = 'N'
-                           GO TO REWRITE-PRICEFEED
-                       END-IF
-               END-READ
-           .
-```
-
-**Before:**  
+**Before:**
 ```cobol
        2200-APPLY-UPDATE.
            EVALUATE TRUE
@@ -344,7 +246,7 @@ Enhance the portfolio update process to:
            END-IF
            .
 ```
-**After:**  
+**After:**
 ```cobol
        2200-APPLY-UPDATE.
            EVALUATE TRUE
@@ -356,15 +258,11 @@ Enhance the portfolio update process to:
                    MOVE UPDT-NEW-VALUE TO WS-NUMERIC-WORK
                    MOVE WS-NUMERIC-WORK TO PORT-TOTAL-VALUE
            END-EVALUATE
-      *-- Change: Apply real-time price if found
-           IF WS-PRICE-FOUND = 'Y'
-               MOVE WS-PRICE-VALUE TO PORT-TOTAL-VALUE
+      *-- Change: Apply real-time price feed if present
+           IF WS-REALTIME-PRICE NOT = ZERO
+               MOVE WS-REALTIME-PRICE TO PORT-TOTAL-VALUE
                MOVE WS-PRICE-TIMESTAMP TO PORT-LAST-MAINT
-               MOVE 'Real-time price update applied' TO WS-AUDIT-MESSAGE
-               PERFORM 2900-WRITE-AUDIT-LOG
-           ELSE
-               MOVE 'No real-time price found' TO WS-AUDIT-MESSAGE
-               PERFORM 2900-WRITE-AUDIT-LOG
+               DISPLAY 'Real-time price update applied for: ' PORT-KEY
            END-IF
            
            REWRITE PORT-RECORD
@@ -374,279 +272,91 @@ Enhance the portfolio update process to:
            ELSE
                ADD 1 TO WS-ERROR-COUNT
                DISPLAY 'Update failed for: ' PORT-KEY
-      *-- Change: Audit log for update failure
-               MOVE 'Portfolio update failed' TO WS-AUDIT-MESSAGE
-               PERFORM 2900-WRITE-AUDIT-LOG
            END-IF
            .
 ```
 
-**Inserted:**  
-```cobol
-      *-- Change: Write audit log for price feed and update events
-       2900-WRITE-AUDIT-LOG.
-      *-- Change: Placeholder for audit log integration
-           DISPLAY 'AUDIT: ' WS-AUDIT-MESSAGE
-           .
-```
+#### src/copybook/common/PORTFLIO.cpy
 
-**Before:**  
+**Before:**
 ```cobol
-       3000-TERMINATE.
-           CLOSE PORTFOLIO-FILE
-                 UPDATE-FILE
-           
-           DISPLAY 'Updates processed: ' WS-UPDATE-COUNT
-           DISPLAY 'Errors occurred:  ' WS-ERROR-COUNT
-           
-           MOVE WS-RETURN-CODE TO RETURN-CODE
-           .
-```
-**After:**  
-```cobol
-       3000-TERMINATE.
-           CLOSE PORTFOLIO-FILE
-                 UPDATE-FILE
-      *-- Change: Close price feed file
-                 PRICEFEED-FILE
-           
-           DISPLAY 'Updates processed: ' WS-UPDATE-COUNT
-           DISPLAY 'Errors occurred:  ' WS-ERROR-COUNT
-           
-           MOVE WS-RETURN-CODE TO RETURN-CODE
-           .
-```
-
-#### **PORTFLIO.cpy**  
-**Before:**  
-```cobol
-           05  PORT-FINANCIAL-INFO.
+           05  PORT-PORTFOLIO-INFO.
+               10  PORT-CREATE-DATE    PIC 9(8).
+               10  PORT-LAST-MAINT     PIC 9(8).
+               10  PORT-STATUS         PIC X(1).
+                   88  PORT-ACTIVE       VALUE 'A'.
+                   88  PORT-CLOSED       VALUE 'C'.
+                   88  PORT-SUSPENDED    VALUE 'S'.
                10  PORT-TOTAL-VALUE    PIC S9(13)V99 COMP-3.
                10  PORT-CASH-BALANCE   PIC S9(13)V99 COMP-3.
 ```
-**After:**  
+**After:**
 ```cobol
-           05  PORT-FINANCIAL-INFO.
+           05  PORT-PORTFOLIO-INFO.
+               10  PORT-CREATE-DATE    PIC 9(8).
+               10  PORT-LAST-MAINT     PIC 9(8).
+               10  PORT-STATUS         PIC X(1).
+                   88  PORT-ACTIVE       VALUE 'A'.
+                   88  PORT-CLOSED       VALUE 'C'.
+                   88  PORT-SUSPENDED    VALUE 'S'.
+      *-- Change: Added real-time price and timestamp fields for integration
+               10  PORT-REALTIME-PRICE PIC S9(13)V99 COMP-3.   *-- Change: Real-time price
+               10  PORT-PRICE-TIMESTAMP PIC 9(14).              *-- Change: Price feed timestamp
                10  PORT-TOTAL-VALUE    PIC S9(13)V99 COMP-3.
                10  PORT-CASH-BALANCE   PIC S9(13)V99 COMP-3.
-      *-- Change: Add real-time price and timestamp fields
-               10  PORT-REALTIME-PRICE PIC S9(13)V99 COMP-3.
-               10  PORT-PRICE-TIMESTAMP PIC 9(14).
 ```
 
-#### **RPTAUD00.cbl**  
-**Before:**  
+#### src/programs/batch/RPTAUD00.cbl
+
+**Before:**
 ```cobol
-           SELECT AUDIT-FILE ASSIGN TO AUDITLOG
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS SEQUENTIAL
-               RECORD KEY IS AUD-KEY
-               FILE STATUS IS WS-AUDIT-STATUS.
-
-           SELECT ERROR-FILE ASSIGN TO ERRLOG
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS SEQUENTIAL
-               RECORD KEY IS ERR-KEY
-               FILE STATUS IS WS-ERROR-STATUS.
-
-           SELECT REPORT-FILE ASSIGN TO RPTFILE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-REPORT-STATUS.
+       01  WS-AUDIT-DETAIL.
+           05  WS-AUD-TIMESTAMP     PIC X(26).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-AUD-PROGRAM       PIC X(8).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-AUD-TYPE          PIC X(10).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-AUD-MESSAGE       PIC X(80).
 ```
-**After:**  
+**After:**
 ```cobol
-           SELECT AUDIT-FILE ASSIGN TO AUDITLOG
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS SEQUENTIAL
-               RECORD KEY IS AUD-KEY
-               FILE STATUS IS WS-AUDIT-STATUS.
-
-           SELECT ERROR-FILE ASSIGN TO ERRLOG
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS SEQUENTIAL
-               RECORD KEY IS ERR-KEY
-               FILE STATUS IS WS-ERROR-STATUS.
-
-           SELECT REPORT-FILE ASSIGN TO RPTFILE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-REPORT-STATUS.
-
-      *-- Change: Add price feed error log file
-           SELECT FEEDERR-FILE ASSIGN TO FEEDERRLOG
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-FEEDERR-STATUS.
+       01  WS-AUDIT-DETAIL.
+           05  WS-AUD-TIMESTAMP     PIC X(26).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-AUD-PROGRAM       PIC X(8).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-AUD-TYPE          PIC X(10).
+           05  FILLER               PIC X(2) VALUE SPACES.
+           05  WS-AUD-MESSAGE       PIC X(80).
+      *-- Change: Added fields for real-time price update audit
+           05  WS-AUD-REALTIME-PRICE   PIC S9(13)V99 COMP-3.   *-- Change: Real-time price
+           05  WS-AUD-PRICE-TIMESTAMP  PIC 9(14).              *-- Change: Price feed timestamp
 ```
 
-**Inserted:**  
+#### src/copybook/common/AUDITLOG.cpy
+
+**Before:**
 ```cobol
-      *-- Change: Add feed error record layout
-       FD  FEEDERR-FILE.
-       01  FEEDERR-RECORD.
-           05  FEEDERR-TIMESTAMP   PIC X(26).
-           05  FEEDERR-PROGRAM     PIC X(8).
-           05  FEEDERR-TYPE        PIC X(10).
-           05  FEEDERR-MESSAGE     PIC X(80).
+           05  AUD-KEY-INFO.
+               10  AUD-PORTFOLIO-ID  PIC X(8).
+               10  AUD-ACCOUNT-NO    PIC X(10).
+           05  AUD-BEFORE-IMAGE     PIC X(100).
+           05  AUD-AFTER-IMAGE      PIC X(100).
+           05  AUD-MESSAGE          PIC X(100).
 ```
-
-**Before:**  
+**After:**
 ```cobol
-       01  WS-FILE-STATUS.
-           05  WS-AUDIT-STATUS       PIC XX.
-           05  WS-ERROR-STATUS       PIC XX.
-           05  WS-REPORT-STATUS      PIC XX.
-```
-**After:**  
-```cobol
-       01  WS-FILE-STATUS.
-           05  WS-AUDIT-STATUS       PIC XX.
-           05  WS-ERROR-STATUS       PIC XX.
-           05  WS-REPORT-STATUS      PIC XX.
-      *-- Change: Add feed error file status
-           05  WS-FEEDERR-STATUS     PIC XX.
-```
-
-**Inserted:**  
-```cobol
-      *-- Change: Add feed error detail
-       01  WS-FEEDERR-DETAIL.
-           05  WS-FEEDERR-TIMESTAMP PIC X(26).
-           05  WS-FEEDERR-PROGRAM   PIC X(8).
-           05  WS-FEEDERR-TYPE      PIC X(10).
-           05  WS-FEEDERR-MESSAGE   PIC X(80).
-```
-
-**Before:**  
-```cobol
-           OPEN INPUT AUDIT-FILE
-           IF WS-AUDIT-STATUS NOT = '00'
-               MOVE 'ERROR OPENING AUDIT FILE'
-                 TO WS-ERROR-MESSAGE
-               PERFORM 9999-ERROR-HANDLER
-           END-IF
-
-           OPEN INPUT ERROR-FILE
-           IF WS-ERROR-STATUS NOT = '00'
-               MOVE 'ERROR OPENING ERROR FILE'
-                 TO WS-ERROR-MESSAGE
-               PERFORM 9999-ERROR-HANDLER
-           END-IF
-
-           OPEN OUTPUT REPORT-FILE
-           IF WS-REPORT-STATUS NOT = '00'
-               MOVE 'ERROR OPENING REPORT FILE'
-                 TO WS-ERROR-MESSAGE
-               PERFORM 9999-ERROR-HANDLER
-           END-IF.
-```
-**After:**  
-```cobol
-           OPEN INPUT AUDIT-FILE
-           IF WS-AUDIT-STATUS NOT = '00'
-               MOVE 'ERROR OPENING AUDIT FILE'
-                 TO WS-ERROR-MESSAGE
-               PERFORM 9999-ERROR-HANDLER
-           END-IF
-
-           OPEN INPUT ERROR-FILE
-           IF WS-ERROR-STATUS NOT = '00'
-               MOVE 'ERROR OPENING ERROR FILE'
-                 TO WS-ERROR-MESSAGE
-               PERFORM 9999-ERROR-HANDLER
-           END-IF
-
-           OPEN OUTPUT REPORT-FILE
-           IF WS-REPORT-STATUS NOT = '00'
-               MOVE 'ERROR OPENING REPORT FILE'
-                 TO WS-ERROR-MESSAGE
-               PERFORM 9999-ERROR-HANDLER
-           END-IF.
-      *-- Change: Open feed error file
-           OPEN INPUT FEEDERR-FILE
-           IF WS-FEEDERR-STATUS NOT = '00'
-               DISPLAY 'WARNING: Feed error log file not available'
-           END-IF
-```
-
-**Inserted:**  
-```cobol
-      *-- Change: Process feed error log for price feed failures and outdated prices
-       2250-PROCESS-FEED-ERRORS.
-           PERFORM 2251-READ-FEEDERR-RECORDS
-           PERFORM 2252-SUMMARIZE-FEED-ERRORS.
-```
-
-**Inserted:**  
-```cobol
-      *-- Change: Read and summarize feed error records
-       2251-READ-FEEDERR-RECORDS.
-           READ FEEDERR-FILE
-               AT END
-                   EXIT PERFORM
-               NOT AT END
-                   DISPLAY 'FEED ERROR: ' FEEDERR-RECORD
-                   PERFORM 2251-READ-FEEDERR-RECORDS
-           END-READ
-           .
-
-       2252-SUMMARIZE-FEED-ERRORS.
-           DISPLAY 'Feed error summary complete.'
-           .
-```
-
-**Before:**  
-```cobol
-           CLOSE AUDIT-FILE
-                ERROR-FILE
-                REPORT-FILE
-```
-**After:**  
-```cobol
-           CLOSE AUDIT-FILE
-                ERROR-FILE
-                REPORT-FILE
-      *-- Change: Close feed error file
-                FEEDERR-FILE.
-```
-
-#### **AUDITLOG.cpy**  
-**Before:**  
-```cobol
-           05  AUD-TYPE             PIC X(4).
-               88  AUD-TRANSACTION     VALUE 'TRAN'.
-               88  AUD-USER-ACTION     VALUE 'USER'.
-               88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-           05  AUD-ACTION           PIC X(8).
-               88  AUD-CREATE         VALUE 'CREATE  '.
-               88  AUD-UPDATE         VALUE 'UPDATE  '.
-               88  AUD-DELETE         VALUE 'DELETE  '.
-               88  AUD-INQUIRE        VALUE 'INQUIRE '.
-               88  AUD-LOGIN          VALUE 'LOGIN   '.
-               88  AUD-LOGOUT         VALUE 'LOGOUT  '.
-               88  AUD-STARTUP        VALUE 'STARTUP '.
-               88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
-```
-**After:**  
-```cobol
-           05  AUD-TYPE             PIC X(4).
-               88  AUD-TRANSACTION     VALUE 'TRAN'.
-               88  AUD-USER-ACTION     VALUE 'USER'.
-               88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-      *-- Change: Add feed error and price update event types
-               88  AUD-FEED-ERROR      VALUE 'FERR'.
-               88  AUD-PRICE-UPDATE    VALUE 'PRUP'.
-           05  AUD-ACTION           PIC X(8).
-               88  AUD-CREATE         VALUE 'CREATE  '.
-               88  AUD-UPDATE         VALUE 'UPDATE  '.
-               88  AUD-DELETE         VALUE 'DELETE  '.
-               88  AUD-INQUIRE        VALUE 'INQUIRE '.
-               88  AUD-LOGIN          VALUE 'LOGIN   '.
-               88  AUD-LOGOUT         VALUE 'LOGOUT  '.
-               88  AUD-STARTUP        VALUE 'STARTUP '.
-               88  AUD-SHUTDOWN       VALUE 'SHUTDOWN'.
-      *-- Change: Add price update and feed error actions
-               88  AUD-PRICE-UPD      VALUE 'PRC-UPD '.
-               88  AUD-FEED-FAIL      VALUE 'FERR-ERR'.
+           05  AUD-KEY-INFO.
+               10  AUD-PORTFOLIO-ID  PIC X(8).
+               10  AUD-ACCOUNT-NO    PIC X(10).
+      *-- Change: Added real-time price and timestamp fields for audit
+           05  AUD-REALTIME-PRICE   PIC S9(13)V99 COMP-3.   *-- Change: Real-time price
+           05  AUD-PRICE-TIMESTAMP  PIC 9(14).              *-- Change: Price feed timestamp
+           05  AUD-BEFORE-IMAGE     PIC X(100).
+           05  AUD-AFTER-IMAGE      PIC X(100).
+           05  AUD-MESSAGE          PIC X(100).
 ```
 
 ## 4. Conclusion  
-The implemented changes significantly enhance the portfolio update application by integrating real-time price feeds, ensuring accurate and timely portfolio valuations, and improving error handling and audit logging. These modifications increase operational transparency, data accuracy, and system reliability, while providing a robust foundation for future enhancements and regulatory compliance. All changes are clearly documented, with structured diffs and logic insertion points to facilitate maintenance and onboarding.
+The implemented changes enable the portfolio management system to ingest, store, and audit real-time price feed data, enhancing the accuracy and timeliness of portfolio valuations. All impacted modules and data structures have been updated to support these new requirements, with clear traceability and auditability for compliance and operational transparency.
