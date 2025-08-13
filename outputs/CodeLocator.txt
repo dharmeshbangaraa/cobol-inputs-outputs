@@ -1,7 +1,94 @@
-I am unable to proceed with the COBOL impact analysis because the required inputs are missing. 
+**Summary**:
+User Story: Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates  
+- 4 impacted components identified (**High impact only**)  
+- High complexity change affecting portfolio update, valuation, audit logging, and price history management.  
+- The change touches core portfolio update logic, valuation recalculation, audit/error handling, and historical price storage.
 
-**Please provide:**
-1. The actual GitHub repository URL for the COBOL codebase (replace `<github-url>` with the real link).
-2. The user story from the previous agent output.
+---
 
-Once you provide these, I will perform a comprehensive high-impact analysis as per your instructions.
+**Ranked Impact List**:
+
+| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                      |
+|------------------------------------------|--------|---------|---------------------------------------------|------------------------------------------------------|
+| `src/programs/portfolio/PORTUPDT.cbl`    | High   | Direct  | 2000-PROCESS, 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE | Entry point for portfolio updates; must process real-time price feeds and trigger valuation recalculation |
+| `src/programs/utility/UTLVAL00.cbl`      | High   | Direct  | 2000-PROCESS, 2100-VALIDATE-POSITION, 2200-RECALC-VALUATION | Performs valuation updates and risk metric calculations on portfolio positions |
+| `src/copybook/common/AUDITLOG.cpy`       | High   | Direct  | AUDIT-ENTRY, LOG-ERROR                      | Used for audit logging and error handling when feed fails or prices are outdated |
+| `src/copybook/common/POSREC.cpy`         | High   | Direct  | POSITION-RECORD, HISTORICAL-PRICE-RECORD    | Stores position and price history, must be updated for historical price tracking |
+
+---
+
+**JSON Metadata**:
+```json
+{
+  "impactAnalysis": {
+    "userStory": "Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates",
+    "impactedComponents": [
+      {
+        "programFilePath": "src/programs/portfolio/PORTUPDT.cbl",
+        "impactScore": 0.98,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2000-PROCESS", "2100-PROCESS-UPDATE", "2200-APPLY-UPDATE"],
+        "dependencyPath": ["PORTUPDT"],
+        "rationale": "Main program for portfolio updates; must ingest real-time prices, trigger valuation recalculation, and update positions."
+      },
+      {
+        "programFilePath": "src/programs/utility/UTLVAL00.cbl",
+        "impactScore": 0.96,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["2000-PROCESS", "2100-VALIDATE-POSITION", "2200-RECALC-VALUATION"],
+        "dependencyPath": ["UTLVAL00"],
+        "rationale": "Handles valuation and risk metric recalculation, directly impacted by new price ingestion and update frequency."
+      },
+      {
+        "programFilePath": "src/copybook/common/AUDITLOG.cpy",
+        "impactScore": 0.93,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["AUDIT-ENTRY", "LOG-ERROR"],
+        "dependencyPath": ["AUDITLOG"],
+        "rationale": "Audit log copybook used for error handling and alerting when feed fails or prices are stale."
+      },
+      {
+        "programFilePath": "src/copybook/common/POSREC.cpy",
+        "impactScore": 0.91,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": ["POSITION-RECORD", "HISTORICAL-PRICE-RECORD"],
+        "dependencyPath": ["POSREC"],
+        "rationale": "Position and price record structure; must be updated to store historical prices for analysis and reporting."
+      }
+    ]
+  }
+}
+```
+
+---
+
+**Visualization**:
+```mermaid
+graph TD
+    PORTUPDT["src/programs/portfolio/PORTUPDT.cbl (High)"]:::high
+    UTLVAL00["src/programs/utility/UTLVAL00.cbl (High)"]:::high
+    AUDITLOG["src/copybook/common/AUDITLOG.cpy (High)"]:::high
+    POSREC["src/copybook/common/POSREC.cpy (High)"]:::high
+
+    PORTUPDT --> UTLVAL00
+    PORTUPDT --> AUDITLOG
+    PORTUPDT --> POSREC
+    UTLVAL00 --> POSREC
+    UTLVAL00 --> AUDITLOG
+
+    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
+```
+
+---
+
+**Reasoning**:
+- `PORTUPDT.cbl` is the main entry for portfolio updates and will be the integration point for real-time price feeds, triggering downstream recalculations.
+- `UTLVAL00.cbl` is responsible for valuation and risk metric updates, which must be recalculated on every price update.
+- `AUDITLOG.cpy` is used for logging and alerting, as required by error handling and stale price detection.
+- `POSREC.cpy` defines the position and price history records, which must be updated to store each received price for historical analysis.
+
+**No extra files were added. All file paths and names are as in the repository. Only high-impact components are included.**
