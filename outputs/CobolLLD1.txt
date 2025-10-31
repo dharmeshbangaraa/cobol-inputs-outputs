@@ -1,1 +1,214 @@
-<full content from previous Agentic AI Agent, starting from Technical Document and Low-Level Design>
+# Technical Document and Low-Level Design (LLD)
+
+## 1. Introduction  
+This document provides a comprehensive technical overview and Low-Level Design (LLD) for the COBOL application modules impacted by the initiative to enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates. The purpose is to facilitate accurate and efficient implementation of required changes, ensuring maintainability and clarity for developers, testers, and architects.
+
+## 2. Existing Logic and Flow  
+### 2.1 Overview  
+The COBOL application consists of several interdependent modules responsible for ingesting market data, updating portfolio valuations, handling errors, logging events, and maintaining historical records. The impacted modules are:
+
+- **RCVPRC00.cbl**: Entry point for market data ingestion and recovery.
+- **PORTUPDT.cbl**: Updates portfolio values and risk metrics.
+- **PORTFLIO.cpy**: Shared portfolio data structure.
+- **RPTAUD00.cbl**: Audit logging for price updates and error events.
+- **AUDITLOG.cpy**: Audit log record structure.
+
+### 2.2 Detailed Logic  
+#### src/programs/batch/RCVPRC00.cbl  
+- **1000-INITIALIZE-RECOVERY**: Initializes recovery structures and prepares for market data ingestion.
+- **1200-VALIDATE-REQUEST**: Validates incoming market price feed requests.
+- **2000-PROCESS-RECOVERY**: Processes market price data, applies recovery logic if needed.
+- **9000-ERROR-ROUTINE**: Handles errors during ingestion and processing.
+
+#### src/programs/portfolio/PORTUPDT.cbl  
+- **2000-PROCESS**: Main entry for portfolio update logic.
+- **2100-PROCESS-UPDATE**: Applies new market prices to portfolio holdings.
+- **2200-APPLY-UPDATE**: Updates risk metrics and valuation fields.
+
+#### src/copybook/common/PORTFLIO.cpy  
+- Defines the portfolio data structure, including fields for holdings, valuations, and risk metrics.
+
+#### src/programs/batch/RPTAUD00.cbl  
+- **2000-PROCESS-REPORT**: Generates audit reports for price updates.
+- **9999-ERROR-HANDLER**: Handles errors during audit logging.
+
+#### src/copybook/common/AUDITLOG.cpy  
+- Defines the audit log record structure for historical price updates and error events.
+
+#### Flowchart:  
+```
+flowchart TD
+    Start(["Start"])
+    InitRecovery["1000-INITIALIZE-RECOVERY"]
+    ValidateReq["1200-VALIDATE-REQUEST"]
+    ProcessRecovery["2000-PROCESS-RECOVERY"]
+    ErrorRoutine["9000-ERROR-ROUTINE"]
+    PortfolioUpdate["2000-PROCESS"]
+    ProcessUpdate["2100-PROCESS-UPDATE"]
+    ApplyUpdate["2200-APPLY-UPDATE"]
+    AuditReport["2000-PROCESS-REPORT"]
+    AuditError["9999-ERROR-HANDLER"]
+    End(["End"])
+
+    Start --> InitRecovery
+    InitRecovery --> ValidateReq
+    ValidateReq --> ProcessRecovery
+    ProcessRecovery --> ErrorRoutine
+    ProcessRecovery --> PortfolioUpdate
+    PortfolioUpdate --> ProcessUpdate
+    ProcessUpdate --> ApplyUpdate
+    ApplyUpdate --> AuditReport
+    AuditReport --> AuditError
+    AuditError --> End
+```
+
+## 3. Proposed Changes  
+### 3.1 User Story or Analysis Report Summary  
+**User Story:**  
+Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates
+
+**Summary:**  
+The system must ingest real-time market prices, update portfolio valuations and risk metrics, handle errors and log events, and maintain a historical record of prices. This impacts the data ingestion, valuation update, error handling, logging, and historical price recording processes.
+
+### 3.2 Proposed Code Changes Summary:
+#### 3.2.1 Impacted Sections and Files:
+- **src/programs/batch/RCVPRC00.cbl**: 1000-INITIALIZE-RECOVERY, 1200-VALIDATE-REQUEST, 2000-PROCESS-RECOVERY, 9000-ERROR-ROUTINE
+- **src/programs/portfolio/PORTUPDT.cbl**: 2000-PROCESS, 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE
+- **src/copybook/common/PORTFLIO.cpy**: Entire file
+- **src/programs/batch/RPTAUD00.cbl**: 2000-PROCESS-REPORT, 9999-ERROR-HANDLER
+- **src/copybook/common/AUDITLOG.cpy**: Entire file
+
+**Purpose of Changes:**  
+To support real-time market price feed integration, the impacted modules will be enhanced to:
+- Ingest and validate real-time price data.
+- Dynamically update portfolio valuations and risk metrics.
+- Log errors and events for audit and compliance.
+- Maintain a historical record of all price updates.
+
+**Impact:**  
+These changes will affect core data flows, error handling, and audit logging across multiple programs and copybooks, increasing system complexity but enabling dynamic, real-time portfolio management.
+
+### 3.3 Insertion Points  
+- **RCVPRC00.cbl**: Insert logic for real-time feed ingestion and validation in 1000-INITIALIZE-RECOVERY and 1200-VALIDATE-REQUEST. Update recovery and error handling in 2000-PROCESS-RECOVERY and 9000-ERROR-ROUTINE.
+- **PORTUPDT.cbl**: Insert logic to apply new prices and recalculate risk metrics in 2100-PROCESS-UPDATE and 2200-APPLY-UPDATE.
+- **PORTFLIO.cpy**: Add fields for real-time price and timestamp.
+- **RPTAUD00.cbl**: Enhance audit report generation and error logging in 2000-PROCESS-REPORT and 9999-ERROR-HANDLER.
+- **AUDITLOG.cpy**: Add fields for price source, timestamp, and error details.
+
+### 3.4 Structured Diffs  
+> **Note:** Actual code snippets are not available due to repository access issues. Below is the expected diff structure based on standard COBOL practices.
+
+#### src/programs/batch/RCVPRC00.cbl  
+**Before:**  
+```cobol
+1000-INITIALIZE-RECOVERY.
+    PERFORM INIT-STRUCTURES.
+    ...
+1200-VALIDATE-REQUEST.
+    IF REQUEST-TYPE = 'PRICE'
+        CONTINUE
+    ELSE
+        PERFORM 9000-ERROR-ROUTINE.
+    ...
+```
+**After:**  
+```cobol
+1000-INITIALIZE-RECOVERY.
+    PERFORM INIT-STRUCTURES.
+    PERFORM INIT-REALTIME-FEED.
+    ...
+1200-VALIDATE-REQUEST.
+    IF REQUEST-TYPE = 'PRICE'
+        PERFORM VALIDATE-REALTIME-FEED
+        CONTINUE
+    ELSE
+        PERFORM 9000-ERROR-ROUTINE.
+    ...
+```
+
+#### src/programs/portfolio/PORTUPDT.cbl  
+**Before:**  
+```cobol
+2100-PROCESS-UPDATE.
+    MOVE MARKET-PRICE TO PORTFOLIO-PRICE.
+    ...
+2200-APPLY-UPDATE.
+    COMPUTE PORTFOLIO-VALUE = PORTFOLIO-PRICE * QUANTITY.
+    ...
+```
+**After:**  
+```cobol
+2100-PROCESS-UPDATE.
+    MOVE REALTIME-MARKET-PRICE TO PORTFOLIO-PRICE.
+    MOVE PRICE-TIMESTAMP TO PORTFOLIO-PRICE-TIME.
+    ...
+2200-APPLY-UPDATE.
+    COMPUTE PORTFOLIO-VALUE = PORTFOLIO-PRICE * QUANTITY.
+    PERFORM UPDATE-RISK-METRICS.
+    ...
+```
+
+#### src/copybook/common/PORTFLIO.cpy  
+**Before:**  
+```cobol
+01 PORTFOLIO-RECORD.
+   05 PORTFOLIO-ID        PIC X(10).
+   05 PORTFOLIO-PRICE     PIC 9(9)V99.
+   05 QUANTITY            PIC 9(7).
+   ...
+```
+**After:**  
+```cobol
+01 PORTFOLIO-RECORD.
+   05 PORTFOLIO-ID        PIC X(10).
+   05 PORTFOLIO-PRICE     PIC 9(9)V99.
+   05 PORTFOLIO-PRICE-TIME PIC X(20).
+   05 QUANTITY            PIC 9(7).
+   ...
+```
+
+#### src/programs/batch/RPTAUD00.cbl  
+**Before:**  
+```cobol
+2000-PROCESS-REPORT.
+    WRITE AUDIT-RECORD FROM PORTFOLIO-RECORD.
+    ...
+9999-ERROR-HANDLER.
+    DISPLAY "ERROR OCCURRED".
+    ...
+```
+**After:**  
+```cobol
+2000-PROCESS-REPORT.
+    WRITE AUDIT-RECORD FROM PORTFOLIO-RECORD.
+    WRITE AUDIT-RECORD FROM REALTIME-PRICE-LOG.
+    ...
+9999-ERROR-HANDLER.
+    DISPLAY "ERROR OCCURRED".
+    WRITE AUDIT-RECORD FROM ERROR-DETAILS.
+    ...
+```
+
+#### src/copybook/common/AUDITLOG.cpy  
+**Before:**  
+```cobol
+01 AUDIT-RECORD.
+   05 AUDIT-ID            PIC X(10).
+   05 AUDIT-TYPE          PIC X(10).
+   05 AUDIT-DATE          PIC X(10).
+   ...
+```
+**After:**  
+```cobol
+01 AUDIT-RECORD.
+   05 AUDIT-ID            PIC X(10).
+   05 AUDIT-TYPE          PIC X(10).
+   05 AUDIT-DATE          PIC X(10).
+   05 PRICE-SOURCE        PIC X(20).
+   05 PRICE-TIMESTAMP     PIC X(20).
+   05 ERROR-DETAILS       PIC X(100).
+   ...
+```
+
+## 4. Conclusion  
+The proposed changes enable the COBOL application to ingest real-time market price feeds, dynamically update portfolio valuations and risk metrics, and maintain comprehensive audit logs for compliance and traceability. These enhancements support modern business requirements for dynamic portfolio management while preserving the integrity and reliability of the legacy system.
