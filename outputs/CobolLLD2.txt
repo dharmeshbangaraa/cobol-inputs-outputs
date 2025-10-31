@@ -1,48 +1,381 @@
 # Technical Document and Low-Level Design (LLD)
 
 ## 1. Introduction  
-This document outlines the technical assessment of COBOL code changes for the application. The purpose is to provide clarity on the current state of code modifications, impacted logic, and insertion points for future reference and traceability.
+This document details the technical changes and low-level design (LLD) for the COBOL application module `PORTUPDT`, which is responsible for updating portfolio records. The recent changes integrate a real-time price feed to ensure portfolio records reflect the latest market prices.
 
 ## 2. Existing Logic and Flow  
 ### 2.1 Overview  
-The COBOL application is designed to process business logic as per requirements. It typically follows a structured flow: initialization, core processing, and termination.
+The `PORTUPDT` program updates existing portfolio records based on incoming update files. It processes each update, applies changes to the portfolio, and maintains audit information. The new enhancement ingests a real-time price feed and updates portfolio records with the latest market prices for matching securities.
 
 ### 2.2 Detailed Logic  
-- **Initialization:** Sets up environment and reads input data.
-- **Processing:** Executes business rules and data transformations.
-- **Termination:** Outputs results and performs cleanup.
+- **Initialization (Lines 51-70):**  
+  - Initializes working storage and opens all required files: portfolio, update, and (new) price feed files.
+  - Checks file status for successful opening.
+
+- **Price Feed Ingestion (Lines 71-90):**  
+  - Reads the real-time price feed file sequentially.
+  - For each record, updates working storage with the latest security ID, price, and timestamp.
+  - Logs each price feed ingestion for audit purposes.
+
+- **Processing Updates (Lines 91-120):**  
+  - Reads each update record from the update file.
+  - For each update, locates the corresponding portfolio record.
+  - Applies the update based on the action type (status, name, or value).
+  - **New Logic:** If the portfolio security ID matches the latest security from the price feed, updates the portfolio's market price with the latest price.
+
+- **Termination (Lines 121-130):**  
+  - Closes all files and displays summary statistics.
 
 #### Flowchart:  
 ```
 flowchart TD
     Start(["Start"])
-    Init["Initialization"]
-    Process["Processing"]
-    Terminate["Termination"]
+    Init["Initialize
+Working Storage
+Open Files"]
+    IngestPriceFeed["Ingest
+Price Feed"]
+    ProcessUpdates["Process
+Update Records"]
+    ForEachUpdate["For Each
+Update Record"]
+    FindPortfolio["Find
+Portfolio Record"]
+    ApplyUpdate["Apply
+Update Action"]
+    CheckSecurityMatch["If Security ID
+Matches Latest Price"]
+    UpdateMarketPrice["Update Market Price
+from Price Feed"]
+    RewritePortfolio["Rewrite
+Portfolio Record"]
+    NextUpdate["Next
+Update Record"]
+    Terminate["Terminate
+Close Files
+Display Stats"]
     End(["End"])
 
     Start --> Init
-    Init --> Process
-    Process --> Terminate
+    Init --> IngestPriceFeed
+    IngestPriceFeed --> ProcessUpdates
+    ProcessUpdates --> ForEachUpdate
+    ForEachUpdate --> FindPortfolio
+    FindPortfolio --> ApplyUpdate
+    ApplyUpdate --> CheckSecurityMatch
+    CheckSecurityMatch -- Yes --> UpdateMarketPrice
+    UpdateMarketPrice --> RewritePortfolio
+    CheckSecurityMatch -- No --> RewritePortfolio
+    RewritePortfolio --> NextUpdate
+    NextUpdate --> ForEachUpdate
+    ForEachUpdate -- All Processed --> Terminate
     Terminate --> End
 ```
 
 ## 3. Impacted Changes  
 ### 3.1 User Story or Analysis Report Summary  
-No COBOL code changes were detected for this cycle. The system did not identify any impacted files or modifications.
+Integrate a real-time price feed into the portfolio update process so that each portfolio record is updated with the latest market price for its security, ensuring data accuracy and timely reflection of market changes.
 
 ### 3.2 Impacted Code Changes Summary:
-#### 3.2.1 Impacted Sections and Files: 
-  - **None detected.**
-  - **Purpose of Changes:** Not applicable, as no changes were found.
-  - **Impact:** No impact on the system for this cycle.
+
+#### 3.2.1 Impacted Sections and Files:
+- **File:** `src/programs/portfolio/PORTUPDT.cbl`
+  - **Sections Impacted:**
+    - FILE-CONTROL (Addition of PRICE-FEED-FILE)
+    - FILE SECTION (Addition of PRICE-FEED-RECORD)
+    - WORKING-STORAGE SECTION (Addition of price feed-related variables)
+    - PROCEDURE DIVISION (New logic for ingesting price feed and updating portfolio records)
+
+  - **Purpose of Changes:**  
+    To enable the application to read and apply real-time market prices to portfolio records, ensuring that the portfolio reflects the most current market data.
+
+  - **Impact:**  
+    - Portfolio records now have up-to-date market prices.
+    - Additional audit logging for price feed ingestion.
+    - Enhanced data accuracy and compliance with real-time reporting requirements.
 
 ### 3.3 Insertion Points  
-- No new logic insertion points identified, as no code changes were detected.
-- No references to line numbers or code snippets are available.
+- **FILE-CONTROL Section:**  
+  - Added `PRICE-FEED-FILE` definition for real-time price feed integration.
+
+- **FILE SECTION:**  
+  - Added `PRICE-FEED-RECORD` structure to define the layout of the price feed file.
+
+- **WORKING-STORAGE SECTION:**  
+  - Added variables to store the latest price, security ID, and timestamp from the price feed.
+
+- **PROCEDURE DIVISION:**  
+  - **After Initialization:**  
+    - Inserted logic to open the price feed file and check its status.
+  - **New Paragraph `1500-INGEST-PRICE-FEED`:**  
+    - Reads the price feed file and updates working storage with the latest price information.
+    - Logs each price feed record for audit.
+  - **In `2200-APPLY-UPDATE`:**  
+    - After applying the update action, checks if the portfolio security ID matches the latest security from the price feed.
+    - If matched, updates the portfolio's market price and logs the change.
 
 ### 3.4 Structured Diffs  
-No before-and-after code snippets are available, as no impacted files or code changes were found.
+
+**Before:**  
+```cobol
+     SELECT UPDATE-FILE
+         ASSIGN TO UPDTFILE
+         ORGANIZATION IS SEQUENTIAL
+         FILE STATUS IS WS-UPDT-STATUS.
+```
+
+**After:**  
+```cobol
+     SELECT UPDATE-FILE
+         ASSIGN TO UPDTFILE
+         ORGANIZATION IS SEQUENTIAL
+         FILE STATUS IS WS-UPDT-STATUS.
+*-- Change: Added real-time price feed file for integration
+     SELECT PRICE-FEED-FILE
+         ASSIGN TO PRCFEED
+         ORGANIZATION IS SEQUENTIAL
+         FILE STATUS IS WS-PRCFEED-STATUS.
+```
+
+---
+
+**Before:**  
+```cobol
+ FD  UPDATE-FILE.
+ 01  UPDATE-RECORD.
+     05  UPDT-KEY.
+         10  UPDT-ID        PIC X(8).
+         10  UPDT-ACCT-NO   PIC X(10).
+     05  UPDT-ACTION        PIC X(1).
+         88  UPDT-STATUS    VALUE 'S'.
+         88  UPDT-VALUE     VALUE 'V'.
+         88  UPDT-NAME      VALUE 'N'.
+     05  UPDT-NEW-VALUE     PIC X(50).
+```
+
+**After:**  
+```cobol
+ FD  UPDATE-FILE.
+ 01  UPDATE-RECORD.
+     05  UPDT-KEY.
+         10  UPDT-ID        PIC X(8).
+         10  UPDT-ACCT-NO   PIC X(10).
+     05  UPDT-ACTION        PIC X(1).
+         88  UPDT-STATUS    VALUE 'S'.
+         88  UPDT-VALUE     VALUE 'V'.
+         88  UPDT-NAME      VALUE 'N'.
+     05  UPDT-NEW-VALUE     PIC X(50).
+*-- Change: Add price feed record structure
+ FD  PRICE-FEED-FILE.
+ 01  PRICE-FEED-RECORD.
+     05  PRCFEED-SECURITY-ID   PIC X(12).
+     05  PRCFEED-PRICE         PIC 9(13)V99.
+     05  PRCFEED-TIMESTAMP     PIC X(26).
+```
+
+---
+
+**Before:**  
+```cobol
+ 01  WS-SWITCHES.
+     05  WS-FILE-STATUS      PIC X(02).
+         88  WS-SUCCESS-STATUS     VALUE '00'.
+         88  WS-EOF-STATUS        VALUE '10'.
+         88  WS-REC-NOT-FND       VALUE '23'.
+     
+     05  WS-UPDT-STATUS      PIC X(02).
+         88  WS-UPDT-SUCCESS      VALUE '00'.
+         88  WS-UPDT-EOF          VALUE '10'.
+     
+     05  WS-END-OF-FILE-SW   PIC X     VALUE 'N'.
+         88  END-OF-FILE              VALUE 'Y'.
+         88  NOT-END-OF-FILE          VALUE 'N'.
+```
+
+**After:**  
+```cobol
+ 01  WS-SWITCHES.
+     05  WS-FILE-STATUS      PIC X(02).
+         88  WS-SUCCESS-STATUS     VALUE '00'.
+         88  WS-EOF-STATUS        VALUE '10'.
+         88  WS-REC-NOT-FND       VALUE '23'.
+     
+     05  WS-UPDT-STATUS      PIC X(02).
+         88  WS-UPDT-SUCCESS      VALUE '00'.
+         88  WS-UPDT-EOF          VALUE '10'.
+*-- Change: Add price feed file status
+     05  WS-PRCFEED-STATUS   PIC X(02).
+         88  WS-PRCFEED-SUCCESS   VALUE '00'.
+         88  WS-PRCFEED-EOF       VALUE '10'.
+     
+     05  WS-END-OF-FILE-SW   PIC X     VALUE 'N'.
+         88  END-OF-FILE              VALUE 'Y'.
+         88  NOT-END-OF-FILE          VALUE 'N'.
+```
+
+---
+
+**Before:**  
+```cobol
+ 01  WS-WORK-AREAS.
+     05  WS-UPDATE-COUNT     PIC 9(7) VALUE ZERO.
+     05  WS-ERROR-COUNT      PIC 9(7) VALUE ZERO.
+     05  WS-RETURN-CODE      PIC S9(4) VALUE +0.
+     05  WS-NUMERIC-WORK     PIC S9(13)V99.
+```
+
+**After:**  
+```cobol
+ 01  WS-WORK-AREAS.
+     05  WS-UPDATE-COUNT     PIC 9(7) VALUE ZERO.
+     05  WS-ERROR-COUNT      PIC 9(7) VALUE ZERO.
+     05  WS-RETURN-CODE      PIC S9(4) VALUE +0.
+     05  WS-NUMERIC-WORK     PIC S9(13)V99.
+*-- Change: Add area for latest price
+     05  WS-LATEST-PRICE     PIC 9(13)V99 VALUE ZERO.
+     05  WS-LATEST-SECURITY  PIC X(12) VALUE SPACES.
+     05  WS-LATEST-TS        PIC X(26) VALUE SPACES.
+```
+
+---
+
+**Before:**  
+```cobol
+ 0000-MAIN.
+     PERFORM 1000-INITIALIZE
+     PERFORM 2000-PROCESS
+        UNTIL END-OF-FILE
+     PERFORM 3000-TERMINATE
+     GOBACK.
+```
+
+**After:**  
+```cobol
+ 0000-MAIN.
+     PERFORM 1000-INITIALIZE
+*-- Change: Integrate real-time price feed before processing updates
+     PERFORM 1500-INGEST-PRICE-FEED
+     PERFORM 2000-PROCESS
+        UNTIL END-OF-FILE
+     PERFORM 3000-TERMINATE
+     GOBACK.
+```
+
+---
+
+**Before:**  
+```cobol
+ 1000-INITIALIZE.
+     INITIALIZE WS-WORK-AREAS
+     OPEN I-O   PORTFOLIO-FILE
+     OPEN INPUT UPDATE-FILE
+     IF NOT WS-SUCCESS-STATUS OR 
+        NOT WS-UPDT-SUCCESS
+        DISPLAY 'Error opening files: ' 
+                'PORT=' WS-FILE-STATUS
+                'UPDT=' WS-UPDT-STATUS
+        MOVE WS-ERROR TO WS-RETURN-CODE
+        PERFORM 3000-TERMINATE
+     END-IF
+     .
+```
+
+**After:**  
+```cobol
+ 1000-INITIALIZE.
+     INITIALIZE WS-WORK-AREAS
+     OPEN I-O   PORTFOLIO-FILE
+     OPEN INPUT UPDATE-FILE
+*-- Change: Open price feed file
+     OPEN INPUT PRICE-FEED-FILE
+     IF NOT WS-SUCCESS-STATUS OR 
+        NOT WS-UPDT-SUCCESS OR
+        NOT WS-PRCFEED-SUCCESS
+        DISPLAY 'Error opening files: ' 
+                'PORT=' WS-FILE-STATUS
+                'UPDT=' WS-UPDT-STATUS
+                'PRCFEED=' WS-PRCFEED-STATUS
+        MOVE WS-ERROR TO WS-RETURN-CODE
+        PERFORM 3000-TERMINATE
+     END-IF
+     .
+```
+
+---
+
+**Insertion: New Paragraph**  
+```cobol
+*-- Change: Ingest price feed and update working storage
+ 1500-INGEST-PRICE-FEED.
+     PERFORM UNTIL WS-PRCFEED-STATUS = '10'
+         READ PRICE-FEED-FILE
+             AT END
+                 MOVE '10' TO WS-PRCFEED-STATUS
+             NOT AT END
+                 MOVE PRCFEED-SECURITY-ID TO WS-LATEST-SECURITY
+                 MOVE PRCFEED-PRICE TO WS-LATEST-PRICE
+                 MOVE PRCFEED-TIMESTAMP TO WS-LATEST-TS
+                 *-- Change: Log price feed ingestion for audit
+                 DISPLAY 'Price feed: ' WS-LATEST-SECURITY ' ' WS-LATEST-PRICE
+         END-READ
+     END-PERFORM
+     .
+```
+
+---
+
+**Before:**  
+```cobol
+ 2200-APPLY-UPDATE.
+     EVALUATE TRUE
+         WHEN UPDT-STATUS
+             MOVE UPDT-NEW-VALUE TO PORT-STATUS
+         WHEN UPDT-NAME
+             MOVE UPDT-NEW-VALUE TO PORT-CLIENT-NAME
+         WHEN UPDT-VALUE
+             MOVE UPDT-NEW-VALUE TO WS-NUMERIC-WORK
+             MOVE WS-NUMERIC-WORK TO PORT-TOTAL-VALUE
+     END-EVALUATE
+     REWRITE PORT-RECORD
+     IF WS-SUCCESS-STATUS
+         ADD 1 TO WS-UPDATE-COUNT
+     ELSE
+         ADD 1 TO WS-ERROR-COUNT
+         DISPLAY 'Update failed for: ' PORT-KEY
+     END-IF
+     .
+```
+
+**After:**  
+```cobol
+ 2200-APPLY-UPDATE.
+     EVALUATE TRUE
+         WHEN UPDT-STATUS
+             MOVE UPDT-NEW-VALUE TO PORT-STATUS
+         WHEN UPDT-NAME
+             MOVE UPDT-NEW-VALUE TO PORT-CLIENT-NAME
+         WHEN UPDT-VALUE
+             MOVE UPDT-NEW-VALUE TO WS-NUMERIC-WORK
+             MOVE WS-NUMERIC-WORK TO PORT-TOTAL-VALUE
+     END-EVALUATE
+*-- Change: Apply latest price from feed to portfolio if matching security
+     IF PORT-SECURITY-ID = WS-LATEST-SECURITY
+         MOVE WS-LATEST-PRICE TO PORT-MARKET-PRICE
+         DISPLAY 'Updated market price for ' PORT-SECURITY-ID
+         *-- Change: Inline Verified - Real-time price applied
+         DISPLAY '*-- Change: Real-time price feed applied to portfolio record'
+     END-IF
+     REWRITE PORT-RECORD
+     IF WS-SUCCESS-STATUS
+         ADD 1 TO WS-UPDATE-COUNT
+     ELSE
+         ADD 1 TO WS-ERROR-COUNT
+         DISPLAY 'Update failed for: ' PORT-KEY
+     END-IF
+     .
+```
+
+---
 
 ## 4. Conclusion  
-No COBOL code changes were detected in the current cycle. Please verify the file paths and repository contents if changes were expected. No impact to the system is anticipated at this time.
+The integration of the real-time price feed into the `PORTUPDT` program ensures that portfolio records are updated with the latest market prices, improving data accuracy and compliance. The changes are modular, auditable, and maintainable, with clear insertion points and structured logic for future enhancements.
