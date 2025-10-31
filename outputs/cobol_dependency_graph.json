@@ -2,7 +2,7 @@
   "metadata": {
     "repository": "https://github.com/dharmeshbangaraa/COBOL-Legacy-Benchmark-Suite",
     "branch": "main",
-    "analysis_timestamp": "2025-10-31T20:59:35.747424",
+    "analysis_timestamp": "2025-10-31T21:01:28.847975",
     "project_type": "COBOL",
     "statistics": {
       "total_files": 61,
@@ -45,11 +45,11 @@
           5
         ],
         [
-          "SQLCA",
+          "DBPROC",
           5
         ],
         [
-          "DBPROC",
+          "SQLCA",
           5
         ],
         [
@@ -132,9 +132,9 @@
         "src/copybook/common/RTNCODE.cpy"
       ],
       "copybook_dependencies": [
-        "ERRHAND",
         "RTNCODE",
-        "DB2STAT"
+        "DB2STAT",
+        "ERRHAND"
       ],
       "program_calls": [],
       "exec_statements": [],
@@ -255,14 +255,14 @@
       "dependencies": [
         "src/copybook/common/POSREC.cpy",
         "src/copybook/common/ERRHAND.cpy",
-        "src/copybook/common/RTNCODE.cpy",
-        "src/copybook/common/TRNREC.cpy"
+        "src/copybook/common/TRNREC.cpy",
+        "src/copybook/common/RTNCODE.cpy"
       ],
       "copybook_dependencies": [
-        "TRNREC",
-        "ERRHAND",
         "RTNCODE",
-        "POSREC"
+        "TRNREC",
+        "POSREC",
+        "ERRHAND"
       ],
       "program_calls": [],
       "exec_statements": [],
@@ -379,8 +379,8 @@
         "src/copybook/common/RTNCODE.cpy"
       ],
       "copybook_dependencies": [
-        "ERRHAND",
-        "RTNCODE"
+        "RTNCODE",
+        "ERRHAND"
       ],
       "program_calls": [],
       "exec_statements": [],
@@ -500,8 +500,8 @@
         "src/copybook/common/RTNCODE.cpy"
       ],
       "copybook_dependencies": [
-        "ERRHAND",
-        "RTNCODE"
+        "RTNCODE",
+        "ERRHAND"
       ],
       "program_calls": [],
       "exec_statements": [],
@@ -626,8 +626,8 @@
         "src/copybook/common/RTNCODE.cpy"
       ],
       "copybook_dependencies": [
-        "ERRHAND",
-        "RTNCODE"
+        "RTNCODE",
+        "ERRHAND"
       ],
       "program_calls": [],
       "exec_statements": [],
@@ -887,15 +887,15 @@
       "program_id": "PORTTRAN",
       "program_type": "MAIN_PROGRAM",
       "dependencies": [
-        "src/copybook/common/ERRHAND.cpy",
         "src/copybook/common/AUDITLOG.cpy",
+        "src/copybook/common/ERRHAND.cpy",
         "src/copybook/common/TRNREC.cpy"
       ],
       "copybook_dependencies": [
-        "PORTREC",
         "ERRHAND",
-        "AUDITLOG",
-        "TRNREC"
+        "TRNREC",
+        "PORTREC",
+        "AUDITLOG"
       ],
       "program_calls": [
         "the"
@@ -1252,12 +1252,12 @@
       "program_id": "PORTTEST",
       "program_type": "MAIN_PROGRAM",
       "dependencies": [
-        "src/copybook/common/ERRHAND.cpy",
-        "src/copybook/common/PORTFLIO.cpy"
+        "src/copybook/common/PORTFLIO.cpy",
+        "src/copybook/common/ERRHAND.cpy"
       ],
       "copybook_dependencies": [
-        "PORTFLIO",
-        "ERRHAND"
+        "ERRHAND",
+        "PORTFLIO"
       ],
       "program_calls": [],
       "exec_statements": [],
@@ -1748,8 +1748,8 @@
       "program_id": "INQONLN",
       "program_type": "CICS_PROGRAM",
       "dependencies": [
-        "src/copybook/online/INQCOM.cpy",
-        "src/copybook/online/ERRHND.cpy"
+        "src/copybook/online/ERRHND.cpy",
+        "src/copybook/online/INQCOM.cpy"
       ],
       "copybook_dependencies": [
         "ERRHND",
@@ -2055,16 +2055,16 @@
       "program_id": "RCVPRC00",
       "program_type": "CALLED_PROGRAM",
       "dependencies": [
-        "src/copybook/batch/BCHCON.cpy",
         "src/copybook/batch/BCHCTL.cpy",
+        "src/copybook/batch/PRCSEQ.cpy",
         "src/copybook/common/ERRHAND.cpy",
-        "src/copybook/batch/PRCSEQ.cpy"
+        "src/copybook/batch/BCHCON.cpy"
       ],
       "copybook_dependencies": [
-        "BCHCTL",
-        "BCHCON",
+        "ERRHAND",
         "PRCSEQ",
-        "ERRHAND"
+        "BCHCON",
+        "BCHCTL"
       ],
       "program_calls": [],
       "exec_statements": [],
@@ -2169,14 +2169,14 @@
       "dependencies": [
         "src/copybook/common/POSREC.cpy",
         "src/copybook/common/ERRHAND.cpy",
-        "src/copybook/common/RTNCODE.cpy",
-        "src/copybook/common/TRNREC.cpy"
+        "src/copybook/common/TRNREC.cpy",
+        "src/copybook/common/RTNCODE.cpy"
       ],
       "copybook_dependencies": [
-        "TRNREC",
-        "ERRHAND",
         "RTNCODE",
-        "POSREC"
+        "TRNREC",
+        "POSREC",
+        "ERRHAND"
       ],
       "program_calls": [],
       "exec_statements": [],
@@ -2275,12 +2275,12 @@
       "program_id": "CKPRST",
       "program_type": "CALLED_PROGRAM",
       "dependencies": [
-        "src/copybook/common/RETHND.cpy",
-        "src/copybook/batch/CKPRST.cpy"
+        "src/copybook/batch/CKPRST.cpy",
+        "src/copybook/common/RETHND.cpy"
       ],
       "copybook_dependencies": [
-        "CKPRST",
-        "RETHND"
+        "RETHND",
+        "CKPRST"
       ],
       "program_calls": [],
       "exec_statements": [],
@@ -2399,14 +2399,14 @@
       "program_id": "BCHCTL00",
       "program_type": "CALLED_PROGRAM",
       "dependencies": [
-        "src/copybook/batch/BCHCON.cpy",
         "src/copybook/batch/BCHCTL.cpy",
-        "src/copybook/common/ERRHAND.cpy"
+        "src/copybook/common/ERRHAND.cpy",
+        "src/copybook/batch/BCHCON.cpy"
       ],
       "copybook_dependencies": [
-        "BCHCTL",
+        "ERRHAND",
         "BCHCON",
-        "ERRHAND"
+        "BCHCTL"
       ],
       "program_calls": [],
       "exec_statements": [],
@@ -2478,16 +2478,16 @@
       "program_id": "PRCSEQ00",
       "program_type": "CALLED_PROGRAM",
       "dependencies": [
-        "src/copybook/batch/BCHCON.cpy",
         "src/copybook/batch/BCHCTL.cpy",
+        "src/copybook/batch/PRCSEQ.cpy",
         "src/copybook/common/ERRHAND.cpy",
-        "src/copybook/batch/PRCSEQ.cpy"
+        "src/copybook/batch/BCHCON.cpy"
       ],
       "copybook_dependencies": [
-        "BCHCTL",
-        "BCHCON",
+        "ERRHAND",
         "PRCSEQ",
-        "ERRHAND"
+        "BCHCON",
+        "BCHCTL"
       ],
       "program_calls": [],
       "exec_statements": [],
@@ -2592,22 +2592,22 @@
       "program_id": "HISTLD00",
       "program_type": "DB2_PROGRAM",
       "dependencies": [
-        "src/copybook/batch/BCHCTL.cpy",
-        "src/copybook/common/HISTREC.cpy",
-        "src/copybook/batch/BCHCON.cpy",
         "src/copybook/db2/DBPROC.cpy",
+        "src/copybook/batch/BCHCTL.cpy",
         "src/copybook/db2/SQLCA.cpy",
         "src/copybook/db2/DBTBLS.cpy",
-        "src/copybook/common/ERRHAND.cpy"
+        "src/copybook/common/HISTREC.cpy",
+        "src/copybook/common/ERRHAND.cpy",
+        "src/copybook/batch/BCHCON.cpy"
       ],
       "copybook_dependencies": [
-        "BCHCON",
-        "SQLCA",
-        "BCHCTL",
         "DBPROC",
-        "HISTREC",
+        "ERRHAND",
         "DBTBLS",
-        "ERRHAND"
+        "SQLCA",
+        "HISTREC",
+        "BCHCON",
+        "BCHCTL"
       ],
       "program_calls": [],
       "exec_statements": [
@@ -2857,9 +2857,9 @@
       "program_id": "RPTAUD00",
       "program_type": "MAIN_PROGRAM",
       "dependencies": [
+        "src/copybook/common/AUDITLOG.cpy",
         "src/copybook/common/ERRHAND.cpy",
-        "src/copybook/common/RTNCODE.cpy",
-        "src/copybook/common/AUDITLOG.cpy"
+        "src/copybook/common/RTNCODE.cpy"
       ],
       "copybook_dependencies": [
         "AUDITLOG",
@@ -2961,14 +2961,14 @@
       "program_type": "MAIN_PROGRAM",
       "dependencies": [
         "src/copybook/batch/BCHCTL.cpy",
-        "src/copybook/common/RTNCODE.cpy",
-        "src/copybook/common/ERRHAND.cpy"
+        "src/copybook/common/ERRHAND.cpy",
+        "src/copybook/common/RTNCODE.cpy"
       ],
       "copybook_dependencies": [
-        "BCHCTL",
-        "ERRHAND",
         "RTNCODE",
-        "DB2STAT"
+        "DB2STAT",
+        "ERRHAND",
+        "BCHCTL"
       ],
       "program_calls": [],
       "exec_statements": [],
@@ -3135,8 +3135,8 @@
       "program_id": "DB2ERR",
       "program_type": "DB2_PROGRAM",
       "dependencies": [
-        "src/copybook/common/ERRHAND.cpy",
         "src/copybook/db2/DBPROC.cpy",
+        "src/copybook/common/ERRHAND.cpy",
         "src/copybook/db2/SQLCA.cpy"
       ],
       "copybook_dependencies": [
@@ -3202,8 +3202,8 @@
       "program_id": "DB2CONN",
       "program_type": "DB2_PROGRAM",
       "dependencies": [
-        "src/copybook/common/ERRHAND.cpy",
         "src/copybook/db2/DBPROC.cpy",
+        "src/copybook/common/ERRHAND.cpy",
         "src/copybook/db2/SQLCA.cpy"
       ],
       "copybook_dependencies": [
@@ -3269,8 +3269,8 @@
       "program_id": "DB2CMT",
       "program_type": "DB2_PROGRAM",
       "dependencies": [
-        "src/copybook/common/ERRHAND.cpy",
         "src/copybook/db2/DBPROC.cpy",
+        "src/copybook/common/ERRHAND.cpy",
         "src/copybook/db2/SQLCA.cpy"
       ],
       "copybook_dependencies": [
@@ -3346,8 +3346,8 @@
       "program_id": "DB2STAT",
       "program_type": "DB2_PROGRAM",
       "dependencies": [
-        "src/copybook/common/ERRHAND.cpy",
         "src/copybook/db2/DBPROC.cpy",
+        "src/copybook/common/ERRHAND.cpy",
         "src/copybook/db2/SQLCA.cpy"
       ],
       "copybook_dependencies": [
