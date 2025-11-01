@@ -1,352 +1,6 @@
-# COBOL Legacy System Impact Analysis Report  
-**User Story:** Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates  
-**Repository:** https://github.com/dharmeshbangaraa/COBOL-Legacy-Benchmark-Suite  
-**User Story Source:** https://github.com/dharmeshbangaraa/cobol-inputs-outputs/blob/master/user-story/user_story_COBOL_Legacy_benchmark_suite_major.txt
+[File 1] RCVPRC00.cbl src/programs/batch/RCVPRC00.cbl
 
----
-
-## Summary
-
-**Overview:**  
-This user story introduces real-time market price feed integration, requiring the system to ingest external price updates, recalculate portfolio valuations, update risk metrics, and maintain audit logs and historical price records. The change affects data ingestion, valuation logic, error handling, and reporting.
-
-**Total High-Impact Components Identified:** 6  
-**Complexity Assessment:**  
-- High complexity: Touches core batch and portfolio update logic, error handling, audit logging, and reporting.
-- Multiple direct and indirect dependencies across batch, portfolio, and audit/reporting programs.
-- Requires robust error handling and historical data management.
-
----
-
-## Ranked Impact List
-
-| Program File Path                        | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                        |
-|------------------------------------------|--------|---------|---------------------------------------------|----------------------------------------|
-| src/programs/portfolio/PORTUPDT.cbl      | High   | Direct  | 0000-MAIN, 2000-PROCESS, 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE | [PORTUPDT]                             |
-| src/programs/batch/RCVPRC00.cbl          | High   | Direct  | 0000-MAIN, 2000-PROCESS-RECOVERY, 1200-VALIDATE-REQUEST | [RCVPRC00]                             |
-| src/programs/batch/RPTAUD00.cbl          | High   | Direct  | 0000-MAIN, 2000-PROCESS-REPORT, 1100-OPEN-FILES | [RPTAUD00]                             |
-| src/programs/portfolio/PORTTRAN.cbl      | High   | Indirect| 2000-PROCESS-TRANSACTIONS, 2100-VALIDATE-TRANSACTION, 2110-CHECK-PORTFOLIO | [PORTTRAN]                             |
-| src/programs/batch/BCHCTL00.cbl          | High   | Indirect| 1000-PROCESS-INITIALIZE, 2000-CHECK-PREREQUISITES, 3000-UPDATE-STATUS | [BCHCTL00]                             |
-| src/copybook/common/AUDITLOG.cpy         | High   | Direct  | AUDIT-LOG-ENTRY, AUDIT-LOG-HEADER           | [PORTUPDT, RPTAUD00, PORTTRAN]         |
-
----
-
-## JSON Metadata
-
-```json
-{
-  "impactAnalysis": {
-    "userStory": "Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates",
-    "impactedComponents": [
-      {
-        "programFilePath": "src/programs/portfolio/PORTUPDT.cbl",
-        "impactScore": 0.98,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["0000-MAIN", "2000-PROCESS", "2100-PROCESS-UPDATE", "2200-APPLY-UPDATE"],
-        "dependencyPath": ["PORTUPDT"],
-        "rationale": "Primary program for updating portfolio positions; must process real-time price updates and trigger valuation recalculations."
-      },
-      {
-        "programFilePath": "src/programs/batch/RCVPRC00.cbl",
-        "impactScore": 0.96,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["0000-MAIN", "2000-PROCESS-RECOVERY", "1200-VALIDATE-REQUEST"],
-        "dependencyPath": ["RCVPRC00"],
-        "rationale": "Handles batch receipt and processing of price feeds; will require modification for real-time polling and error handling."
-      },
-      {
-        "programFilePath": "src/programs/batch/RPTAUD00.cbl",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["0000-MAIN", "2000-PROCESS-REPORT", "1100-OPEN-FILES"],
-        "dependencyPath": ["RPTAUD00"],
-        "rationale": "Generates audit reports; must log price feed errors and maintain historical price records for compliance."
-      },
-      {
-        "programFilePath": "src/programs/portfolio/PORTTRAN.cbl",
-        "impactScore": 0.93,
-        "impactLevel": "High",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["2000-PROCESS-TRANSACTIONS", "2100-VALIDATE-TRANSACTION", "2110-CHECK-PORTFOLIO"],
-        "dependencyPath": ["PORTTRAN"],
-        "rationale": "Processes portfolio transactions; indirectly impacted as valuation logic and position updates depend on real-time prices."
-      },
-      {
-        "programFilePath": "src/programs/batch/BCHCTL00.cbl",
-        "impactScore": 0.91,
-        "impactLevel": "High",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["1000-PROCESS-INITIALIZE", "2000-CHECK-PREREQUISITES", "3000-UPDATE-STATUS"],
-        "dependencyPath": ["BCHCTL00"],
-        "rationale": "Batch control logic; must ensure batch processes are synchronized with real-time price updates and error recovery."
-      },
-      {
-        "programFilePath": "src/copybook/common/AUDITLOG.cpy",
-        "impactScore": 0.90,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["AUDIT-LOG-ENTRY", "AUDIT-LOG-HEADER"],
-        "dependencyPath": ["PORTUPDT", "RPTAUD00", "PORTTRAN"],
-        "rationale": "Copybook for audit logging; will be extended to record price feed errors, timestamps, and historical price data."
-      }
-    ]
-  }
-}
-```
-
----
-
-## Visualization
-
-```mermaid
-graph TD
-    PORTUPDT["src/programs/portfolio/PORTUPDT.cbl (High)"]
-    RCVPRC00["src/programs/batch/RCVPRC00.cbl (High)"]
-    RPTAUD00["src/programs/batch/RPTAUD00.cbl (High)"]
-    PORTTRAN["src/programs/portfolio/PORTTRAN.cbl (High)"]
-    BCHCTL00["src/programs/batch/BCHCTL00.cbl (High)"]
-    AUDITLOG["src/copybook/common/AUDITLOG.cpy (High)"]
-
-    RCVPRC00 --> PORTUPDT
-    PORTUPDT --> PORTTRAN
-    PORTUPDT --> AUDITLOG
-    RPTAUD00 --> AUDITLOG
-    PORTTRAN --> AUDITLOG
-    BCHCTL00 --> RCVPRC00
-```
-
----
-
-## Reasoning Behind Each Component
-
-- **PORTUPDT.cbl**: Central to portfolio updates; must process incoming price feeds and recalculate positions.
-- **RCVPRC00.cbl**: Responsible for receiving price feeds; will be modified for real-time integration and error handling.
-- **RPTAUD00.cbl**: Generates audit logs and reports; must capture price feed errors and maintain historical records.
-- **PORTTRAN.cbl**: Handles transactions; valuation logic depends on up-to-date prices.
-- **BCHCTL00.cbl**: Batch control; ensures batch jobs are coordinated with real-time updates and recovery.
-- **AUDITLOG.cpy**: Audit logging copybook; extended for new error and historical price logging requirements.
-
----
-
-**Note:**  
-- Only existing files in the repository are included.
-- All listed components have a High impact score and are directly or indirectly involved in the real-time price feed integration.
-- No extra files or false positives are present.
-
-----------
-
-[File 1] PORTUPDT.cbl src/programs/portfolio/PORTUPDT.cbl
-
-       *================================================================*
-      * Program Name: PORTUPDT
-      * Description: Portfolio Update Program
-      *             Updates existing portfolio records
-      * Author: [Author name]
-      * Date Written: 2024-03-20
-      * Maintenance Log:
-      * Date       Author        Description
-      * ---------- ------------- -------------------------------------
-      * 2024-03-20 [Author]     Initial Creation
       *================================================================*
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. PORTUPDT.
-       
-       ENVIRONMENT DIVISION.
-       CONFIGURATION SECTION.
-       SOURCE-COMPUTER. IBM-ZOS.
-       OBJECT-COMPUTER. IBM-ZOS.
-       
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT PORTFOLIO-FILE
-               ASSIGN TO PORTFILE
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS RANDOM
-               RECORD KEY IS PORT-KEY
-               FILE STATUS IS WS-FILE-STATUS.
-           
-           SELECT UPDATE-FILE
-               ASSIGN TO UPDTFILE
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-UPDT-STATUS.
-      *-- Change: Added real-time price feed file for integration
-           SELECT PRICE-FEED-FILE
-               ASSIGN TO PRCFEED
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-PRCFEED-STATUS.
-       
-       DATA DIVISION.
-       FILE SECTION.
-       FD  PORTFOLIO-FILE.
-           COPY PORTFLIO.
-           
-       FD  UPDATE-FILE.
-       01  UPDATE-RECORD.
-           05  UPDT-KEY.
-               10  UPDT-ID        PIC X(8).
-               10  UPDT-ACCT-NO   PIC X(10).
-           05  UPDT-ACTION        PIC X(1).
-               88  UPDT-STATUS    VALUE 'S'.
-               88  UPDT-VALUE     VALUE 'V'.
-               88  UPDT-NAME      VALUE 'N'.
-           05  UPDT-NEW-VALUE     PIC X(50).
-      *-- Change: Add price feed record structure
-       FD  PRICE-FEED-FILE.
-       01  PRICE-FEED-RECORD.
-           05  PRCFEED-SECURITY-ID   PIC X(12).
-           05  PRCFEED-PRICE         PIC 9(13)V99.
-           05  PRCFEED-TIMESTAMP     PIC X(26).
-       
-       WORKING-STORAGE SECTION.
-      *----------------------------------------------------------------*
-      * Constants and switches
-      *----------------------------------------------------------------*
-       01  WS-CONSTANTS.
-           05  WS-PROGRAM-NAME     PIC X(08) VALUE 'PORTUPDT '.
-           05  WS-SUCCESS          PIC S9(4) VALUE +0.
-           05  WS-ERROR            PIC S9(4) VALUE +8.
-           
-       01  WS-SWITCHES.
-           05  WS-FILE-STATUS      PIC X(02).
-               88  WS-SUCCESS-STATUS     VALUE '00'.
-               88  WS-EOF-STATUS        VALUE '10'.
-               88  WS-REC-NOT-FND       VALUE '23'.
-           
-           05  WS-UPDT-STATUS      PIC X(02).
-               88  WS-UPDT-SUCCESS      VALUE '00'.
-               88  WS-UPDT-EOF          VALUE '10'.
-      *-- Change: Add price feed file status
-           05  WS-PRCFEED-STATUS   PIC X(02).
-               88  WS-PRCFEED-SUCCESS   VALUE '00'.
-               88  WS-PRCFEED-EOF       VALUE '10'.
-           
-           05  WS-END-OF-FILE-SW   PIC X     VALUE 'N'.
-               88  END-OF-FILE              VALUE 'Y'.
-               88  NOT-END-OF-FILE          VALUE 'N'.
-           
-      *----------------------------------------------------------------*
-      * Work areas
-      *----------------------------------------------------------------*
-       01  WS-WORK-AREAS.
-           05  WS-UPDATE-COUNT     PIC 9(7) VALUE ZERO.
-           05  WS-ERROR-COUNT      PIC 9(7) VALUE ZERO.
-           05  WS-RETURN-CODE      PIC S9(4) VALUE +0.
-           05  WS-NUMERIC-WORK     PIC S9(13)V99.
-      *-- Change: Add area for latest price
-           05  WS-LATEST-PRICE     PIC 9(13)V99 VALUE ZERO.
-           05  WS-LATEST-SECURITY  PIC X(12) VALUE SPACES.
-           05  WS-LATEST-TS        PIC X(26) VALUE SPACES.
-       
-       PROCEDURE DIVISION.
-       0000-MAIN.
-           PERFORM 1000-INITIALIZE
-      *-- Change: Integrate real-time price feed before processing updates
-           PERFORM 1500-INGEST-PRICE-FEED
-           PERFORM 2000-PROCESS
-              UNTIL END-OF-FILE
-           PERFORM 3000-TERMINATE
-           GOBACK.
-           
-       1000-INITIALIZE.
-           INITIALIZE WS-WORK-AREAS
-           OPEN I-O   PORTFOLIO-FILE
-           OPEN INPUT UPDATE-FILE
-      *-- Change: Open price feed file
-           OPEN INPUT PRICE-FEED-FILE
-           IF NOT WS-SUCCESS-STATUS OR 
-              NOT WS-UPDT-SUCCESS OR
-              NOT WS-PRCFEED-SUCCESS
-              DISPLAY 'Error opening files: ' 
-                      'PORT=' WS-FILE-STATUS
-                      'UPDT=' WS-UPDT-STATUS
-                      'PRCFEED=' WS-PRCFEED-STATUS
-              MOVE WS-ERROR TO WS-RETURN-CODE
-              PERFORM 3000-TERMINATE
-           END-IF
-           .
-      *-- Change: Ingest price feed and update working storage
-       1500-INGEST-PRICE-FEED.
-           PERFORM UNTIL WS-PRCFEED-STATUS = '10'
-               READ PRICE-FEED-FILE
-                   AT END
-                       MOVE '10' TO WS-PRCFEED-STATUS
-                   NOT AT END
-                       MOVE PRCFEED-SECURITY-ID TO WS-LATEST-SECURITY
-                       MOVE PRCFEED-PRICE TO WS-LATEST-PRICE
-                       MOVE PRCFEED-TIMESTAMP TO WS-LATEST-TS
-                       *-- Change: Log price feed ingestion for audit
-                       DISPLAY 'Price feed: ' WS-LATEST-SECURITY ' ' WS-LATEST-PRICE
-               END-READ
-           END-PERFORM
-           .
-           
-       2000-PROCESS.
-           READ UPDATE-FILE
-               AT END
-                   SET END-OF-FILE TO TRUE
-               NOT AT END
-                   PERFORM 2100-PROCESS-UPDATE
-           END-READ
-           .
-           
-       2100-PROCESS-UPDATE.
-           MOVE UPDT-KEY TO PORT-KEY
-           READ PORTFOLIO-FILE
-           IF WS-SUCCESS-STATUS
-               PERFORM 2200-APPLY-UPDATE
-           ELSE
-               ADD 1 TO WS-ERROR-COUNT
-               DISPLAY 'Record not found: ' PORT-KEY
-           END-IF
-           .
-           
-       2200-APPLY-UPDATE.
-           EVALUATE TRUE
-               WHEN UPDT-STATUS
-                   MOVE UPDT-NEW-VALUE TO PORT-STATUS
-               WHEN UPDT-NAME
-                   MOVE UPDT-NEW-VALUE TO PORT-CLIENT-NAME
-               WHEN UPDT-VALUE
-                   MOVE UPDT-NEW-VALUE TO WS-NUMERIC-WORK
-                   MOVE WS-NUMERIC-WORK TO PORT-TOTAL-VALUE
-           END-EVALUATE
-      *-- Change: Apply latest price from feed to portfolio if matching security
-           IF PORT-SECURITY-ID = WS-LATEST-SECURITY
-               MOVE WS-LATEST-PRICE TO PORT-MARKET-PRICE
-               DISPLAY 'Updated market price for ' PORT-SECURITY-ID
-               *-- Change: Inline Verified - Real-time price applied
-               DISPLAY '*-- Change: Real-time price feed applied to portfolio record'
-           END-IF
-           REWRITE PORT-RECORD
-           IF WS-SUCCESS-STATUS
-               ADD 1 TO WS-UPDATE-COUNT
-           ELSE
-               ADD 1 TO WS-ERROR-COUNT
-               DISPLAY 'Update failed for: ' PORT-KEY
-           END-IF
-           .
-           
-       3000-TERMINATE.
-           CLOSE PORTFOLIO-FILE
-                 UPDATE-FILE
-                 PRICE-FEED-FILE
-           DISPLAY 'Updates processed: ' WS-UPDATE-COUNT
-           DISPLAY 'Errors occurred:  ' WS-ERROR-COUNT
-           MOVE WS-RETURN-CODE TO RETURN-CODE
-           .
-
-[Summary Change Report]
-- Added integration for real-time price feed file (PRICE-FEED-FILE) and corresponding working-storage.
-- Implemented logic to ingest latest prices and update portfolio records with real-time prices if security matches.
-- Added inline Verifieds for traceability of price feed application.
-- Preserved COBOL formatting and sequence.
-
-[File 2] RCVPRC00.cbl src/programs/batch/RCVPRC00.cbl
-
-       *================================================================*
       * Program Name: RCVPRC00
       * Description: Process Recovery Handler
       * Version: 1.0
@@ -375,11 +29,6 @@ graph TD
                ACCESS MODE IS DYNAMIC
                RECORD KEY IS PSR-KEY
                FILE STATUS IS WS-PSR-STATUS.
-      *-- Change: Add real-time price feed polling file
-           SELECT PRICE-FEED-FILE
-               ASSIGN TO PRCFEED
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-PRCFEED-STATUS.
        
        DATA DIVISION.
        FILE SECTION.
@@ -388,12 +37,6 @@ graph TD
            
        FD  PROCESS-SEQ-FILE.
            COPY PRCSEQ.
-      *-- Change: Add price feed file section
-       FD  PRICE-FEED-FILE.
-       01  PRICE-FEED-RECORD.
-           05  PRCFEED-SECURITY-ID   PIC X(12).
-           05  PRCFEED-PRICE         PIC 9(13)V99.
-           05  PRCFEED-TIMESTAMP     PIC X(26).
        
        WORKING-STORAGE SECTION.
            COPY BCHCON.
@@ -402,9 +45,7 @@ graph TD
        01  WS-FILE-STATUS.
            05  WS-BCT-STATUS         PIC X(2).
            05  WS-PSR-STATUS         PIC X(2).
-      *-- Change: Add price feed file status
-           05  WS-PRCFEED-STATUS     PIC X(2).
-       
+           
        01  WS-WORK-AREAS.
            05  WS-CURRENT-TIME       PIC X(26).
            05  WS-RECOVERY-MODE      PIC X(1).
@@ -415,9 +56,7 @@ graph TD
                88  WS-ACTION-RESTART   VALUE 'R'.
                88  WS-ACTION-BYPASS    VALUE 'B'.
                88  WS-ACTION-TERMINATE VALUE 'T'.
-      *-- Change: Add error tracking for price feed
-           05  WS-PRICE-FEED-ERROR   PIC X(80).
-       
+           
        LINKAGE SECTION.
        01  LS-RECOVERY-REQUEST.
            05  LS-FUNCTION          PIC X(4).
@@ -443,6 +82,7 @@ graph TD
                    MOVE 'Invalid function code' TO ERR-TEXT
                    PERFORM 9000-ERROR-ROUTINE
            END-EVALUATE
+           
            MOVE LS-RETURN-CODE TO RETURN-CODE
            GOBACK
            .
@@ -453,55 +93,6 @@ graph TD
            PERFORM 1300-SET-RECOVERY-MODE
            .
            
-       1100-OPEN-FILES.
-           OPEN I-O BATCH-CONTROL-FILE
-           IF WS-BCT-STATUS NOT = '00'
-               MOVE 'Error opening control file' TO ERR-TEXT
-               PERFORM 9000-ERROR-ROUTINE
-           END-IF
-           OPEN INPUT PROCESS-SEQ-FILE
-           IF WS-PSR-STATUS NOT = '00'
-               MOVE 'Error opening sequence file' TO ERR-TEXT
-               PERFORM 9000-ERROR-ROUTINE
-           END-IF
-      *-- Change: Open price feed file for polling
-           OPEN INPUT PRICE-FEED-FILE
-           IF WS-PRCFEED-STATUS NOT = '00'
-               MOVE 'Error opening price feed file' TO WS-PRICE-FEED-ERROR
-               DISPLAY '*-- Change: Price feed file open error: ' WS-PRICE-FEED-ERROR
-           END-IF
-           .
-           
-       1200-VALIDATE-REQUEST.
-           IF LS-PROCESS-DATE = SPACES
-               MOVE 'Process date required' TO ERR-TEXT
-               PERFORM 9000-ERROR-ROUTINE
-           END-IF
-           EVALUATE LS-RECOVERY-TYPE
-               WHEN 'P'
-               WHEN 'S'
-               WHEN 'A'
-                   CONTINUE
-               WHEN OTHER
-                   MOVE 'Invalid recovery type' TO ERR-TEXT
-                   PERFORM 9000-ERROR-ROUTINE
-           END-EVALUATE
-      *-- Change: Validate price feed file status
-           IF WS-PRCFEED-STATUS NOT = '00'
-               DISPLAY '*-- Change: Price feed file not available for polling'
-           END-IF
-           .
-      *-- Change: Add polling logic for real-time price feed
-       1250-POLL-PRICE-FEED.
-           IF WS-PRCFEED-STATUS = '00'
-               READ PRICE-FEED-FILE
-                   AT END
-                       MOVE '10' TO WS-PRCFEED-STATUS
-                   NOT AT END
-                       DISPLAY '*-- Change: Polled price feed: ' PRCFEED-SECURITY-ID ' ' PRCFEED-PRICE
-               END-READ
-           END-IF
-           .
        2000-PROCESS-RECOVERY.
            EVALUATE WS-RECOVERY-MODE
                WHEN 'P'
@@ -511,35 +102,448 @@ graph TD
                WHEN 'A'
                    PERFORM 2300-RECOVER-ALL
            END-EVALUATE
-      *-- Change: Poll price feed during recovery
-           PERFORM 1250-POLL-PRICE-FEED
            .
+           
        3000-TERMINATE-RECOVERY.
            PERFORM 3100-UPDATE-FINAL-STATUS
            PERFORM 3200-CLOSE-FILES
            .
+           
+       9000-ERROR-ROUTINE.
+           MOVE 'RCVPRC00' TO ERR-PROGRAM
+           MOVE BCT-RC-ERROR TO LS-RETURN-CODE
+           CALL 'ERRPROC' USING ERR-MESSAGE
+           .
+      *================================================================*
+      * Recovery Implementation Procedures
+      *================================================================*
+       1100-OPEN-FILES.
+           OPEN I-O BATCH-CONTROL-FILE
+           IF WS-BCT-STATUS NOT = '00'
+               MOVE 'Error opening control file' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           
+           OPEN INPUT PROCESS-SEQ-FILE
+           IF WS-PSR-STATUS NOT = '00'
+               MOVE 'Error opening sequence file' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+           
+       1200-VALIDATE-REQUEST.
+           IF LS-PROCESS-DATE = SPACES
+               MOVE 'Process date required' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           
+           EVALUATE LS-RECOVERY-TYPE
+               WHEN 'P'
+               WHEN 'S'
+               WHEN 'A'
+                   CONTINUE
+               WHEN OTHER
+                   MOVE 'Invalid recovery type' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-EVALUATE
+           .
+           
+       1300-SET-RECOVERY-MODE.
+           MOVE LS-RECOVERY-TYPE TO WS-RECOVERY-MODE
+           
+           IF WS-RECOVER-PROCESS AND LS-PROCESS-ID = SPACES
+               MOVE 'Process ID required for process recovery'
+                 TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+           
+       2100-RECOVER-PROCESS.
+           MOVE LS-PROCESS-ID   TO BCT-JOB-NAME
+           MOVE LS-PROCESS-DATE TO BCT-PROCESS-DATE
+           
+           READ BATCH-CONTROL-FILE
+               INVALID KEY
+                   MOVE 'Process record not found' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-READ
+           
+           PERFORM 2110-DETERMINE-ACTION
+           PERFORM 2120-EXECUTE-RECOVERY
+           .
+           
+       2110-DETERMINE-ACTION.
+           MOVE LS-PROCESS-ID TO PSR-PROCESS-ID
+           
+           READ PROCESS-SEQ-FILE
+               INVALID KEY
+                   MOVE 'Process definition not found' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-READ
+           
+           IF PSR-RESTARTABLE
+               SET WS-ACTION-RESTART TO TRUE
+           ELSE
+               IF BCT-RESTART-COUNT > BCT-MAX-RESTARTS
+                   SET WS-ACTION-TERMINATE TO TRUE
+               ELSE
+                   SET WS-ACTION-BYPASS TO TRUE
+               END-IF
+           END-IF
+           .
+           
+       2120-EXECUTE-RECOVERY.
+           EVALUATE TRUE
+               WHEN WS-ACTION-RESTART
+                   PERFORM 2121-RESTART-PROCESS
+               WHEN WS-ACTION-BYPASS
+                   PERFORM 2122-BYPASS-PROCESS
+               WHEN WS-ACTION-TERMINATE
+                   PERFORM 2123-TERMINATE-PROCESS
+           END-EVALUATE
+           .
+           
+       2121-RESTART-PROCESS.
+           MOVE BCT-STAT-READY TO BCT-STATUS
+           ADD 1 TO BCT-RESTART-COUNT
+           ACCEPT WS-CURRENT-TIME FROM TIME STAMP
+           MOVE WS-CURRENT-TIME TO BCT-ATTEMPT-TS
+           
+           REWRITE BATCH-CONTROL-RECORD
+               INVALID KEY
+                   MOVE 'Error updating control record' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+           
+       2122-BYPASS-PROCESS.
+           MOVE BCT-STAT-DONE  TO BCT-STATUS
+           MOVE BCT-RC-WARNING TO BCT-RETURN-CODE
+           MOVE 'Process bypassed by recovery' TO BCT-ERROR-DESC
+           
+           REWRITE BATCH-CONTROL-RECORD
+               INVALID KEY
+                   MOVE 'Error updating control record' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+           
+       2123-TERMINATE-PROCESS.
+           MOVE BCT-STAT-ERROR TO BCT-STATUS
+           MOVE BCT-RC-ERROR  TO BCT-RETURN-CODE
+           MOVE 'Process terminated by recovery' TO BCT-ERROR-DESC
+           
+           REWRITE BATCH-CONTROL-RECORD
+               INVALID KEY
+                   MOVE 'Error updating control record' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+           
+       2200-RECOVER-SEQUENCE.
+           MOVE LS-PROCESS-DATE TO BCT-PROCESS-DATE
+           MOVE LOW-VALUES TO BCT-JOB-NAME
+           
+           START BATCH-CONTROL-FILE KEY > BCT-KEY
+               INVALID KEY
+                   MOVE 'No processes found for date' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-START
+           
+           PERFORM UNTIL WS-BCT-STATUS = '10'
+               READ BATCH-CONTROL-FILE NEXT RECORD
+                   AT END
+                       MOVE '10' TO WS-BCT-STATUS
+                   NOT AT END
+                       IF BCT-PROCESS-DATE = LS-PROCESS-DATE
+                           PERFORM 2100-RECOVER-PROCESS
+                       END-IF
+               END-READ
+           END-PERFORM
+           .
+           
+       2300-RECOVER-ALL.
+           MOVE LOW-VALUES TO BCT-KEY
+           
+           START BATCH-CONTROL-FILE KEY > BCT-KEY
+               INVALID KEY
+                   MOVE 'No processes found' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-START
+           
+           PERFORM UNTIL WS-BCT-STATUS = '10'
+               READ BATCH-CONTROL-FILE NEXT RECORD
+                   AT END
+                       MOVE '10' TO WS-BCT-STATUS
+                   NOT AT END
+                       MOVE BCT-JOB-NAME TO LS-PROCESS-ID
+                       PERFORM 2100-RECOVER-PROCESS
+               END-READ
+           END-PERFORM
+           .
+           
+       3100-UPDATE-FINAL-STATUS.
+           IF LS-RETURN-CODE = ZERO
+               MOVE 'Recovery completed successfully' TO ERR-TEXT
+           ELSE
+               MOVE 'Recovery completed with errors' TO ERR-TEXT
+           END-IF
+           
+           CALL 'ERRPROC' USING ERR-MESSAGE
+           .
+           
        3200-CLOSE-FILES.
            CLOSE BATCH-CONTROL-FILE
                  PROCESS-SEQ-FILE
-                 PRICE-FEED-FILE
+                 
            IF WS-BCT-STATUS NOT = '00' OR
               WS-PSR-STATUS NOT = '00'
                MOVE 'Error closing files' TO ERR-TEXT
                PERFORM 9000-ERROR-ROUTINE
            END-IF
            .
-       9000-ERROR-ROUTINE.
-           MOVE 'RCVPRC00' TO ERR-PROGRAM
-           MOVE BCT-RC-ERROR TO LS-RETURN-CODE
-           CALL 'ERRPROC' USING ERR-MESSAGE
-           .
-      * ... (rest unchanged) ...
 
 [Summary Change Report]
-- Added price feed file definition and status tracking.
-- Integrated polling logic for real-time price feed in recovery process.
-- Added inline Verifieds for error handling and traceability.
-- Preserved COBOL formatting and business logic.
+No changes applied yet; full file loaded for impact modification. Ready for paragraph-level updates as per Impact Analysis Report.
+
+[File 2] HISTLD00.cbl src/programs/batch/HISTLD00.cbl
+
+      *================================================================*
+      * Program Name: HISTLD00
+      * Description: Position History DB2 Load Program
+      * Version: 1.0
+      * Date: 2024
+      *================================================================*
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. HISTLD00.
+       
+       ENVIRONMENT DIVISION.
+       CONFIGURATION SECTION.
+       SOURCE-COMPUTER. IBM-ZOS.
+       OBJECT-COMPUTER. IBM-ZOS.
+       
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT TRANSACTION-HISTORY
+               ASSIGN TO TRANHIST
+               ORGANIZATION IS INDEXED
+               ACCESS MODE IS SEQUENTIAL
+               RECORD KEY IS TH-KEY
+               FILE STATUS IS WS-TH-STATUS.
+               
+           SELECT BATCH-CONTROL-FILE
+               ASSIGN TO BCHCTL
+               ORGANIZATION IS INDEXED
+               ACCESS MODE IS DYNAMIC
+               RECORD KEY IS BCT-KEY
+               FILE STATUS IS WS-BCT-STATUS.
+       
+       DATA DIVISION.
+       FILE SECTION.
+       FD  TRANSACTION-HISTORY.
+           COPY HISTREC.
+       
+       FD  BATCH-CONTROL-FILE.
+           COPY BCHCTL.
+       
+       WORKING-STORAGE SECTION.
+           EXEC SQL BEGIN DECLARE SECTION END-EXEC.
+           COPY DBTBLS.
+           EXEC SQL END DECLARE SECTION END-EXEC.
+           
+           COPY SQLCA.
+           COPY DBPROC.
+           COPY ERRHAND.
+           COPY BCHCON.
+           
+       01  WS-FILE-STATUS.
+           05  WS-TH-STATUS          PIC X(2).
+           05  WS-BCT-STATUS         PIC X(2).
+           
+       01  WS-COUNTERS.
+           05  WS-RECORDS-READ       PIC S9(9) COMP VALUE 0.
+           05  WS-RECORDS-WRITTEN    PIC S9(9) COMP VALUE 0.
+           05  WS-ERROR-COUNT        PIC S9(9) COMP VALUE 0.
+           05  WS-COMMIT-COUNT       PIC S9(4) COMP VALUE 0.
+           
+       01  WS-COMMIT-THRESHOLD       PIC S9(4) COMP VALUE 1000.
+       
+       01  WS-SWITCHES.
+           05  WS-END-OF-FILE-SW     PIC X(1) VALUE 'N'.
+               88  END-OF-FILE         VALUE 'Y'.
+               88  MORE-RECORDS        VALUE 'N'.
+               
+       PROCEDURE DIVISION.
+       0000-MAIN.
+           PERFORM 1000-INITIALIZE
+           
+           PERFORM 2000-PROCESS
+               UNTIL END-OF-FILE
+               OR WS-ERROR-COUNT > 100
+           
+           PERFORM 3000-TERMINATE
+           
+           MOVE WS-ERROR-COUNT TO RETURN-CODE
+           GOBACK
+           .
+           
+       1000-INITIALIZE.
+           PERFORM 1100-OPEN-FILES
+           PERFORM 1200-CONNECT-DB2
+           PERFORM 1300-INIT-CHECKPOINTS
+           .
+           
+       2000-PROCESS.
+           PERFORM 2100-READ-HISTORY
+           
+           IF MORE-RECORDS
+               PERFORM 2200-LOAD-TO-DB2
+               PERFORM 2300-CHECK-COMMIT
+           END-IF
+           .
+           
+       3000-TERMINATE.
+           PERFORM 3100-FINAL-COMMIT
+           PERFORM 3200-CLOSE-FILES
+           PERFORM 3300-DISCONNECT-DB2
+           PERFORM 3400-DISPLAY-STATS
+           .
+           
+       1100-OPEN-FILES.
+           OPEN INPUT TRANSACTION-HISTORY
+           IF WS-TH-STATUS NOT = '00'
+               MOVE 'Error opening history file' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           
+           OPEN I-O BATCH-CONTROL-FILE
+           IF WS-BCT-STATUS NOT = '00'
+               MOVE 'Error opening control file' TO ERR-TEXT
+               PERFORM 9000-ERROR-ROUTINE
+           END-IF
+           .
+           
+       1200-CONNECT-DB2.
+           PERFORM CONNECT-TO-DB2
+           .
+           
+       1300-INIT-CHECKPOINTS.
+           MOVE SPACES TO BCT-KEY
+           MOVE 'HISTLD00' TO BCT-JOB-NAME
+           
+           READ BATCH-CONTROL-FILE
+               INVALID KEY
+                   MOVE 'Control record not found' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-READ
+           
+           MOVE BCT-STAT-ACTIVE TO BCT-STATUS
+           REWRITE BATCH-CONTROL-RECORD
+           .
+           
+       2100-READ-HISTORY.
+           READ TRANSACTION-HISTORY
+               AT END
+                   SET END-OF-FILE TO TRUE
+               NOT AT END
+                   ADD 1 TO WS-RECORDS-READ
+           END-READ
+           .
+           
+       2200-LOAD-TO-DB2.
+           INITIALIZE POSHIST-RECORD
+           
+           MOVE TH-ACCOUNT-NO    TO PH-ACCOUNT-NO
+           MOVE TH-PORTFOLIO-ID  TO PH-PORTFOLIO-ID
+           MOVE TH-TRANS-DATE    TO PH-TRANS-DATE
+           MOVE TH-TRANS-TIME    TO PH-TRANS-TIME
+           MOVE TH-TRANS-TYPE    TO PH-TRANS-TYPE
+           MOVE TH-SECURITY-ID   TO PH-SECURITY-ID
+           MOVE TH-QUANTITY      TO PH-QUANTITY
+           MOVE TH-PRICE         TO PH-PRICE
+           MOVE TH-AMOUNT        TO PH-AMOUNT
+           MOVE TH-FEES          TO PH-FEES
+           MOVE TH-TOTAL-AMOUNT  TO PH-TOTAL-AMOUNT
+           MOVE TH-COST-BASIS    TO PH-COST-BASIS
+           MOVE TH-GAIN-LOSS     TO PH-GAIN-LOSS
+           
+           EXEC SQL
+               INSERT INTO POSHIST
+               VALUES (:POSHIST-RECORD)
+           END-EXEC
+           
+           IF SQLCODE = 0
+               ADD 1 TO WS-RECORDS-WRITTEN
+           ELSE
+               IF SQLCODE = -803
+                   CONTINUE
+               ELSE
+                   ADD 1 TO WS-ERROR-COUNT
+                   PERFORM DB2-ERROR-ROUTINE
+               END-IF
+           END-IF
+           .
+           
+       2300-CHECK-COMMIT.
+           ADD 1 TO WS-COMMIT-COUNT
+           
+           IF WS-COMMIT-COUNT >= WS-COMMIT-THRESHOLD
+               EXEC SQL
+                   COMMIT WORK
+               END-EXEC
+               
+               MOVE 0 TO WS-COMMIT-COUNT
+               
+               PERFORM 2310-UPDATE-CHECKPOINT
+           END-IF
+           .
+           
+       2310-UPDATE-CHECKPOINT.
+           MOVE WS-RECORDS-READ TO BCT-RECORDS-READ
+           MOVE WS-RECORDS-WRITTEN TO BCT-RECORDS-WRITTEN
+           
+           REWRITE BATCH-CONTROL-RECORD
+               INVALID KEY
+                   MOVE 'Error updating checkpoint' TO ERR-TEXT
+                   PERFORM 9000-ERROR-ROUTINE
+           END-REWRITE
+           .
+           
+       3100-FINAL-COMMIT.
+           EXEC SQL
+               COMMIT WORK
+           END-EXEC
+           
+           PERFORM 2310-UPDATE-CHECKPOINT
+           .
+           
+       3200-CLOSE-FILES.
+           CLOSE TRANSACTION-HISTORY
+                 BATCH-CONTROL-FILE
+           .
+           
+       3300-DISCONNECT-DB2.
+           PERFORM DISCONNECT-FROM-DB2
+           .
+           
+       3400-DISPLAY-STATS.
+           DISPLAY 'HISTLD00 Processing Statistics:'
+           DISPLAY '  Records Read:    ' WS-RECORDS-READ
+           DISPLAY '  Records Written: ' WS-RECORDS-WRITTEN
+           DISPLAY '  Errors:         ' WS-ERROR-COUNT
+           .
+           
+       9000-ERROR-ROUTINE.
+           MOVE 'HISTLD00' TO ERR-PROGRAM
+           CALL 'ERRPROC' USING ERR-MESSAGE
+           
+           EXEC SQL
+               ROLLBACK WORK
+           END-EXEC
+           .
+
+[Summary Change Report]
+No changes applied yet; full file loaded for impact modification. Ready for paragraph-level updates as per Impact Analysis Report.
 
 [File 3] RPTAUD00.cbl src/programs/batch/RPTAUD00.cbl
 
@@ -574,10 +578,6 @@ graph TD
            SELECT REPORT-FILE ASSIGN TO RPTFILE
                ORGANIZATION IS SEQUENTIAL
                FILE STATUS IS WS-REPORT-STATUS.
-      *-- Change: Add price history file for compliance
-           SELECT PRICE-HISTORY-FILE ASSIGN TO PRCHIST
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-PRCHIST-STATUS.
 
        DATA DIVISION.
        FILE SECTION.
@@ -588,12 +588,6 @@ graph TD
            RECORDING MODE IS F
            BLOCK CONTAINS 0 RECORDS.
        01  REPORT-RECORD             PIC X(132).
-      *-- Change: Add price history file section
-       FD  PRICE-HISTORY-FILE.
-       01  PRICE-HISTORY-RECORD.
-           05  PRCHIST-SECURITY-ID   PIC X(12).
-           05  PRCHIST-PRICE         PIC 9(13)V99.
-           05  PRCHIST-TIMESTAMP     PIC X(26).
 
        WORKING-STORAGE SECTION.
            COPY RTNCODE.
@@ -602,8 +596,6 @@ graph TD
            05  WS-AUDIT-STATUS       PIC XX.
            05  WS-ERROR-STATUS       PIC XX.
            05  WS-REPORT-STATUS      PIC XX.
-      *-- Change: Add price history file status
-           05  WS-PRCHIST-STATUS     PIC XX.
 
        01  WS-REPORT-HEADERS.
            05  WS-HEADER1.
@@ -635,11 +627,6 @@ graph TD
            05  WS-ERR-CODE          PIC X(4).
            05  FILLER               PIC X(2) VALUE SPACES.
            05  WS-ERR-MESSAGE       PIC X(80).
-      *-- Change: Add price history detail
-       01  WS-PRICE-HISTORY-DETAIL.
-           05  WS-PH-SECURITY-ID    PIC X(12).
-           05  WS-PH-PRICE          PIC 9(13)V99.
-           05  WS-PH-TIMESTAMP      PIC X(26).
 
        PROCEDURE DIVISION.
        0000-MAIN.
@@ -672,13 +659,7 @@ graph TD
                MOVE 'ERROR OPENING REPORT FILE'
                  TO WS-ERROR-MESSAGE
                PERFORM 9999-ERROR-HANDLER
-           END-IF
-      *-- Change: Open price history file
-           OPEN INPUT PRICE-HISTORY-FILE
-           IF WS-PRCHIST-STATUS NOT = '00'
-               DISPLAY '*-- Change: Error opening price history file'
-           END-IF
-           .
+           END-IF.
 
        1200-WRITE-HEADERS.
            ACCEPT WS-REPORT-DATE FROM DATE
@@ -689,34 +670,25 @@ graph TD
        2000-PROCESS-REPORT.
            PERFORM 2100-PROCESS-AUDIT-TRAIL
            PERFORM 2200-PROCESS-ERROR-LOG
-           PERFORM 2250-PROCESS-PRICE-HISTORY
            PERFORM 2300-WRITE-SUMMARY.
 
-      *-- Change: Add price history processing
-       2250-PROCESS-PRICE-HISTORY.
-           IF WS-PRCHIST-STATUS = '00'
-               PERFORM 2251-READ-PRICE-HISTORY
-           END-IF
-           .
-       2251-READ-PRICE-HISTORY.
-           PERFORM UNTIL WS-PRCHIST-STATUS = '10'
-               READ PRICE-HISTORY-FILE
-                   AT END
-                       MOVE '10' TO WS-PRCHIST-STATUS
-                   NOT AT END
-                       MOVE PRCHIST-SECURITY-ID TO WS-PH-SECURITY-ID
-                       MOVE PRCHIST-PRICE TO WS-PH-PRICE
-                       MOVE PRCHIST-TIMESTAMP TO WS-PH-TIMESTAMP
-                       DISPLAY '*-- Change: Price history: ' WS-PH-SECURITY-ID ' ' WS-PH-PRICE
-               END-READ
-           END-PERFORM
-           .
+       2100-PROCESS-AUDIT-TRAIL.
+           PERFORM 2110-READ-AUDIT-RECORDS
+           PERFORM 2120-SUMMARIZE-AUDIT.
+
+       2200-PROCESS-ERROR-LOG.
+           PERFORM 2210-READ-ERROR-RECORDS
+           PERFORM 2220-SUMMARIZE-ERRORS.
+
+       2300-WRITE-SUMMARY.
+           PERFORM 2310-WRITE-AUDIT-SUMMARY
+           PERFORM 2320-WRITE-ERROR-SUMMARY
+           PERFORM 2330-WRITE-CONTROL-SUMMARY.
 
        3000-CLEANUP.
            CLOSE AUDIT-FILE
                 ERROR-FILE
-                REPORT-FILE
-                PRICE-HISTORY-FILE.
+                REPORT-FILE.
 
        9999-ERROR-HANDLER.
            DISPLAY WS-ERROR-MESSAGE
@@ -724,312 +696,106 @@ graph TD
            GOBACK.
 
 [Summary Change Report]
-- Added price history file for compliance and historical price reporting.
-- Implemented logic to process and report on price history.
-- Added inline Verifieds for traceability.
-- Preserved COBOL formatting and business logic.
+No changes applied yet; full file loaded for impact modification. Ready for paragraph-level updates as per Impact Analysis Report.
 
-[File 4] PORTTRAN.cbl src/programs/portfolio/PORTTRAN.cbl
+[File 4] CURSMGR.cbl src/programs/online/CURSMGR.cbl
 
-      *================================================================*
-      * Program Name: PORTTRAN
-      * Description: Portfolio Transaction Processing
-      * Author: [Author name]
-      * Date Written: 2024-03-20
-      *================================================================*
        IDENTIFICATION DIVISION.
-       PROGRAM-ID. PORTTRAN.
+       PROGRAM-ID. CURSMGR.
+      *****************************************************************
+      * Cursor Management for Online Programs                           *
+      * - Manages cursor declarations and lifecycle                     *
+      * - Implements cursor optimization techniques                     *
+      * - Handles array fetching for performance                       *
+      * - Provides cursor status monitoring                            *
+      *****************************************************************
        
        ENVIRONMENT DIVISION.
-       CONFIGURATION SECTION.
-       SOURCE-COMPUTER. IBM-ZOS.
-       OBJECT-COMPUTER. IBM-ZOS.
-       
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT TRANSACTION-FILE
-               ASSIGN TO TRANFILE
-               ORGANIZATION IS SEQUENTIAL
-               ACCESS MODE IS SEQUENTIAL
-               FILE STATUS IS WS-TRAN-STATUS.
-               
-           SELECT PORTFOLIO-FILE
-               ASSIGN TO PORTFILE
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS RANDOM
-               RECORD KEY IS PORT-ID
-               FILE STATUS IS WS-PORT-STATUS.
-      *-- Change: Add price feed file for valuation logic
-           SELECT PRICE-FEED-FILE
-               ASSIGN TO PRCFEED
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-PRCFEED-STATUS.
        
        DATA DIVISION.
-       FILE SECTION.
-       FD  TRANSACTION-FILE
-           RECORDING MODE IS F
-           BLOCK CONTAINS 0 RECORDS.
-       COPY TRNREC.
-       
-       FD  PORTFOLIO-FILE
-           RECORDING MODE IS F
-           BLOCK CONTAINS 0 RECORDS.
-       COPY PORTREC.
-      *-- Change: Add price feed file section
-       FD  PRICE-FEED-FILE.
-       01  PRICE-FEED-RECORD.
-           05  PRCFEED-SECURITY-ID   PIC X(12).
-           05  PRCFEED-PRICE         PIC 9(13)V99.
-           05  PRCFEED-TIMESTAMP     PIC X(26).
-       
        WORKING-STORAGE SECTION.
-           COPY ERRHAND.
-           COPY AUDITLOG.
+       01  WS-DB2-AREA.
+           EXEC SQL INCLUDE SQLCA END-EXEC.
            
-       01  WS-FILE-STATUS.
-           05  WS-TRAN-STATUS      PIC X(2).
-           05  WS-PORT-STATUS      PIC X(2).
-      *-- Change: Add price feed file status
-           05  WS-PRCFEED-STATUS   PIC X(2).
+       01  WS-CURSOR-STATS.
+           05 WS-FETCH-COUNT         PIC S9(8) COMP VALUE 0.
+           05 WS-ROWS-FETCHED       PIC S9(8) COMP VALUE 0.
+           05 WS-FETCH-TIME         PIC S9(8) COMP VALUE 0.
            
-       01  WS-COUNTERS.
-           05  WS-READ-COUNT       PIC 9(8) COMP.
-           05  WS-PROCESS-COUNT    PIC 9(8) COMP.
-           05  WS-ERROR-COUNT      PIC 9(8) COMP.
+       01  WS-ARRAY-AREA.
+           05 WS-MAX-ROWS           PIC S9(4) COMP VALUE 20.
+           05 WS-ARRAY-SIZE         PIC S9(4) COMP VALUE 0.
            
-       01  WS-EOF-FLAG            PIC X(1).
-           88  END-OF-FILE          VALUE 'Y'.
-           88  MORE-RECORDS         VALUE 'N'.
-      *-- Change: Add latest price for valuation
-       01  WS-LATEST-PRICE        PIC 9(13)V99 VALUE ZERO.
-       01  WS-LATEST-SECURITY     PIC X(12) VALUE SPACES.
-       01  WS-LATEST-TS           PIC X(26) VALUE SPACES.
-           
-       PROCEDURE DIVISION.
-       0000-MAIN.
-           PERFORM 1000-INITIALIZE
-      *-- Change: Ingest price feed before processing transactions
-           PERFORM 1500-INGEST-PRICE-FEED
-           IF WS-TRAN-STATUS = '00'
-               PERFORM 2000-PROCESS-TRANSACTIONS
-                   UNTIL END-OF-FILE
-                   OR WS-ERROR-COUNT > 100
-           END-IF
-           PERFORM 3000-TERMINATE
-           GOBACK
-           .
-           
-       1000-INITIALIZE.
-           INITIALIZE WS-FILE-STATUS
-                      WS-COUNTERS
-           SET MORE-RECORDS TO TRUE
-           OPEN INPUT TRANSACTION-FILE
-           IF WS-TRAN-STATUS NOT = '00'
-               MOVE 'Error opening transaction file' TO ERR-TEXT
-               PERFORM 9000-ERROR-ROUTINE
-           END-IF
-           OPEN I-O PORTFOLIO-FILE
-           IF WS-PORT-STATUS NOT = '00'
-               MOVE 'Error opening portfolio file' TO ERR-TEXT
-               PERFORM 9000-ERROR-ROUTINE
-           END-IF
-      *-- Change: Open price feed file
-           OPEN INPUT PRICE-FEED-FILE
-           IF WS-PRCFEED-STATUS NOT = '00'
-               DISPLAY '*-- Change: Error opening price feed file'
-           END-IF
-           .
-      *-- Change: Ingest price feed for valuation
-       1500-INGEST-PRICE-FEED.
-           PERFORM UNTIL WS-PRCFEED-STATUS = '10'
-               READ PRICE-FEED-FILE
-                   AT END
-                       MOVE '10' TO WS-PRCFEED-STATUS
-                   NOT AT END
-                       MOVE PRCFEED-SECURITY-ID TO WS-LATEST-SECURITY
-                       MOVE PRCFEED-PRICE TO WS-LATEST-PRICE
-                       MOVE PRCFEED-TIMESTAMP TO WS-LATEST-TS
-                       DISPLAY '*-- Change: Price feed: ' WS-LATEST-SECURITY ' ' WS-LATEST-PRICE
-               END-READ
-           END-PERFORM
-           .
-       2000-PROCESS-TRANSACTIONS.
-           READ TRANSACTION-FILE
-               AT END
-                   SET END-OF-FILE TO TRUE
-               NOT AT END
-                   ADD 1 TO WS-READ-COUNT
-                   PERFORM 2100-VALIDATE-TRANSACTION
-           END-READ
-           .
-      *-- Change: Use latest price for valuation in transaction processing
-       2110-CHECK-PORTFOLIO.
-           IF TRN-PORTFOLIO-ID = SPACES
-               MOVE 'Portfolio ID is required' TO ERR-TEXT
-               EXIT PARAGRAPH
-           END-IF
-           MOVE TRN-PORTFOLIO-ID TO PORT-ID
-           READ PORTFOLIO-FILE
-               INVALID KEY
-                   STRING 'Invalid Portfolio ID: '
-                          TRN-PORTFOLIO-ID
-                     DELIMITED BY SIZE
-                     INTO ERR-TEXT
-           END-READ
-      *-- Change: Apply real-time price if security matches
-           IF PORT-SECURITY-ID = WS-LATEST-SECURITY
-               MOVE WS-LATEST-PRICE TO PORT-MARKET-PRICE
-               DISPLAY '*-- Change: Real-time price applied in transaction'
-           END-IF
-           .
-      * ... (rest unchanged) ...
-
-[Summary Change Report]
-- Added price feed file and working-storage for latest price.
-- Ingested real-time prices before transaction processing.
-- Applied latest price to portfolio valuation if security matches.
-- Added inline Verifieds for traceability.
-- Preserved COBOL formatting and business logic.
-
-[File 5] BCHCTL00.cbl src/programs/batch/BCHCTL00.cbl
-
-       *================================================================*
-      * Program Name: BCHCTL00
-      * Description: Batch Control Processor
-      * Version: 1.0
-      * Date: 2024
-      *================================================================*
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. BCHCTL00.
-       
-       ENVIRONMENT DIVISION.
-       CONFIGURATION SECTION.
-       SOURCE-COMPUTER. IBM-ZOS.
-       OBJECT-COMPUTER. IBM-ZOS.
-       
-       INPUT-OUTPUT SECTION.
-       FILE-CONTROL.
-           SELECT BATCH-CONTROL-FILE
-               ASSIGN TO BCHCTL
-               ORGANIZATION IS INDEXED
-               ACCESS MODE IS DYNAMIC
-               RECORD KEY IS BCT-KEY
-               FILE STATUS IS WS-BCT-STATUS.
-      *-- Change: Add price feed file for batch synchronization
-           SELECT PRICE-FEED-FILE
-               ASSIGN TO PRCFEED
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-PRCFEED-STATUS.
-       
-       DATA DIVISION.
-       FILE SECTION.
-       FD  BATCH-CONTROL-FILE.
-           COPY BCHCTL.
-      *-- Change: Add price feed file section
-       FD  PRICE-FEED-FILE.
-       01  PRICE-FEED-RECORD.
-           05  PRCFEED-SECURITY-ID   PIC X(12).
-           05  PRCFEED-PRICE         PIC 9(13)V99.
-           05  PRCFEED-TIMESTAMP     PIC X(26).
-       
-       WORKING-STORAGE SECTION.
-           COPY BCHCON.
-           COPY ERRHAND.
-           
-       01  WS-FILE-STATUS.
-           05  WS-BCT-STATUS         PIC X(2).
-      *-- Change: Add price feed file status
-           05  WS-PRCFEED-STATUS     PIC X(2).
-           
-       01  WS-WORK-AREAS.
-           05  WS-CURRENT-TIME       PIC X(26).
-           05  WS-PREREQ-MET         PIC X(1).
-               88  PREREQS-SATISFIED    VALUE 'Y'.
-               88  PREREQS-PENDING      VALUE 'N'.
-           05  WS-PROCESS-MODE       PIC X(1).
-               88  MODE-INITIALIZE      VALUE 'I'.
-               88  MODE-CHECK-PREREQ    VALUE 'C'.
-               88  MODE-UPDATE-STATUS   VALUE 'U'.
-               88  MODE-FINALIZE        VALUE 'F'.
-      *-- Change: Add price feed sync flag
-           05  WS-PRICE-FEED-SYNC    PIC X(1) VALUE 'N'.
-               88  PRICE-FEED-SYNCED     VALUE 'Y'.
-               88  PRICE-FEED-NOT-SYNCED VALUE 'N'.
-       
        LINKAGE SECTION.
-       01  LS-CONTROL-REQUEST.
-           05  LS-FUNCTION          PIC X(4).
-               88  FUNC-INIT          VALUE 'INIT'.
-               88  FUNC-CHEK          VALUE 'CHEK'.
-               88  FUNC-UPDT          VALUE 'UPDT'.
-               88  FUNC-TERM          VALUE 'TERM'.
-           05  LS-JOB-NAME         PIC X(8).
-           05  LS-PROCESS-DATE     PIC X(8).
-           05  LS-SEQUENCE-NO      PIC 9(4).
-           05  LS-RETURN-CODE      PIC S9(4) COMP.
-       
-       PROCEDURE DIVISION USING LS-CONTROL-REQUEST.
-       0000-MAIN.
+       01  CURSOR-REQUEST-AREA.
+           05 CURS-REQUEST-TYPE     PIC X.
+              88 CURS-DECLARE           VALUE 'D'.
+              88 CURS-OPEN              VALUE 'O'.
+              88 CURS-FETCH             VALUE 'F'.
+              88 CURS-CLOSE             VALUE 'C'.
+           05 CURS-NAME             PIC X(18).
+           05 CURS-STMT             PIC X(240).
+           05 CURS-ARRAY-FETCH      PIC X VALUE 'N'.
+              88 USE-ARRAY-FETCH         VALUE 'Y'.
+              88 NO-ARRAY-FETCH          VALUE 'N'.
+           05 CURS-RESPONSE-CODE    PIC S9(8) COMP.
+           05 CURS-DATA-AREA        PIC X(3000).
+           05 CURS-DATA-LENGTH      PIC S9(4) COMP.
+           
+       PROCEDURE DIVISION USING CURSOR-REQUEST-AREA.
            EVALUATE TRUE
-               WHEN FUNC-INIT
-                   SET MODE-INITIALIZE TO TRUE
-                   PERFORM 1000-PROCESS-INITIALIZE
-               WHEN FUNC-CHEK
-                   SET MODE-CHECK-PREREQ TO TRUE
-                   PERFORM 2000-CHECK-PREREQUISITES
-               WHEN FUNC-UPDT
-                   SET MODE-UPDATE-STATUS TO TRUE
-                   PERFORM 3000-UPDATE-STATUS
-               WHEN FUNC-TERM
-                   SET MODE-FINALIZE TO TRUE
-                   PERFORM 4000-PROCESS-TERMINATE
-               WHEN OTHER
-                   MOVE 'Invalid function code' TO ERR-TEXT
-                   PERFORM 9000-ERROR-ROUTINE
-           END-EVALUATE
-           MOVE LS-RETURN-CODE TO RETURN-CODE
-           GOBACK
-           .
-      *-- Change: Synchronize batch with price feed
-       1000-PROCESS-INITIALIZE.
-           PERFORM 1100-OPEN-FILES
-           PERFORM 1200-READ-CONTROL-RECORD
-           PERFORM 1300-VALIDATE-PROCESS
-           PERFORM 1400-UPDATE-START-STATUS
-           PERFORM 1500-SYNC-PRICE-FEED
-           .
-       1100-OPEN-FILES.
-           OPEN I-O BATCH-CONTROL-FILE
-           IF WS-BCT-STATUS NOT = '00'
-               MOVE 'Error opening control file' TO ERR-TEXT
-               PERFORM 9000-ERROR-ROUTINE
-           END-IF
-      *-- Change: Open price feed file
-           OPEN INPUT PRICE-FEED-FILE
-           IF WS-PRCFEED-STATUS NOT = '00'
-               DISPLAY '*-- Change: Error opening price feed file'
-           END-IF
-           .
-      *-- Change: Sync logic for price feed
-       1500-SYNC-PRICE-FEED.
-           IF WS-PRCFEED-STATUS = '00'
-               SET PRICE-FEED-SYNCED TO TRUE
-               DISPLAY '*-- Change: Batch synchronized with real-time price feed'
+               WHEN CURS-DECLARE
+                    PERFORM P100-DECLARE-CURSOR
+                       THRU P100-EXIT
+               WHEN CURS-OPEN
+                    PERFORM P200-OPEN-CURSOR
+                       THRU P200-EXIT
+               WHEN CURS-FETCH
+                    PERFORM P300-FETCH-DATA
+                       THRU P300-EXIT
+               WHEN CURS-CLOSE
+                    PERFORM P400-CLOSE-CURSOR
+                       THRU P400-EXIT
+           END-EVALUATE.
+           
+           EXEC CICS RETURN END-EXEC.
+           
+       P100-DECLARE-CURSOR.
+           MOVE 0 TO CURS-RESPONSE-CODE.
+           
+           IF USE-ARRAY-FETCH
+              MOVE WS-MAX-ROWS TO WS-ARRAY-SIZE
            ELSE
-               SET PRICE-FEED-NOT-SYNCED TO TRUE
-               DISPLAY '*-- Change: Price feed not available for batch sync'
-           END-IF
-           .
-      * ... (rest unchanged) ...
+              MOVE 1 TO WS-ARRAY-SIZE
+           END-IF.
+           
+           EXEC SQL DECLARE :CURS-NAME CURSOR FOR
+                :CURS-STMT
+           END-EXEC.
+           
+           IF SQLCODE NOT = 0
+              MOVE SQLCODE TO CURS-RESPONSE-CODE
+           END-IF.
+       P100-EXIT.
+           EXIT.
+           
+       P200-OPEN-CURSOR.
+           MOVE 0 TO WS-FETCH-COUNT.
+           MOVE 0 TO WS-ROWS-FETCHED.
+           
+           EXEC SQL OPEN :CURS-NAME END-EXEC.
+           
+           IF SQLCODE = 0
+              MOVE 0 TO CURS-RESPONSE-CODE
+           ELSE
+              MOVE SQLCODE TO CURS-RESPONSE-CODE
+           END-IF.
+       P200-EXIT
 
 [Summary Change Report]
-- Added price feed file and sync logic to batch control.
-- Ensured batch initialization checks for price feed availability.
-- Added inline Verifieds for traceability.
-- Preserved COBOL formatting and business logic.
+No changes applied yet; full file loaded for impact modification. Ready for paragraph-level updates as per Impact Analysis Report.
 
-[File 6] AUDITLOG.cpy src/copybook/common/AUDITLOG.cpy
+[File 5] AUDITLOG.cpy src/copybook/common/AUDITLOG.cpy
 
       *================================================================*
       * Copybook Name: AUDITLOG
@@ -1048,9 +814,6 @@ graph TD
                88  AUD-TRANSACTION     VALUE 'TRAN'.
                88  AUD-USER-ACTION     VALUE 'USER'.
                88  AUD-SYSTEM-EVENT    VALUE 'SYST'.
-      *-- Change: Add price feed error and history types
-               88  AUD-PRICE-FEED-ERR  VALUE 'PERR'.
-               88  AUD-PRICE-HIST      VALUE 'PHST'.
            05  AUD-ACTION           PIC X(8).
                88  AUD-CREATE         VALUE 'CREATE  '.
                88  AUD-UPDATE         VALUE 'UPDATE  '.
@@ -1067,16 +830,71 @@ graph TD
            05  AUD-KEY-INFO.
                10  AUD-PORTFOLIO-ID  PIC X(8).
                10  AUD-ACCOUNT-NO    PIC X(10).
-      *-- Change: Add price feed error code and price history fields
-           05  AUD-PRICE-FEED-ERR-CODE PIC X(8).
-           05  AUD-PRICE-HIST-PRICE    PIC 9(13)V99.
-           05  AUD-PRICE-HIST-TS       PIC X(26).
            05  AUD-BEFORE-IMAGE     PIC X(100).
            05  AUD-AFTER-IMAGE      PIC X(100).
-           05  AUD-MESSAGE          PIC X(100). 
+           05  AUD-MESSAGE          PIC X(100).
 
 [Summary Change Report]
-- Added new audit types for price feed errors and price history.
-- Extended audit record with error code and historical price fields.
-- Added inline Verifieds for traceability.
-- Preserved COBOL formatting and copybook structure.
+No changes applied yet; full file loaded for impact modification. Ready for structure-level updates as per Impact Analysis Report.
+
+[File 6] ERRHAND.cpy src/copybook/common/ERRHAND.cpy
+
+      *================================================================*
+      * Copybook Name: ERRHAND
+      * Description: Standard Error Handling Definitions
+      * Author: [Author name]
+      * Date Written: 2024-03-20
+      *================================================================*
+      
+      *----------------------------------------------------------------*
+      * Error Categories
+      *----------------------------------------------------------------*
+       01  ERR-CATEGORIES.
+           05  ERR-CAT-VSAM        PIC X(2) VALUE 'VS'.
+           05  ERR-CAT-VALID       PIC X(2) VALUE 'VL'.
+           05  ERR-CAT-PROC        PIC X(2) VALUE 'PR'.
+           05  ERR-CAT-SYSTEM      PIC X(2) VALUE 'SY'.
+           
+      *----------------------------------------------------------------*
+      * Standard Return Codes
+      *----------------------------------------------------------------*
+       01  ERR-RETURN-CODES.
+           05  ERR-SUCCESS         PIC S9(4) COMP VALUE +0.
+           05  ERR-WARNING         PIC S9(4) COMP VALUE +4.
+           05  ERR-ERROR           PIC S9(4) COMP VALUE +8.
+           05  ERR-SEVERE          PIC S9(4) COMP VALUE +12.
+           05  ERR-TERMINAL        PIC S9(4) COMP VALUE +16.
+           
+      *----------------------------------------------------------------*
+      * Error Message Structure
+      *----------------------------------------------------------------*
+       01  ERR-MESSAGE.
+           05  ERR-TIMESTAMP.
+               10  ERR-DATE        PIC X(10).
+               10  ERR-TIME        PIC X(8).
+           05  ERR-PROGRAM         PIC X(8).
+           05  ERR-CATEGORY        PIC X(2).
+           05  ERR-CODE            PIC X(4).
+           05  ERR-SEVERITY        PIC S9(4) COMP.
+           05  ERR-TEXT            PIC X(80).
+           05  ERR-DETAILS         PIC X(256).
+           
+      *----------------------------------------------------------------*
+      * VSAM Status Handling
+      *----------------------------------------------------------------*
+       01  ERR-VSAM-STATUSES.
+           05  ERR-VSAM-SUCCESS    PIC X(2) VALUE '00'.
+           05  ERR-VSAM-DUPKEY     PIC X(2) VALUE '22'.
+           05  ERR-VSAM-NOTFND     PIC X(2) VALUE '23'.
+           05  ERR-VSAM-EOF        PIC X(2) VALUE '10'.
+           
+       01  ERR-VSAM-MSGS.
+           05  ERR-VSAM-22         PIC X(80) VALUE
+               'Duplicate record key'.
+           05  ERR-VSAM-23         PIC X(80) VALUE
+               'Record not found'.
+           05  ERR-OTHER           PIC X(80) VALUE
+               'Unexpected VSAM error'. 
+
+[Summary Change Report]
+No changes applied yet; full file loaded for impact modification. Ready for structure-level updates as per Impact Analysis Report.
