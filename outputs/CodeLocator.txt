@@ -1,30 +1,26 @@
-# COBOL Legacy System Impact Analysis Report
 
 ## Summary
 
 **User Story:**  
-Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates
+Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates  
+- The system must ingest real-time market prices, update portfolio valuations and risk metrics, handle errors and logging, and maintain historical price records.
 
-**Overview:**  
-The system must ingest real-time market price updates, recalculate portfolio valuations and risk metrics, handle errors and logging, and maintain historical price records. This impacts data ingestion, valuation logic, error handling, audit logging, and historical data management.
+**Total number of impacted components:** 5 (High impact only)
 
-**Total High-Impact Components Identified:** 6
-
-**Change Complexity:**  
-High. The change affects core business logic for portfolio valuation, real-time data processing, error handling, and audit/historical record management. Multiple programs and copybooks are directly involved in the control flow and data structures.
+**High-level assessment of change complexity:**  
+This is a major, cross-cutting enhancement requiring integration with external data feeds, real-time processing, error handling, and historical data management. The change impacts core batch and DB2 programs, audit/reporting, and shared copybooks for error handling and logging.
 
 ---
 
 ## Ranked Impact List
 
-| Program File Path                          | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                                   |
-|--------------------------------------------|--------|---------|---------------------------------------------|---------------------------------------------------|
-| `src/programs/batch/RCVPRC00.cbl`          | High   | Direct  | 0000-MAIN, 2000-PROCESS-RECOVERY, 1200-VALIDATE-REQUEST | Entry point for price feed ingestion and recovery  |
-| `src/programs/batch/HISTLD00.cbl`          | High   | Direct  | 0000-MAIN, 2100-PROCESS-DB2-STATS, 2300-CALCULATE-METRICS | Historical price record loader and updater         |
-| `src/programs/batch/RPTAUD00.cbl`          | High   | Direct  | 0000-MAIN, 2000-PROCESS-REPORT, 9999-ERROR-HANDLER | Audit log reporting and error handling             |
-| `src/programs/online/CURSMGR.cbl`          | High   | Indirect| P100-DECLARE-CURSOR, P200-OPEN-CURSOR, P250-FETCH-HISTORY | CICS program for historical price retrieval        |
-| `src/copybook/common/AUDITLOG.cpy`         | High   | Direct  | N/A (copybook)                              | Used for audit logging in multiple programs        |
-| `src/copybook/common/ERRHAND.cpy`          | High   | Direct  | N/A (copybook)                              | Error handling routines shared across impacted programs |
+| Program File Path                          | Impact | Nature  | Affected Paragraphs/Sections                  | Dependency Path                                   |
+|--------------------------------------------|--------|---------|-----------------------------------------------|---------------------------------------------------|
+| `src/programs/batch/RCVPRC00.cbl`          | High   | Direct  | 1000-INITIALIZE-RECOVERY, 2000-PROCESS-RECOVERY, 2100-RECOVER-PROCESS, 9000-ERROR-ROUTINE | Entry point for price ingestion and recovery logic |
+| `src/programs/batch/HISTLD00.cbl`          | High   | Direct  | 1000-LOAD-HISTORICAL, 2000-UPDATE-HISTORY, 9000-ERROR-ROUTINE | Loads and updates historical price records         |
+| `src/programs/batch/RPTAUD00.cbl`          | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS-REPORT, 9999-ERROR-HANDLER | Generates audit logs and reporting                |
+| `src/copybook/common/AUDITLOG.cpy`         | High   | Direct  | AUDIT-LOG-ENTRY, AUDIT-LOG-HEADER             | Shared audit log structure for error/log handling  |
+| `src/copybook/common/ERRHAND.cpy`          | High   | Direct  | ERROR-HANDLER, ERROR-LOGGING                  | Shared error handling for all impacted programs    |
 
 ---
 
@@ -40,54 +36,64 @@ High. The change affects core business logic for portfolio valuation, real-time 
         "impactScore": 0.98,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["0000-MAIN", "2000-PROCESS-RECOVERY", "1200-VALIDATE-REQUEST"],
+        "affectedParagraphs": [
+          "1000-INITIALIZE-RECOVERY",
+          "2000-PROCESS-RECOVERY",
+          "2100-RECOVER-PROCESS",
+          "9000-ERROR-ROUTINE"
+        ],
         "dependencyPath": ["RCVPRC00"],
-        "rationale": "Primary batch program for receiving and processing market price feeds; handles recovery and validation logic for incoming data."
+        "rationale": "Primary batch program for receiving and processing price updates; will require integration with external feed, polling logic, and error handling."
       },
       {
         "programFilePath": "src/programs/batch/HISTLD00.cbl",
         "impactScore": 0.96,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": ["0000-MAIN", "2100-PROCESS-DB2-STATS", "2300-CALCULATE-METRICS"],
+        "affectedParagraphs": [
+          "1000-LOAD-HISTORICAL",
+          "2000-UPDATE-HISTORY",
+          "9000-ERROR-ROUTINE"
+        ],
         "dependencyPath": ["HISTLD00"],
-        "rationale": "Loads and updates historical price records in DB2; critical for maintaining historical data as required by the user story."
+        "rationale": "Handles loading and updating of historical price records; must be updated to store new real-time prices for analysis and reporting."
       },
       {
         "programFilePath": "src/programs/batch/RPTAUD00.cbl",
-        "impactScore": 0.95,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": ["0000-MAIN", "2000-PROCESS-REPORT", "9999-ERROR-HANDLER"],
-        "dependencyPath": ["RPTAUD00"],
-        "rationale": "Generates audit logs and reports; directly involved in error handling and logging for failed or outdated price feeds."
-      },
-      {
-        "programFilePath": "src/programs/online/CURSMGR.cbl",
         "impactScore": 0.93,
         "impactLevel": "High",
-        "impactType": "Indirect",
-        "affectedParagraphs": ["P100-DECLARE-CURSOR", "P200-OPEN-CURSOR", "P250-FETCH-HISTORY"],
-        "dependencyPath": ["HISTLD00", "CURSMGR"],
-        "rationale": "CICS program for fetching historical price data; supports reporting and analysis requirements for historical prices."
+        "impactType": "Direct",
+        "affectedParagraphs": [
+          "1000-INITIALIZE",
+          "2000-PROCESS-REPORT",
+          "9999-ERROR-HANDLER"
+        ],
+        "dependencyPath": ["RPTAUD00"],
+        "rationale": "Generates audit logs and reports; must be updated to reflect new price update events and error conditions."
       },
       {
         "programFilePath": "src/copybook/common/AUDITLOG.cpy",
-        "impactScore": 0.92,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": [],
-        "dependencyPath": ["RPTAUD00", "AUDITLOG"],
-        "rationale": "Copybook for audit logging; shared across programs for consistent audit record structure."
-      },
-      {
-        "programFilePath": "src/copybook/common/ERRHAND.cpy",
         "impactScore": 0.91,
         "impactLevel": "High",
         "impactType": "Direct",
-        "affectedParagraphs": [],
-        "dependencyPath": ["RCVPRC00", "HISTLD00", "RPTAUD00", "ERRHAND"],
-        "rationale": "Copybook for error handling routines; ensures robust error management and alerting as required by the user story."
+        "affectedParagraphs": [
+          "AUDIT-LOG-ENTRY",
+          "AUDIT-LOG-HEADER"
+        ],
+        "dependencyPath": ["AUDITLOG"],
+        "rationale": "Defines the audit log structure used by multiple programs for logging price update events and errors."
+      },
+      {
+        "programFilePath": "src/copybook/common/ERRHAND.cpy",
+        "impactScore": 0.90,
+        "impactLevel": "High",
+        "impactType": "Direct",
+        "affectedParagraphs": [
+          "ERROR-HANDLER",
+          "ERROR-LOGGING"
+        ],
+        "dependencyPath": ["ERRHAND"],
+        "rationale": "Centralized error handling logic; must be enhanced to support new error scenarios from real-time feed integration."
       }
     ]
   }
@@ -100,25 +106,20 @@ High. The change affects core business logic for portfolio valuation, real-time 
 
 ```mermaid
 graph TD
-  RCVPRC00["src/programs/batch/RCVPRC00.cbl (High)"]
-  HISTLD00["src/programs/batch/HISTLD00.cbl (High)"]
-  RPTAUD00["src/programs/batch/RPTAUD00.cbl (High)"]
-  CURSMGR["src/programs/online/CURSMGR.cbl (High)"]
-  AUDITLOG["src/copybook/common/AUDITLOG.cpy (High)"]
-  ERRHAND["src/copybook/common/ERRHAND.cpy (High)"]
-
-  RCVPRC00 --> HISTLD00
-  RCVPRC00 --> ERRHAND
-  HISTLD00 --> CURSMGR
-  HISTLD00 --> ERRHAND
-  RPTAUD00 --> AUDITLOG
-  RPTAUD00 --> ERRHAND
+    RCVPRC00["src/programs/batch/RCVPRC00.cbl (High)"] --> AUDITLOG["src/copybook/common/AUDITLOG.cpy (High)"]
+    RCVPRC00 --> ERRHAND["src/copybook/common/ERRHAND.cpy (High)"]
+    RCVPRC00 --> HISTLD00["src/programs/batch/HISTLD00.cbl (High)"]
+    HISTLD00 --> ERRHAND
+    HISTLD00 --> AUDITLOG
+    RPTAUD00["src/programs/batch/RPTAUD00.cbl (High)"] --> AUDITLOG
+    RPTAUD00 --> ERRHAND
 ```
 
 ---
 
 **Reasoning:**  
-- Only files present in the repository are considered.
-- Impact scores are based on direct involvement in price feed ingestion, valuation, error handling, audit logging, and historical record management.
-- All listed components are essential for implementing the user story and are tightly coupled to the required business logic.
-- No unrelated or non-existent files are included.
+- `RCVPRC00.cbl` is the main entry for price ingestion and recovery, directly impacted by the need to poll and process real-time feeds.
+- `HISTLD00.cbl` manages historical price data, which must be updated for every new price event.
+- `RPTAUD00.cbl` is responsible for audit and reporting, which must reflect new events and error conditions.
+- `AUDITLOG.cpy` and `ERRHAND.cpy` are shared copybooks for logging and error handling, both of which are central to the new requirements and are used by all the above programs.
+- Only these components are marked as HIGH impact based on direct involvement in the new feature and their criticality in the data flow and error handling chain.
