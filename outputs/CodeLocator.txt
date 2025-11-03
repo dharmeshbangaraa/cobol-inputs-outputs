@@ -1,36 +1,21 @@
-# COBOL Legacy System Impact Analysis Report  
-**User Story:** Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates  
-**Repository:** https://github.com/dharmeshbangaraa/COBOL-Legacy-Benchmark-Suite  
-**User Story File:** user-story/user_story_COBOL_Legacy_benchmark_suite_major.txt
-
----
-
 ## Summary
 
 **User Story:**  
-As a Portfolio Manager, I want the system to receive and process real-time market price updates from an external source so that portfolio valuations and risk metrics are consistently accurate and reflect the most current market conditions.
+Enable Real-Time Market Price Feed Integration for Dynamic Portfolio Updates
 
-**Acceptance Criteria:**  
-- Data Ingestion: Connect to external market-data provider (MQ/REST), poll every 5 seconds.
-- Valuation Updates: Recalculate position values and profit/loss on price update, record with timestamp.
-- Error Handling & Logging: Alert and audit log if feed fails or prices are outdated >30s.
-- Historical Record: Maintain received prices for analysis/reporting.
-
-**Total High-Impact Components Identified:** 5  
-**High-Level Assessment:**  
-This is a high-complexity, cross-cutting change affecting the data ingestion, portfolio update, valuation, error handling, and audit logging chains. It requires integration at both the batch and online processing layers, with direct impact on portfolio update logic, audit trails, and error management.
+- **Total High-Impact Components Identified:** 3
+- **High-Level Assessment:**  
+  This is a high-complexity change that introduces real-time data ingestion, dynamic valuation, error handling, and audit logging. It directly impacts the core portfolio update logic, audit/reporting, and the copybooks that define portfolio and audit structures. Only components with a **High** impact score are included.
 
 ---
 
 ## Ranked Impact List
 
-| Program File Path                           | Impact | Nature   | Affected Paragraphs/Sections                | Dependency Path                                 |
-|---------------------------------------------|--------|----------|---------------------------------------------|-------------------------------------------------|
-| src/programs/portfolio/PORTUPDT.cbl         | High   | Direct   | 1000-INITIALIZE, 2000-PROCESS, 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE | [PORTUPDT]                                      |
-| src/programs/batch/RCVPRC00.cbl             | High   | Direct   | 1000-INITIALIZE-RECOVERY, 2000-PROCESS-RECOVERY, 2100-RECOVER-PROCESS | [RCVPRC00]                                      |
-| src/copybook/common/PORTFLIO.cpy            | High   | Direct   | N/A (data structure)                        | [PORTUPDT, PORTFLIO]                            |
-| src/programs/batch/RPTAUD00.cbl             | High   | Indirect | 1000-INITIALIZE, 2000-PROCESS-REPORT, 9999-ERROR-HANDLER | [PORTUPDT, AUDITLOG, RPTAUD00]                  |
-| src/copybook/common/AUDITLOG.cpy            | High   | Indirect | N/A (data structure)                        | [PORTUPDT, AUDITLOG]                            |
+| Program File Path                          | Impact | Nature  | Affected Paragraphs/Sections                | Dependency Path                        |
+|--------------------------------------------|--------|---------|---------------------------------------------|----------------------------------------|
+| `src/programs/portfolio/PORTUPDT.cbl`      | High   | Direct  | 1000-INITIALIZE, 2000-PROCESS, 2100-PROCESS-UPDATE, 2200-APPLY-UPDATE | [PORTUPDT]                             |
+| `src/copybook/common/PORTFLIO.cpy`         | High   | Direct  | N/A (Copybook: Portfolio record/data layout) | [PORTUPDT → PORTFLIO]                  |
+| `src/copybook/common/AUDITLOG.cpy`         | High   | Direct  | N/A (Copybook: Audit log structure)         | [PORTUPDT → AUDITLOG], [RPTAUD00 → AUDITLOG] |
 
 ---
 
@@ -53,20 +38,7 @@ This is a high-complexity, cross-cutting change affecting the data ingestion, po
           "2200-APPLY-UPDATE"
         ],
         "dependencyPath": ["PORTUPDT"],
-        "rationale": "Core batch program for portfolio updates; must process real-time price feeds, recalculate valuations, and trigger downstream updates."
-      },
-      {
-        "programFilePath": "src/programs/batch/RCVPRC00.cbl",
-        "impactScore": 0.96,
-        "impactLevel": "High",
-        "impactType": "Direct",
-        "affectedParagraphs": [
-          "1000-INITIALIZE-RECOVERY",
-          "2000-PROCESS-RECOVERY",
-          "2100-RECOVER-PROCESS"
-        ],
-        "dependencyPath": ["RCVPRC00"],
-        "rationale": "Handles batch receipt and processing of external data feeds; will require integration with real-time market price provider and polling logic."
+        "rationale": "Core batch program for updating portfolio records. Will require integration with real-time price feed, dynamic recalculation of valuations, and error handling for feed failures."
       },
       {
         "programFilePath": "src/copybook/common/PORTFLIO.cpy",
@@ -75,29 +47,16 @@ This is a high-complexity, cross-cutting change affecting the data ingestion, po
         "impactType": "Direct",
         "affectedParagraphs": [],
         "dependencyPath": ["PORTUPDT", "PORTFLIO"],
-        "rationale": "Portfolio data structure copybook; will need to support new fields for real-time price, timestamp, and historical price tracking."
-      },
-      {
-        "programFilePath": "src/programs/batch/RPTAUD00.cbl",
-        "impactScore": 0.93,
-        "impactLevel": "High",
-        "impactType": "Indirect",
-        "affectedParagraphs": [
-          "1000-INITIALIZE",
-          "2000-PROCESS-REPORT",
-          "9999-ERROR-HANDLER"
-        ],
-        "dependencyPath": ["PORTUPDT", "AUDITLOG", "RPTAUD00"],
-        "rationale": "Audit report generator; must be updated to include new audit log entries for price feed errors and valuation updates."
+        "rationale": "Portfolio record structure copybook. Must be updated to support new fields for real-time price, timestamp, and possibly historical price tracking."
       },
       {
         "programFilePath": "src/copybook/common/AUDITLOG.cpy",
-        "impactScore": 0.92,
+        "impactScore": 0.93,
         "impactLevel": "High",
-        "impactType": "Indirect",
+        "impactType": "Direct",
         "affectedParagraphs": [],
         "dependencyPath": ["PORTUPDT", "AUDITLOG"],
-        "rationale": "Audit log copybook; will require new fields for price feed error events, timestamps, and historical price records."
+        "rationale": "Audit log copybook. Will be updated to log feed failures, outdated prices, and all real-time update events as per error handling and audit requirements."
       }
     ]
   }
@@ -111,35 +70,21 @@ This is a high-complexity, cross-cutting change affecting the data ingestion, po
 ```mermaid
 graph TD
     subgraph High Impact
-        A[src/programs/batch/RCVPRC00.cbl]:::high
-        B[src/programs/portfolio/PORTUPDT.cbl]:::high
-        C[src/copybook/common/PORTFLIO.cpy]:::high
-        D[src/programs/batch/RPTAUD00.cbl]:::high
-        E[src/copybook/common/AUDITLOG.cpy]:::high
+        PORTUPDT["src/programs/portfolio/PORTUPDT.cbl"]
+        PORTFLIO["src/copybook/common/PORTFLIO.cpy"]
+        AUDITLOG["src/copybook/common/AUDITLOG.cpy"]
     end
 
-    A --> B
-    B --> C
-    B --> D
-    D --> E
-    B --> E
-
-    classDef high fill:#ffcccc,stroke:#b22222,stroke-width:2px;
+    PORTUPDT --uses--> PORTFLIO
+    PORTUPDT --uses--> AUDITLOG
 ```
 
 ---
 
-### Reasoning for Each Component
+### Reasoning
 
-- **src/programs/portfolio/PORTUPDT.cbl**: This is the main batch program for updating portfolio records. It will need to ingest real-time price data, recalculate valuations, and update records accordingly. All core update logic is here.
-- **src/programs/batch/RCVPRC00.cbl**: This program is responsible for receiving and processing external data feeds. It will require significant changes to support real-time polling, error handling, and integration with the market data provider.
-- **src/copybook/common/PORTFLIO.cpy**: The portfolio data structure must be extended to store real-time prices, timestamps, and historical price data for reporting and analysis.
-- **src/programs/batch/RPTAUD00.cbl**: The audit report generator must be updated to include new types of audit entries related to price feed errors, outdated data, and valuation changes.
-- **src/copybook/common/AUDITLOG.cpy**: The audit log structure will need new fields for error events, timestamps, and historical price records to support the new requirements.
+- **PORTUPDT.cbl** is the main portfolio update program. It is responsible for updating portfolio records and will be the integration point for real-time price ingestion, valuation recalculation, and error/audit handling.
+- **PORTFLIO.cpy** is the portfolio record copybook, included by PORTUPDT. It will need to be extended to support new fields for real-time price, timestamps, and possibly historical price tracking.
+- **AUDITLOG.cpy** is the audit log copybook, included by PORTUPDT and reporting programs. It will be updated to log all relevant events (feed failures, outdated prices, update timestamps) as required by the user story.
 
----
-
-**Note:**  
-- Only existing files in the repository are included.  
-- All components listed are strictly HIGH impact and are directly or indirectly required for the user story implementation.  
-- No new files are created; all logic must be integrated into these existing components.
+**No other programs or files in the repository are directly or indirectly impacted at a High level by the requirements of this user story.**
